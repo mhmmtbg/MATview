@@ -39,7 +39,7 @@ function fmtLog(v) { if (v >= 1000 && v < 1e6) return (v / 1000) + 'k'; if (v >=
 class Plot {
   constructor(canvas, opts = {}) {
     this.cv = canvas; this.opts = opts; this.mode = 'pan';
-    this.axes = []; this.linkX = true; this.grid = true; this.legend = true;
+    this.axes = []; this.linkX = true; this.grid = true; this.legend = true; this.grms = {mode: 'off', dc: true};
     this.cursors = []; this.sel = null; this.playhead = null; this.hover = null;
     this.xBounds = null; this.dirty = true; this.dpr = window.devicePixelRatio || 1;
     this.onChange = opts.onChange || (() => {}); this.onSelect = opts.onSelect || (() => {}); this.onHover = opts.onHover || (() => {});
@@ -80,6 +80,33 @@ class Plot {
     }
     return isFinite(lo) ? [lo, hi] : null;
   }
+  // Titreşim izleri için lejant ekini hesapla: " — 1.234 Grms" (DC çıkarılabilir; ölü noktalar ve NaN hariç)
+  legendExtra(t, ax) {
+    const m = this.grms; if (!m || m.mode === 'off' || t.kind !== 'ts' || t.ch.kind !== 'vib' || !t.ch.data) return '';
+    const ch = t.ch; let a = 0, b = ch.n;
+    if (m.mode === 'vis') { a = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))); b = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1); }
+    const key = m.mode + ':' + a + ':' + b + ':' + ch.delCount + ':' + m.dc, c = t._grms;
+    if (c && c.key === key) return c.txt;
+    if (b - a > 3e6 && c && m.mode === 'vis') {   // etkileşim sırasında eski değeri göster, durulunca yeniden hesapla
+      clearTimeout(t._gt); t._gt = setTimeout(() => { t._grms = {key, txt: this._grmsTxt(ch, a, b)}; this.invalidate(); }, 150); return c.txt;
+    }
+    t._grms = {key, txt: this._grmsTxt(ch, a, b)}; return t._grms.txt;
+  }
+  _grmsTxt(ch, a, b) {
+    const d = ch.data, del = ch.del; let s = 0, s2 = 0, n = 0;
+    for (let i = a; i < b; i++) { const v = d[i]; if ((del && del[i]) || !isFinite(v)) continue; s += v; s2 += v * v; n++; }
+    if (!n) return '';
+    const mean = s / n, ms = this.grms.dc ? Math.max(0, s2 / n - mean * mean) : s2 / n;
+    return ' — ' + Math.sqrt(ms).toPrecision(4) + ' Grms';
+  }
+  zoomOut(f = 2) {
+    for (const ax of this.axes) {
+      this.zoomX(ax, f, (ax.xlim[0] + ax.xlim[1]) / 2);
+      if (!ax.yAuto) this.zoomY(ax, f, (ax.ylim[0] + ax.ylim[1]) / 2);
+    }
+    this.invalidate(); this.onChange('view');
+  }
+  zoomIn() { this.zoomOut(0.5); }
   fitAll(xOnly) {
     const b = this.bounds();
     for (const ax of this.axes) {
@@ -167,11 +194,11 @@ class Plot {
     if (this.legend) {
       const vis = ax.traces.filter(t => t.visible); if (vis.length) {
         ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(t.label).width);
+        const lbl = new Map(vis.map(t => [t, t.label + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
         const bw = wmax + 34, bh = vis.length * 16 + 6, bx = r.x + r.w - bw - 6, by = r.y + 6;
         ctx.globalAlpha = .92; ctx.fillStyle = T.box; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1;
         ctx.strokeStyle = T.grid; ctx.strokeRect(bx + .5, by + .5, bw, bh);
-        vis.forEach((t, i) => { const y = by + 11 + i * 16; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(t.label, bx + 28, y); });
+        vis.forEach((t, i) => { const y = by + 11 + i * 16; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
       }
     }
     ctx.restore();

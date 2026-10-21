@@ -24,12 +24,14 @@ function buildTraces() {
   r.append(card('Grafik',
     chkIn('linkX', 'X eksenlerini bağla (linkaxes)', true), chkIn('gridOn', 'Izgara', true), chkIn('legendOn', 'Gösterge', true),
     fr('X aralığı (s)', numIn('xmin', 0), numIn('xmax', 1)),
+    fr('Titreşim lejantı', selIn('grmsMode', [['off', 'Grms yok'], ['all', 'Grms (tüm kayıt)'], ['vis', 'Grms (görünen aralık)']], 'off')), chkIn('grmsDc', 'Grms için DC (ortalama) çıkar', true),
     h('div', {class: 'btns'}, btn('Uygula', applyXlim), btn('Tümünü sığdır', () => S.plot.fitAll()), btn('Yeni alt grafik', () => { const ax = S.plot.addAxes(); S.plot.active = ax; refreshAll(); }), btn('Grafiği temizle', clearPlot, 'danger'))));
   r.append(h('div', {id: 'axesList'}));
   r.append(card('Aktif iz', h('div', {id: 'trInfo', class: 'note'}, 'İz seçilmedi'), fr('Örnekleme (Hz)', numIn('fsIn', '', {min: 0}), btn('Uygula', applyFs)), h('div', {class: 'note'}, 'Kanal zaman ekseni cnt sayacından türetilir; fs buradan elle düzeltilebilir.')));
   setTimeout(() => {
     $('#linkX').onchange = e => { S.plot.linkX = e.target.checked; if (S.plot.linkX && S.plot.axes.length) { const x = S.plot.axes[0].xlim; for (const a of S.plot.axes) a.xlim = x.slice(); } S.plot.invalidate(); };
     $('#gridOn').onchange = e => { S.plot.grid = e.target.checked; S.plot.invalidate(); };
+    $('#grmsMode').onchange = e => { S.plot.grms.mode = e.target.value; S.plot.invalidate(); }; $('#grmsDc').onchange = e => { S.plot.grms.dc = e.target.checked; S.plot.invalidate(); };
     $('#legendOn').onchange = e => { S.plot.legend = e.target.checked; S.plot.invalidate(); };
   });
   return r;
@@ -373,8 +375,17 @@ function buildOutput() {
   r.append(card('Oturum', h('div', {class: 'note'}, 'Grafik düzeni ve silinen noktaları kaydeder; aynı dosyalar açıkken geri yükler.'), h('div', {class: 'btns'}, btn('Oturumu kaydet', saveSession), btn('Oturumu yükle…', () => $('#sessIn').click()), h('input', {type: 'file', id: 'sessIn', accept: '.json', hidden: true, onchange: e => { if (e.target.files[0]) loadSession(e.target.files[0]); e.target.value = ''; }}))));
   return r;
 }
-async function savePng() { const c = S.plot.toPNG(+sv('pngScale'), ck('pngLight')); c.toBlob(b => saveBlob(b, 'grafik.png')); }
-async function copyPng() { try { const c = S.plot.toPNG(2, ck('pngLight')); const b = await new Promise(r => c.toBlob(r)); await navigator.clipboard.write([new ClipboardItem({'image/png': b})]); toast('Panoya kopyalandı'); } catch (e) { toast('Panoya kopyalanamadı: ' + e.message); } }
+// Çıktı alırken: grafikte titreşim izi varsa ve Grms lejantı kapalıysa sorar
+function pngAsk(scale, light, then) {
+  const render = grms => { const old = S.plot.grms; if (grms) S.plot.grms = grms; try { return S.plot.toPNG(scale, light); } finally { S.plot.grms = old; S.plot.invalidate(); } };
+  const hasVib = S.plot.axes.some(ax => ax.traces.some(t => t.kind === 'ts' && t.ch.kind === 'vib'));
+  if (!hasVib || S.plot.grms.mode !== 'off') return then(render(null));
+  const body = h('div', null, h('div', {class: 'note'}, 'Grafikte titreşim verisi var. Lejanta Grms değeri eklensin mi?'),
+    fr('Lejant', selIn('gqMode', [['all', 'Grms ekle (tüm kayıt)'], ['vis', 'Grms ekle (görünen aralık)'], ['off', 'Ekleme']], 'all')), chkIn('gqDc', 'DC (ortalama) çıkar', true));
+  modal('Lejant', body, [{t: 'Devam', primary: true, fn: () => { then(render({mode: sv('gqMode'), dc: ck('gqDc')})); }}, {t: 'Vazgeç'}]);
+}
+async function savePng() { pngAsk(+sv('pngScale'), ck('pngLight'), c => c.toBlob(b => saveBlob(b, 'grafik.png'))); }
+async function copyPng() { pngAsk(2, ck('pngLight'), async c => { try { const b = await new Promise(r => c.toBlob(r)); await navigator.clipboard.write([new ClipboardItem({'image/png': b})]); toast('Panoya kopyalandı'); } catch (e) { toast('Panoya kopyalanamadı: ' + e.message); } }); }
 function plotChannels() { const seen = new Set(), out = []; for (const ax of S.plot.axes) for (const t of ax.traces) if (t.visible && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); out.push({ch: t.ch, ax}); } return out; }
 async function exportData(kind) {
   const list = plotChannels(); if (!list.length) return toast('Grafikte iz yok');
@@ -504,7 +515,7 @@ function init() {
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); undo(); } else if ((e.ctrlKey || e.metaKey) && (k === 'y' || (e.shiftKey && k === 'z'))) { e.preventDefault(); redo(); }
     else if (k === 'delete' || k === 'backspace') { if (selCount()) { e.preventDefault(); deleteSelection(); } }
-    else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
+    else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.plot.onChangeOrig = S.plot.onChange;
   setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshExprPick(); }, 1500);

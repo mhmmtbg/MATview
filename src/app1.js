@@ -178,6 +178,8 @@ const ICON = {
   cursor: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
   box: '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 2"/></svg>',
   lasso: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 9C1 5 6 2 10 3s5 4 2 6-6 1-5 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 2"/></svg>',
+  zout: '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 7h4M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.3"/></svg>',
+  zin: '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 7h4M7 5v4M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.3"/></svg>',
   fit: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
   undo: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M5 3L2 6l3 3M2 6h7a4 4 0 010 8H6" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
   redo: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M11 3l3 3-3 3M14 6H7a4 4 0 000 8h3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
@@ -188,7 +190,8 @@ function buildToolbar() {
   const tb = $('#toolbar'); tb.replaceChildren();
   for (const [m, name, tip] of TOOLS) tb.append(h('button', {id: 'tool-' + m, title: tip, class: S.plot.mode === m ? 'on' : '', onclick: () => setMode(m), html: 0}, ...[(() => { const s = document.createElement('span'); s.innerHTML = ICON[m]; s.style.display = 'flex'; return s; })(), name]));
   const ib = (id, ico, name, tip, fn) => { const b = h('button', {id, title: tip, onclick: fn}); const s = document.createElement('span'); s.innerHTML = ICON[ico]; s.style.display = 'flex'; b.append(s, name); return b; };
-  tb.append(h('span', {class: 'sep'}), ib('tb-fit', 'fit', 'Sığdır', 'Tümünü sığdır: tüm veriyi göster (Home / çift tık)', () => curPlot().fitAll()),
+  tb.append(h('span', {class: 'sep'}), ib('tb-zin', 'zin', 'Yaklaş', 'Görünümü 2× yakınlaştır (+)', () => curPlot().zoomIn()), ib('tb-zout', 'zout', 'Uzaklaş', 'Görünümü 2× uzaklaştır (−)', () => curPlot().zoomOut()),
+    ib('tb-fit', 'fit', 'Sığdır', 'Tümünü sığdır: tüm veriyi göster (Home / çift tık)', () => curPlot().fitAll()),
     h('span', {class: 'sep'}), ib('tb-undo', 'undo', 'Geri al', 'Ctrl+Z', undo), ib('tb-redo', 'redo', 'Yinele', 'Ctrl+Y', redo),
     h('span', {class: 'sep'}), ib('tb-del', 'del', 'Sil', 'Seçili noktaları sil (Delete)', deleteSelection));
   $('#tb-del').disabled = true;

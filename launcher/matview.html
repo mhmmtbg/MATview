@@ -1090,7 +1090,7 @@ function fmtLog(v) { if (v >= 1000 && v < 1e6) return (v / 1000) + 'k'; if (v >=
 class Plot {
   constructor(canvas, opts = {}) {
     this.cv = canvas; this.opts = opts; this.mode = 'pan';
-    this.axes = []; this.linkX = true; this.grid = true; this.legend = true;
+    this.axes = []; this.linkX = true; this.grid = true; this.legend = true; this.grms = {mode: 'off', dc: true};
     this.cursors = []; this.sel = null; this.playhead = null; this.hover = null;
     this.xBounds = null; this.dirty = true; this.dpr = window.devicePixelRatio || 1;
     this.onChange = opts.onChange || (() => {}); this.onSelect = opts.onSelect || (() => {}); this.onHover = opts.onHover || (() => {});
@@ -1131,6 +1131,33 @@ class Plot {
     }
     return isFinite(lo) ? [lo, hi] : null;
   }
+  // Titreşim izleri için lejant ekini hesapla: " — 1.234 Grms" (DC çıkarılabilir; ölü noktalar ve NaN hariç)
+  legendExtra(t, ax) {
+    const m = this.grms; if (!m || m.mode === 'off' || t.kind !== 'ts' || t.ch.kind !== 'vib' || !t.ch.data) return '';
+    const ch = t.ch; let a = 0, b = ch.n;
+    if (m.mode === 'vis') { a = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))); b = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1); }
+    const key = m.mode + ':' + a + ':' + b + ':' + ch.delCount + ':' + m.dc, c = t._grms;
+    if (c && c.key === key) return c.txt;
+    if (b - a > 3e6 && c && m.mode === 'vis') {   // etkileşim sırasında eski değeri göster, durulunca yeniden hesapla
+      clearTimeout(t._gt); t._gt = setTimeout(() => { t._grms = {key, txt: this._grmsTxt(ch, a, b)}; this.invalidate(); }, 150); return c.txt;
+    }
+    t._grms = {key, txt: this._grmsTxt(ch, a, b)}; return t._grms.txt;
+  }
+  _grmsTxt(ch, a, b) {
+    const d = ch.data, del = ch.del; let s = 0, s2 = 0, n = 0;
+    for (let i = a; i < b; i++) { const v = d[i]; if ((del && del[i]) || !isFinite(v)) continue; s += v; s2 += v * v; n++; }
+    if (!n) return '';
+    const mean = s / n, ms = this.grms.dc ? Math.max(0, s2 / n - mean * mean) : s2 / n;
+    return ' — ' + Math.sqrt(ms).toPrecision(4) + ' Grms';
+  }
+  zoomOut(f = 2) {
+    for (const ax of this.axes) {
+      this.zoomX(ax, f, (ax.xlim[0] + ax.xlim[1]) / 2);
+      if (!ax.yAuto) this.zoomY(ax, f, (ax.ylim[0] + ax.ylim[1]) / 2);
+    }
+    this.invalidate(); this.onChange('view');
+  }
+  zoomIn() { this.zoomOut(0.5); }
   fitAll(xOnly) {
     const b = this.bounds();
     for (const ax of this.axes) {
@@ -1218,11 +1245,11 @@ class Plot {
     if (this.legend) {
       const vis = ax.traces.filter(t => t.visible); if (vis.length) {
         ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(t.label).width);
+        const lbl = new Map(vis.map(t => [t, t.label + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
         const bw = wmax + 34, bh = vis.length * 16 + 6, bx = r.x + r.w - bw - 6, by = r.y + 6;
         ctx.globalAlpha = .92; ctx.fillStyle = T.box; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1;
         ctx.strokeStyle = T.grid; ctx.strokeRect(bx + .5, by + .5, bw, bh);
-        vis.forEach((t, i) => { const y = by + 11 + i * 16; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(t.label, bx + 28, y); });
+        vis.forEach((t, i) => { const y = by + 11 + i * 16; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
       }
     }
     ctx.restore();
@@ -1944,6 +1971,8 @@ const ICON = {
   cursor: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
   box: '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 2"/></svg>',
   lasso: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 9C1 5 6 2 10 3s5 4 2 6-6 1-5 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 2"/></svg>',
+  zout: '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 7h4M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.3"/></svg>',
+  zin: '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 7h4M7 5v4M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.3"/></svg>',
   fit: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
   undo: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M5 3L2 6l3 3M2 6h7a4 4 0 010 8H6" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
   redo: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M11 3l3 3-3 3M14 6H7a4 4 0 000 8h3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
@@ -1954,7 +1983,8 @@ function buildToolbar() {
   const tb = $('#toolbar'); tb.replaceChildren();
   for (const [m, name, tip] of TOOLS) tb.append(h('button', {id: 'tool-' + m, title: tip, class: S.plot.mode === m ? 'on' : '', onclick: () => setMode(m), html: 0}, ...[(() => { const s = document.createElement('span'); s.innerHTML = ICON[m]; s.style.display = 'flex'; return s; })(), name]));
   const ib = (id, ico, name, tip, fn) => { const b = h('button', {id, title: tip, onclick: fn}); const s = document.createElement('span'); s.innerHTML = ICON[ico]; s.style.display = 'flex'; b.append(s, name); return b; };
-  tb.append(h('span', {class: 'sep'}), ib('tb-fit', 'fit', 'Sığdır', 'Tümünü sığdır: tüm veriyi göster (Home / çift tık)', () => curPlot().fitAll()),
+  tb.append(h('span', {class: 'sep'}), ib('tb-zin', 'zin', 'Yaklaş', 'Görünümü 2× yakınlaştır (+)', () => curPlot().zoomIn()), ib('tb-zout', 'zout', 'Uzaklaş', 'Görünümü 2× uzaklaştır (−)', () => curPlot().zoomOut()),
+    ib('tb-fit', 'fit', 'Sığdır', 'Tümünü sığdır: tüm veriyi göster (Home / çift tık)', () => curPlot().fitAll()),
     h('span', {class: 'sep'}), ib('tb-undo', 'undo', 'Geri al', 'Ctrl+Z', undo), ib('tb-redo', 'redo', 'Yinele', 'Ctrl+Y', redo),
     h('span', {class: 'sep'}), ib('tb-del', 'del', 'Sil', 'Seçili noktaları sil (Delete)', deleteSelection));
   $('#tb-del').disabled = true;
@@ -1998,12 +2028,14 @@ function buildTraces() {
   r.append(card('Grafik',
     chkIn('linkX', 'X eksenlerini bağla (linkaxes)', true), chkIn('gridOn', 'Izgara', true), chkIn('legendOn', 'Gösterge', true),
     fr('X aralığı (s)', numIn('xmin', 0), numIn('xmax', 1)),
+    fr('Titreşim lejantı', selIn('grmsMode', [['off', 'Grms yok'], ['all', 'Grms (tüm kayıt)'], ['vis', 'Grms (görünen aralık)']], 'off')), chkIn('grmsDc', 'Grms için DC (ortalama) çıkar', true),
     h('div', {class: 'btns'}, btn('Uygula', applyXlim), btn('Tümünü sığdır', () => S.plot.fitAll()), btn('Yeni alt grafik', () => { const ax = S.plot.addAxes(); S.plot.active = ax; refreshAll(); }), btn('Grafiği temizle', clearPlot, 'danger'))));
   r.append(h('div', {id: 'axesList'}));
   r.append(card('Aktif iz', h('div', {id: 'trInfo', class: 'note'}, 'İz seçilmedi'), fr('Örnekleme (Hz)', numIn('fsIn', '', {min: 0}), btn('Uygula', applyFs)), h('div', {class: 'note'}, 'Kanal zaman ekseni cnt sayacından türetilir; fs buradan elle düzeltilebilir.')));
   setTimeout(() => {
     $('#linkX').onchange = e => { S.plot.linkX = e.target.checked; if (S.plot.linkX && S.plot.axes.length) { const x = S.plot.axes[0].xlim; for (const a of S.plot.axes) a.xlim = x.slice(); } S.plot.invalidate(); };
     $('#gridOn').onchange = e => { S.plot.grid = e.target.checked; S.plot.invalidate(); };
+    $('#grmsMode').onchange = e => { S.plot.grms.mode = e.target.value; S.plot.invalidate(); }; $('#grmsDc').onchange = e => { S.plot.grms.dc = e.target.checked; S.plot.invalidate(); };
     $('#legendOn').onchange = e => { S.plot.legend = e.target.checked; S.plot.invalidate(); };
   });
   return r;
@@ -2347,8 +2379,17 @@ function buildOutput() {
   r.append(card('Oturum', h('div', {class: 'note'}, 'Grafik düzeni ve silinen noktaları kaydeder; aynı dosyalar açıkken geri yükler.'), h('div', {class: 'btns'}, btn('Oturumu kaydet', saveSession), btn('Oturumu yükle…', () => $('#sessIn').click()), h('input', {type: 'file', id: 'sessIn', accept: '.json', hidden: true, onchange: e => { if (e.target.files[0]) loadSession(e.target.files[0]); e.target.value = ''; }}))));
   return r;
 }
-async function savePng() { const c = S.plot.toPNG(+sv('pngScale'), ck('pngLight')); c.toBlob(b => saveBlob(b, 'grafik.png')); }
-async function copyPng() { try { const c = S.plot.toPNG(2, ck('pngLight')); const b = await new Promise(r => c.toBlob(r)); await navigator.clipboard.write([new ClipboardItem({'image/png': b})]); toast('Panoya kopyalandı'); } catch (e) { toast('Panoya kopyalanamadı: ' + e.message); } }
+// Çıktı alırken: grafikte titreşim izi varsa ve Grms lejantı kapalıysa sorar
+function pngAsk(scale, light, then) {
+  const render = grms => { const old = S.plot.grms; if (grms) S.plot.grms = grms; try { return S.plot.toPNG(scale, light); } finally { S.plot.grms = old; S.plot.invalidate(); } };
+  const hasVib = S.plot.axes.some(ax => ax.traces.some(t => t.kind === 'ts' && t.ch.kind === 'vib'));
+  if (!hasVib || S.plot.grms.mode !== 'off') return then(render(null));
+  const body = h('div', null, h('div', {class: 'note'}, 'Grafikte titreşim verisi var. Lejanta Grms değeri eklensin mi?'),
+    fr('Lejant', selIn('gqMode', [['all', 'Grms ekle (tüm kayıt)'], ['vis', 'Grms ekle (görünen aralık)'], ['off', 'Ekleme']], 'all')), chkIn('gqDc', 'DC (ortalama) çıkar', true));
+  modal('Lejant', body, [{t: 'Devam', primary: true, fn: () => { then(render({mode: sv('gqMode'), dc: ck('gqDc')})); }}, {t: 'Vazgeç'}]);
+}
+async function savePng() { pngAsk(+sv('pngScale'), ck('pngLight'), c => c.toBlob(b => saveBlob(b, 'grafik.png'))); }
+async function copyPng() { pngAsk(2, ck('pngLight'), async c => { try { const b = await new Promise(r => c.toBlob(r)); await navigator.clipboard.write([new ClipboardItem({'image/png': b})]); toast('Panoya kopyalandı'); } catch (e) { toast('Panoya kopyalanamadı: ' + e.message); } }); }
 function plotChannels() { const seen = new Set(), out = []; for (const ax of S.plot.axes) for (const t of ax.traces) if (t.visible && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); out.push({ch: t.ch, ax}); } return out; }
 async function exportData(kind) {
   const list = plotChannels(); if (!list.length) return toast('Grafikte iz yok');
@@ -2478,7 +2519,7 @@ function init() {
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); undo(); } else if ((e.ctrlKey || e.metaKey) && (k === 'y' || (e.shiftKey && k === 'z'))) { e.preventDefault(); redo(); }
     else if (k === 'delete' || k === 'backspace') { if (selCount()) { e.preventDefault(); deleteSelection(); } }
-    else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
+    else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.plot.onChangeOrig = S.plot.onChange;
   setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshExprPick(); }, 1500);
