@@ -16,12 +16,14 @@ const IC = {
   acoustic: '<path d="M2 6h3l4-3v10l-4-3H2zM11 5.5a3.5 3.5 0 010 5M13 3.5a6 6 0 010 9"/>', traces: '<path d="M1.5 11l3-5 3 3 3-6 3 4"/>',
   clean: '<path d="M3 12l5-8 5 3-4 7H5zM7 14h7"/>', analyze: '<path d="M1 8h2l1.5-5 2 10 2-8 1.5 3H15"/>', clear: '<path d="M3 4l10 10M13 4L3 14"/>', palette: '<path d="M8 1.5a6.5 6.5 0 100 13c1 0 1.5-.7 1.2-1.5-.3-.9.2-1.7 1.2-1.7H12a2.5 2.5 0 002.5-2.5C14.5 4.3 11.6 1.5 8 1.5z"/><path d="M5 7h.1M8 5h.1M11 7h.1"/>',
   undo: '<path d="M5 3L2 6l3 3M2 6h7a4 4 0 010 8H6"/>',
+  feat: '<path d="M2 3h12v10H2zM2 7h12M6 3v10"/>',
   expr: '<path d="M10 2.5C7 2.5 8 6 7 8s-1 5.5-4 5.5M4 7h6"/>', output: '<path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/>',
+  sgram: '<path d="M2 2h12v12H2zM2 6h12M2 10h12M6 2v12M10 2v12M8 8h2v2H8z"/>',
   vib: '<path d="M1 8l2-4 2 8 2-8 2 8 2-8 2 4"/>', temp: '<path d="M7 9.5V3a1 1 0 012 0v6.5a2.5 2.5 0 11-2 0z"/>', press: '<path d="M2 11a6 6 0 1112 0zM8 11l3-5"/>',
   strain: '<path d="M2 8h12M2 5v6M14 5v6M5 6.5l1 3 2-3 1 3 1-3"/>', volt: '<path d="M9 1.5L4 9h4l-1 5.5L12 7H8z"/>', curr: '<path d="M2 8h12M10 5l3 3-3 3"/>',
   pos: '<circle cx="8" cy="8" r="2"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/>', state: '<path d="M2 11h3V5h3v6h3V5h3"/>', other: '<path d="M2 8h12"/>'
 };
-KIND.ac.ic = 'acoustic'; for (const k of Object.keys(KIND)) KIND[k].ic = KIND[k].ic || (IC[k] ? k : k === 'spec' ? 'unv' : k === 'calc' ? 'fx' : 'other');
+KIND.ac.ic = 'acoustic'; KIND.feat.ic = 'chart'; for (const k of Object.keys(KIND)) KIND[k].ic = KIND[k].ic || (IC[k] ? k : k === 'spec' ? 'unv' : k === 'calc' ? 'fx' : 'other');
 const ic = (n, s = 16) => '<svg class="ic" width="' + s + '" height="' + s + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IC[n] || '') + '</svg>';
 function icEl(n, s) { const sp = document.createElement('span'); sp.className = 'ico'; sp.innerHTML = ic(n, s); return sp; }
 const kic = (k, s = 14) => { const sp = icEl((KIND[k] || KIND.other).ic, s); sp.style.color = (KIND[k] || KIND.other).color; return sp; };
@@ -82,6 +84,7 @@ function ctxMenu(x, y, items) {
 function traceMenu(P, ax, k, x, y) {
   const tr = ax.traces[k], items = [{t: tr.visible ? 'Gizle' : 'Göster', ic: 'eye', fn: () => { tr.visible = !tr.visible; P.invalidate(); afterStruct(P); }},
     {t: 'Rengi değiştir…', ic: 'palette', fn: () => { const c = h('input', {type: 'color', value: tr.color, style: 'position:fixed;left:-99px'}); document.body.append(c); c.oninput = () => { tr.color = c.value; P.invalidate(); }; c.onchange = () => { c.remove(); afterStruct(P); }; c.click(); }},
+    ...(P === S.plot && tr.ch ? [{t: 'Spektrum (yalnız bu iz)', ic: 'unv', fn: () => graphSpectrum(ax, tr)}, {t: 'Spektrogram (bu iz)', ic: 'sgram', fn: () => graphSpectrogram(ax, tr)}, '-'] : []),
     {t: 'Çizgi: ince', fn: () => { tr.width = .75; P.invalidate(); }}, {t: 'Çizgi: orta', fn: () => { tr.width = 1.5; P.invalidate(); }}, {t: 'Çizgi: kalın', fn: () => { tr.width = 3; P.invalidate(); }}, '-',
     {t: 'İzi kaldır', ic: 'trash', fn: () => removeTraceUndo(P, ax, k)}];
   if (P === S.plot) {
@@ -113,6 +116,7 @@ function buildOv(P, ov) {
     const bar = h('div', {class: 'axbar' + (P.active === ax ? ' act' : '') + (ov._hov === ax ? ' show' : '')});
     bar.append(mk('close', 'Bu alt grafiği kaldır', () => removeAxesUndo(P, ax)));
     if (ax.traces.length) bar.append(mk('clean', 'Alt grafiği boşalt: tüm izleri temizle (grafik kalır)', () => clearAxesUndo(P, ax)));
+    if (main && ax.traces.some(t => t.ch)) bar.append(mk('unv', 'Bu alt grafiğin spektrumunu hesapla (PSD/FFT)', () => graphSpectrum(ax)), mk('sgram', 'Bu alt grafiğin spektrogramını hesapla', () => graphSpectrogram(ax)));
     if (n > 1) bar.append(mk('up', 'Yukarı taşı', () => moveAxes(P, ax, -1)), mk('down', 'Aşağı taşı', () => moveAxes(P, ax, 1)), mk('expand', 'Yüksekliği büyüt / normale döndür', () => { ax.hw = (ax.hw || 1) > 1.5 ? 1 : 2.5; P.invalidate(); }));
     if (i > 0 && main) bar.append(mk('merge', 'Bir üstteki alt grafikle birleştir (aynı eksen)', () => mergeUp(P, ax)));
     ov.append(bar); const part = {ax, bar, upd() { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; }}; ov._parts.push(part);
@@ -179,13 +183,13 @@ function initUX() {
   try { S.collapsed = new Set(JSON.parse(localStorage.getItem('mv.collapsed') || '[]')); } catch (_) { S.collapsed = new Set(); }
   try { S.pref.dbl = localStorage.getItem('mv.dbl') || 'new'; } catch (_) {}
   const od = S.plot.onDraw; S.plot.onDraw = () => { od(); syncOverlay(S.plot); syncWelcome(); };
-  S.specPlot.onDraw = () => syncOverlay(S.specPlot);
+  S.specPlot.onDraw = () => syncOverlay(S.specPlot); S.xyPlot.onDraw = () => syncOverlay(S.xyPlot);
   for (const [dd, menu] of [['btnOpenM', 'mOpen'], ['btnSet', 'mSet']]) $('#' + dd).onclick = e => { e.stopPropagation(); const m = $('#' + menu), was = m.classList.contains('hidden'); closeMenus(); m.classList.toggle('hidden', !was); };
   document.addEventListener('click', e => { if (!e.target.closest('.dd') ) closeMenus(); else if (e.target.closest('.ddm button')) closeMenus(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenus(); });
-  $('#btnKeys').onclick = shortcutsDialog;
+  $('#btnKeys').onclick = shortcutsDialog; $('#btnPng').onclick = savePng; $('#btnSvg').onclick = saveSvg;
   $('#btnDbl').onclick = () => { S.pref.dbl = S.pref.dbl === 'same' ? 'new' : 'same'; try { localStorage.setItem('mv.dbl', S.pref.dbl); } catch (_) {} updDblBtn(); toast('Çift tık artık: ' + (S.pref.dbl === 'same' ? 'aktif grafiğe ekle' : 'yeni alt grafik')); };
-  $('#wMat').onclick = () => $('#btnOpen').click(); $('#wUnv').onclick = () => $('#btnOpen').click(); $('#wBin').onclick = () => $('#btnBin').click();
+  $('#btnTab').onclick = () => { $('#fileIn').click(); }; $('#wTab').onclick = () => $('#fileIn').click(); $('#wMat').onclick = () => $('#btnOpen').click(); $('#wUnv').onclick = () => $('#btnOpen').click(); $('#wBin').onclick = () => $('#btnBin').click();
   $('#btnSelAll').onclick = () => { const all = S.rowOrder || []; if (all.length && all.every(c => S.selCh.has(c.uid))) S.selCh.clear(); else for (const c of all) S.selCh.add(c.uid); renderTree(); };
   window.addEventListener('keydown', e => { const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return; if (e.key === '?') { e.preventDefault(); shortcutsDialog(); } });
   window.addEventListener('dragstart', e => { if (e.dataTransfer && [...e.dataTransfer.types].length === 0) return; }, true);

@@ -9,7 +9,7 @@ async def main():
         await pg.evaluate("""async()=>{const fs=2000,n=fs*8,x=new Float64Array(n);let s=1;const r=()=>(s=(s*1664525+1013904223)>>>0)/4294967296;
           for(let i=0;i<n;i++)x[i]=0.5*Math.sqrt(-2*Math.log(r()+1e-12))*Math.cos(6.283*r())+0.3*Math.sin(2*Math.PI*120*i/fs);
           const c=addDerived('ts_test',x,null,0,true); c.kind='vib'; c.dtS=1/fs; await addDerivedToPlot(c); S.plot.fitAll();}""")
-        await pg.click('#rtabs >> text=Analiz'); print('defaults', await pg.input_value('#spY'), await pg.input_value('#spX'))
+        await pg.click('#rtabs [data-t=analyze]'); print('defaults', await pg.input_value('#spY'), await pg.input_value('#spX'))
         await pg.select_option('#spScope','all'); await pg.click('button:has-text("Spektrumu hesapla")'); await pg.wait_for_timeout(2000)
         print(await pg.evaluate("[S.specPlot.axes[0].ylabel, S.specPlot.axes[0].ylog, S.specPlot.axes[0].xlog]"))
         await pg.screenshot(path='/tmp/sp1.png')

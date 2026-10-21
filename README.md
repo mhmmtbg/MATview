@@ -58,3 +58,10 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 - **Etkileşimli lejant:** tık = göster/gizle, ✕ = kaldır, sağ tık = renk/kalınlık/taşı, sürükle = başka alt grafiğe taşı. Her kaldırma/taşıma sonrası “Geri al” düğmeli bildirim.
 - **Aynı grafiğe ekleme:** ağaçta her satırda iki düğme (yeni alt grafik / aktif grafiğe), sürüklerken “Bu grafiğe ekle” ve “Yeni alt grafik” bölgeleri, Shift+çift tık, Ayarlar’dan çift tık tercihi.
 - Ikon seti, Aç/Ayarlar menüleri, karşılama ekranı, tek satır sekmeler, katlanabilir kartlar, klavye gezinme, `?` kısayol listesi.
+
+## Yeni: grafikten spektrum, SVG/PNG, formüller, tablo içe aktarma
+- Alt grafik düğme şeridi ve lejant sağ tık menüsünden doğrudan **Spektrum** ve **Spektrogram** hesaplanır.
+- **PNG ve SVG (vektör)** kaydı zaman, spektrum, spektrogram ve dağılım görünümleri için (görünüm çubuğundaki PNG/SVG düğmeleri ve Çıktı sekmesi).
+- Sol panel sayfa boyunda kalır; her dosya açılır/kapanır menüdür ve kendi kaydırma alanına sahiptir. Tür süzgeçleri yalnız ikondur.
+- **Formül** sekmesi (eski İfade): hızlı hesaplar (integral, ikinci integral, türev, kayan RMS/ort/std/maks/min/medyan, z-skoru, normalize, kırp, DC/doğrusal/polinom eğilim çıkar, süzgeçler, zarf, seyreltme…), iki kanal işlemleri (A±B, A·B, A/B, bileşke, açı, korelasyon, kovaryans) ve skaler ölçüler (RMS, ort, std, tepe faktörü, basıklık, çarpıklık, yüzdelik…).
+- **CSV / Excel (.xlsx)** içe aktarma: sütun türü, birim ve zaman sütunu seçimi. Veri **zaman serisi** (Zaman grafiği) ya da **özellik / regresyon** (Dağılım görünümü: nokta/çizgi/histogram, doğrusal-polinom-üstel-güç-logaritmik uyum, R², artık grafiği, renk sütunu, korelasyon matrisi, sütun istatistikleri) olarak otomatik ayrılır; istenirse elle değiştirilir.

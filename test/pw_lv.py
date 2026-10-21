@@ -11,7 +11,7 @@ async def main():
           for(let i=0;i<n;i++){const t=i/fs,L=lv.find(l=>t>=l[0]&&t<l[1]);const a=L&&L[2]!==null?Math.pow(10,L[2]/20):0.01;x[i]=a*(g()*0.5+Math.sin(2*Math.PI*100*t)+0.5*Math.sin(2*Math.PI*350*t))}
           const c=addDerived('ts_levels',x,null,0,true); c.kind='vib'; c.dtS=1/fs; await addDerivedToPlot(c); S.plot.fitAll();
           S.profiles.push({id:'pp',name:'Test profili',pts:[[20,0.00002],[100,0.0025],[400,0.0025],[900,0.00002]],tol:3,color:'#d62728'}); refreshUnvPanel();}""")
-        await pg.click('#rtabs >> text=Analiz'); await pg.select_option('#lvRef', 'max')
+        await pg.click('#rtabs [data-t=analyze]'); await pg.select_option('#lvRef', 'max')
         await pg.click('button:has-text("Seviyeleri tespit et")'); await pg.wait_for_timeout(1500); print(await pg.inner_text('#lvInfo'))
         await pg.screenshot(path='/tmp/lv1.png')
         await pg.select_option('#lvRef', 'pp'); await pg.click('button:has-text("Seviyeleri tespit et")'); await pg.wait_for_timeout(1500); print(await pg.inner_text('#lvInfo'))

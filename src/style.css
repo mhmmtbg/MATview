@@ -18,7 +18,7 @@ input[type=color]{width:24px;height:20px;padding:0;border:1px solid var(--border
 .hidden{display:none!important}
 .muted{color:var(--muted)}
 .spacer{flex:1}
-#app{display:grid;grid-template-columns:290px 1fr 360px;grid-template-rows:44px 1fr;height:100vh}
+#app{display:grid;grid-template-columns:290px 1fr 360px;grid-template-rows:44px minmax(0,1fr);height:100vh;overflow:hidden}
 #top{grid-column:1/4;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--border)}
 .brand{display:flex;align-items:center;gap:8px;margin-right:12px}.brand .sub{color:var(--muted)}
 #left,#right{background:var(--panel);display:flex;flex-direction:column;min-height:0;min-width:0}
@@ -135,7 +135,19 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
 .dz.over{background:color-mix(in srgb,var(--accent) 22%,var(--panel))}
 #welcome{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--panel);z-index:3;text-align:center}
 .wbox{max-width:640px;padding:20px}.wbox h2{margin:0 0 4px;font-size:26px}
-.wcards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0}
+.wcards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
 .wcard{display:flex!important;flex-direction:column;gap:6px;padding:18px 10px!important;border-radius:6px}.wcard b{font-size:14px}.wcard span:not(.ico){color:var(--muted);font-size:12px}.wcard .ic{width:28px;height:28px}
 .wcard:hover{border-color:var(--accent)}
 #busycancel{margin-top:10px}
+
+#left,#right{overflow:hidden}.rbody{min-height:0}
+.tree{display:flex;flex-direction:column;overflow:hidden;padding:0;min-height:0}
+.fgrp{display:flex;flex-direction:column;min-height:0;flex:0 0 auto;border-bottom:1px solid var(--border)}
+.fgrp.open{flex:0 1 auto}
+.tbody{overflow:auto;flex:1 1 auto;min-height:0;padding:2px 0}
+.tfile{position:static;cursor:pointer;border-top:none}.tfile:hover{background:var(--hover)}
+.tree>.note{overflow:auto}
+.chip{padding:4px 7px;border-radius:5px;gap:0}.chips{gap:5px}
+.chip:focus-visible{outline-offset:1px}
+.qp{display:flex;align-items:center;gap:6px;flex:1}.qp label{color:var(--muted);white-space:nowrap}.qp input{width:100%}
+.rtabs button:not(.on) .tl{display:none}.rtabs button.on{flex:2.4}.rtabs button{padding:7px 2px 6px}

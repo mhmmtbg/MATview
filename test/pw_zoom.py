@@ -19,6 +19,6 @@ async def main():
         v = await pg.evaluate("""()=>{const t=S.plot.axes[0].traces[0]; const d=t.ch.data; let s=0,s2=0; for(const x of d){s+=x;s2+=x*x} const m=s/d.length; return [S.plot.legendExtra(t,S.plot.axes[0]), Math.sqrt(s2/d.length-m*m)]}""")
         print('grms', v)
         await pg.select_option('#grmsMode', 'off')
-        await pg.click('#rtabs >> text=Çıktı'); await pg.click('button:has-text("PNG kaydet")'); await pg.wait_for_selector('#modal:not(.hidden)'); print('sordu:', await pg.inner_text('#mbody'))
+        await pg.click('#rtabs [data-t=output]'); await pg.click('button:has-text("PNG kaydet")'); await pg.wait_for_selector('#modal:not(.hidden)'); print('sordu:', await pg.inner_text('#mbody'))
         await pg.screenshot(path='/tmp/zq.png'); print('ERR', errs); await b.close()
 asyncio.run(main())

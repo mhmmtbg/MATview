@@ -55,13 +55,54 @@ const EXPR = (() => {
     const red = (a, f) => isV(a) ? f(a.v) : a;
     const sortedMed = v => { const c = Float64Array.from(v).sort(); return c[c.length >> 1]; };
     const F1 = {abs: Math.abs, sqrt: Math.sqrt, sin: Math.sin, cos: Math.cos, tan: Math.tan, exp: Math.exp, log: Math.log, log10: Math.log10, sign: Math.sign, round: Math.round, floor: Math.floor, ceil: Math.ceil, asin: Math.asin, acos: Math.acos, atan: Math.atan, deg2rad: x => x * Math.PI / 180, rad2deg: x => x * 180 / Math.PI, db: x => 20 * Math.log10(Math.abs(x) + 1e-30)};
-    const RED = {mean: v => { let s = 0; for (const x of v) s += x; return s / v.length; }, std: v => { let s = 0, s2 = 0; for (const x of v) { s += x; s2 += x * x; } const n = v.length, m = s / n; return Math.sqrt(Math.max(0, (s2 - n * m * m) / (n - 1))); }, rms: v => { let s = 0; for (const x of v) s += x * x; return Math.sqrt(s / v.length); }, max: v => { let m = -Infinity; for (const x of v) if (x > m) m = x; return m; }, min: v => { let m = Infinity; for (const x of v) if (x < m) m = x; return m; }, median: sortedMed, sum: v => { let s = 0; for (const x of v) s += x; return s; }, p2p: v => { let a = Infinity, b = -Infinity; for (const x of v) { if (x < a) a = x; if (x > b) b = x; } return b - a; }};
+    const RED = {var: v => { let s = 0, s2 = 0; for (const x of v) { s += x; s2 += x * x; } const n = v.length, m = s / n; return Math.max(0, (s2 - n * m * m) / (n - 1)); }, meanabs: v => { let s = 0; for (const x of v) s += Math.abs(x); return s / v.length; }, count: v => v.length, energy: v => { let s = 0; for (const x of v) s += x * x; return s; }, skew: v => { const n = v.length; let m = 0; for (const x of v) m += x; m /= n; let a = 0, b = 0; for (const x of v) { const d = x - m; a += d * d; b += d * d * d; } return (b / n) / Math.pow(a / n || 1, 1.5); }, kurt: v => { const n = v.length; let m = 0; for (const x of v) m += x; m /= n; let a = 0, b = 0; for (const x of v) { const d = x - m; a += d * d; b += d * d * d * d; } return (b / n) / Math.pow(a / n || 1, 2); }, crest: v => { let s = 0, pk = 0; for (const x of v) { s += x * x; if (Math.abs(x) > pk) pk = Math.abs(x); } return pk / (Math.sqrt(s / v.length) || 1); }, mean: v => { let s = 0; for (const x of v) s += x; return s / v.length; }, std: v => { let s = 0, s2 = 0; for (const x of v) { s += x; s2 += x * x; } const n = v.length, m = s / n; return Math.sqrt(Math.max(0, (s2 - n * m * m) / (n - 1))); }, rms: v => { let s = 0; for (const x of v) s += x * x; return Math.sqrt(s / v.length); }, max: v => { let m = -Infinity; for (const x of v) if (x > m) m = x; return m; }, min: v => { let m = Infinity; for (const x of v) if (x < m) m = x; return m; }, median: sortedMed, sum: v => { let s = 0; for (const x of v) s += x; return s; }, p2p: v => { let a = Infinity, b = -Infinity; for (const x of v) { if (x < a) a = x; if (x > b) b = x; } return b - a; }};
+
+    const trapz = a => { const n = a.v.length, o = new Float64Array(n), dt = 1 / a.fs; let s = 0; for (let i = 1; i < n; i++) { const x = a.v[i], y = a.v[i - 1]; s += (isFinite(x) && isFinite(y) ? (x + y) * 0.5 : 0) * dt; o[i] = s; } return o; };
+    const mov = (v, w, kind) => {
+      const n = v.length, o = new Float64Array(n), lo0 = Math.floor(w / 2);
+      if (kind === 'movmax' || kind === 'movmin') {
+        const mx = kind === 'movmax', dq = new Int32Array(n); let hd = 0, tl = 0, nxt = 0;
+        for (let i = 0; i < n; i++) { const hi = Math.min(n - 1, i - lo0 + w - 1); while (nxt <= hi) { while (tl > hd && (mx ? v[dq[tl - 1]] <= v[nxt] : v[dq[tl - 1]] >= v[nxt])) tl--; dq[tl++] = nxt++; } while (dq[hd] < i - lo0) hd++; o[i] = v[dq[hd]]; }
+        return o;
+      }
+      const c1 = new Float64Array(n + 1), c2 = new Float64Array(n + 1); for (let i = 0; i < n; i++) { const x = isFinite(v[i]) ? v[i] : 0; c1[i + 1] = c1[i] + x; c2[i + 1] = c2[i] + x * x; }
+      for (let i = 0; i < n; i++) {
+        const lo = Math.max(0, i - lo0), hi = Math.min(n - 1, i - lo0 + w - 1), m = hi - lo + 1, s1 = c1[hi + 1] - c1[lo], s2 = c2[hi + 1] - c2[lo];
+        o[i] = kind === 'movrms' ? Math.sqrt(Math.max(0, s2 / m)) : kind === 'movsum' ? s1 : Math.max(0, (s2 - s1 * s1 / m) / Math.max(1, m - 1)) ** (kind === 'movstd' ? 0.5 : 1);
+      }
+      return o;
+    };
+    const polyTrend = (v, ord) => {
+      const n = v.length, m = Math.max(0, Math.min(8, ord)), K = 2 * m + 1, S = new Float64Array(K), B = new Float64Array(m + 1);
+      for (let i = 0; i < n; i++) { const t = n > 1 ? 2 * i / (n - 1) - 1 : 0, y = v[i]; if (!isFinite(y)) continue; let p = 1; for (let k = 0; k < K; k++) { S[k] += p; if (k <= m) B[k] += y * p; p *= t; } }
+      const A = []; for (let r = 0; r <= m; r++) { A.push([]); for (let c = 0; c <= m; c++) A[r].push(S[r + c]); A[r].push(B[r]); }
+      for (let c = 0; c <= m; c++) { let pv = c; for (let r = c + 1; r <= m; r++) if (Math.abs(A[r][c]) > Math.abs(A[pv][c])) pv = r; [A[c], A[pv]] = [A[pv], A[c]]; const d = A[c][c] || 1e-300; for (let r = 0; r <= m; r++) if (r !== c) { const q = A[r][c] / d; for (let k = c; k <= m + 1; k++) A[r][k] -= q * A[c][k]; } }
+      const co = A.map((r, i) => r[m + 1] / (r[i] || 1e-300)), o = new Float64Array(n);
+      for (let i = 0; i < n; i++) { const t = n > 1 ? 2 * i / (n - 1) - 1 : 0; let y = 0; for (let k = m; k >= 0; k--) y = y * t + co[k]; o[i] = y; }
+      return o;
+    };
     function filt(a, type, p) { a = vec(a, type); const sos = ctx.DSP.design(type, p, a.fs); return {v: ctx.DSP.filtfilt(sos, a.v), fs: a.fs, ch: a.ch}; }
     function call(f, args) {
       f = f.toLowerCase();
       if (F1[f]) { if (args.length !== 1) throw new Error(f + ' tek argüman alır'); return map1(args[0], F1[f]); }
       if (RED[f] && args.length === 1) return red(args[0], RED[f]);
       switch (f) {
+        case 'integral': case 'integrate': case 'cumtrapz': { const a = vec(args[0], f); return {v: trapz(a), fs: a.fs, ch: a.ch}; }
+        case 'integral2': case 'integrate2': case 'dblint': { const a = vec(args[0], f), u = {v: trapz(a), fs: a.fs}; return {v: trapz(u), fs: a.fs, ch: a.ch}; }
+        case 'gradient': case 'turev': case 'deriv': { const a = vec(args[0], f), n = a.v.length, o = new Float64Array(n); if (n > 1) { for (let i = 1; i < n - 1; i++) o[i] = (a.v[i + 1] - a.v[i - 1]) * a.fs / 2; o[0] = (a.v[1] - a.v[0]) * a.fs; o[n - 1] = (a.v[n - 1] - a.v[n - 2]) * a.fs; } return {v: o, fs: a.fs, ch: a.ch}; }
+        case 'turev2': case 'deriv2': { const a = vec(args[0], f), n = a.v.length, o = new Float64Array(n), k = a.fs * a.fs; for (let i = 1; i < n - 1; i++) o[i] = (a.v[i + 1] - 2 * a.v[i] + a.v[i - 1]) * k; if (n > 2) { o[0] = o[1]; o[n - 1] = o[n - 2]; } return {v: o, fs: a.fs, ch: a.ch}; }
+        case 'movrms': case 'movstd': case 'movsum': case 'movmax': case 'movmin': case 'movvar': { const a = vec(args[0], f), w = Math.max(1, Math.round(scal(args[1], f))); return {v: mov(a.v, w, f), fs: a.fs, ch: a.ch}; }
+        case 'smooth': return call('movmean', args);
+        case 'zscore': { const a = vec(args[0], f), m = RED.mean(a.v), sd = RED.std(a.v) || 1; return {v: a.v.map(x => (x - m) / sd), fs: a.fs, ch: a.ch}; }
+        case 'normalize': case 'rescale': { const a = vec(args[0], f), lo = RED.min(a.v), hi = RED.max(a.v), A = args.length > 2 ? scal(args[1], f) : 0, B = args.length > 2 ? scal(args[2], f) : 1, k = (B - A) / ((hi - lo) || 1); return {v: a.v.map(x => A + (x - lo) * k), fs: a.fs, ch: a.ch}; }
+        case 'clip': { const a = vec(args[0], f), lo = scal(args[1], f), hi = scal(args[2], f); return {v: a.v.map(x => Math.min(hi, Math.max(lo, x))), fs: a.fs, ch: a.ch}; }
+        case 'shift': { const a = vec(args[0], f), k = Math.round(scal(args[1], f)), n = a.v.length, o = new Float64Array(n); for (let i = 0; i < n; i++) { const j = i - k; o[i] = j >= 0 && j < n ? a.v[j] : NaN; } return {v: o, fs: a.fs, ch: a.ch}; }
+        case 'unwrap': { const a = vec(args[0], f), n = a.v.length, o = new Float64Array(n); let off = 0; if (n) o[0] = a.v[0]; for (let i = 1; i < n; i++) { const d = a.v[i] - a.v[i - 1]; if (d > Math.PI) off -= 2 * Math.PI * Math.ceil((d - Math.PI) / (2 * Math.PI)); else if (d < -Math.PI) off += 2 * Math.PI * Math.ceil((-d - Math.PI) / (2 * Math.PI)); o[i] = a.v[i] + off; } return {v: o, fs: a.fs, ch: a.ch}; }
+        case 'detrend': { const a = vec(args[0], f), ord = args.length > 1 ? Math.round(scal(args[1], f)) : 1, tr = polyTrend(a.v, ord), o = new Float64Array(a.v.length); for (let i = 0; i < o.length; i++) o[i] = a.v[i] - tr[i]; return {v: o, fs: a.fs, ch: a.ch}; }
+        case 'trend': case 'polyfit': { const a = vec(args[0], f); return {v: polyTrend(a.v, args.length > 1 ? Math.round(scal(args[1], f)) : 1), fs: a.fs, ch: a.ch}; }
+        case 'decimate': { const a = vec(args[0], f), k = Math.max(1, Math.round(scal(args[1], f))), m = Math.floor(a.v.length / k), o = new Float64Array(m); for (let i = 0; i < m; i++) { let s = 0; for (let j = 0; j < k; j++) s += a.v[i * k + j]; o[i] = s / k; } return {v: o, fs: a.fs / k, ch: a.ch}; }
+        case 'percentile': case 'prctile': { const a = vec(args[0], f), p = scal(args[1], f), c = Float64Array.from(a.v).sort(), q = Math.min(c.length - 1, Math.max(0, p / 100 * (c.length - 1))), i = Math.floor(q); return c[i] + (c[Math.min(c.length - 1, i + 1)] - c[i]) * (q - i); }
+        case 'corr': case 'cov': { const a = vec(args[0], f), b = vec(args[1], f), n = Math.min(a.v.length, b.v.length); let sa = 0, sb = 0; for (let i = 0; i < n; i++) { sa += a.v[i]; sb += b.v[i]; } sa /= n; sb /= n; let sab = 0, saa = 0, sbb = 0; for (let i = 0; i < n; i++) { const x = a.v[i] - sa, y = b.v[i] - sb; sab += x * y; saa += x * x; sbb += y * y; } return f === 'cov' ? sab / (n - 1) : sab / Math.sqrt(saa * sbb || 1); }
         case 'diff': { const a = vec(args[0], f), o = new Float64Array(a.v.length); for (let i = 1; i < o.length; i++) o[i] = a.v[i] - a.v[i - 1]; return {v: o, fs: a.fs, ch: a.ch}; }
         case 'gradient': case 'turev': { const a = vec(args[0], f), o = new Float64Array(a.v.length); for (let i = 1; i < o.length; i++) o[i] = (a.v[i] - a.v[i - 1]) * a.fs; return {v: o, fs: a.fs, ch: a.ch}; }
         case 'cumsum': { const a = vec(args[0], f), o = new Float64Array(a.v.length); let s = 0; for (let i = 0; i < o.length; i++) { s += a.v[i]; o[i] = s; } return {v: o, fs: a.fs, ch: a.ch}; }

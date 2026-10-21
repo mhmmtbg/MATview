@@ -9,7 +9,7 @@ function h(tag, attrs, ...kids) {
 const S = {
   files: [], derived: null, plot: null, specPlot: null, specView: null, view: 'time',
   undo: [], redo: [], kinds: new Set(), q: '', selCh: new Set(), open: new Set(), tab: 'traces',
-  colorIdx: 0, noise: null, audio: null, pref: {dbl: 'new'}, collapsed: new Set(), rowOrder: []
+  colorIdx: 0, noise: null, audio: null, pref: {dbl: 'new'}, fopen: new Set(), seenF: new Set(), collapsed: new Set(), rowOrder: []
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function toast(msg, ms = 3500, act) { const t = $('#toast'); t.replaceChildren(msg); if (act) t.append(' ', h('button', {class: 'tact', onclick: () => { t.classList.add('hidden'); act.fn(); }}, act.t)); t.classList.remove('hidden'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), ms); }
@@ -58,16 +58,20 @@ async function ensureLoaded(ch) {
 function renderChips() {
   const kinds = new Set(); for (const f of allFiles()) for (const c of f.channels) kinds.add(c.kind);
   const box = $('#chips'); box.replaceChildren();
-  for (const k of Object.keys(KIND)) if (kinds.has(k)) box.append(h('span', {class: 'chip' + (S.kinds.has(k) ? ' on' : ''), onclick: () => { S.kinds.has(k) ? S.kinds.delete(k) : S.kinds.add(k); renderChips(); renderTree(); }}, kic(k, 13), KIND[k].name));
+  for (const k of Object.keys(KIND)) if (kinds.has(k)) box.append(h('span', {class: 'chip' + (S.kinds.has(k) ? ' on' : ''), title: KIND[k].name + ' kanallarını süz', role: 'button', 'aria-label': KIND[k].name, tabindex: 0, onkeydown: e => { if (e.key === 'Enter') e.target.click(); }, onclick: () => { S.kinds.has(k) ? S.kinds.delete(k) : S.kinds.add(k); renderChips(); renderTree(); }}, kic(k, 15)));
 }
 const allFiles = () => S.derived && S.derived.channels.length ? [...S.files, S.derived] : S.files;
 function chMatches(c) { if (S.kinds.size && !S.kinds.has(c.kind)) return false; if (S.q && !c.name.toLowerCase().includes(S.q)) return false; return true; }
 function renderTree() {
-  const box = $('#tree'); const st = box.scrollTop; box.replaceChildren(); S.rowOrder = [];
+  const box = $('#tree'); const scs = {}; box.querySelectorAll('.tbody').forEach(x => scs[x.dataset.f] = x.scrollTop); box.replaceChildren(); S.rowOrder = [];
   const filtering = S.q || S.kinds.size;
   for (const f of allFiles()) {
     const chs = f.channels.filter(chMatches);
-    box.append(h('div', {class: 'tfile'}, h('span', {class: 'nm', title: f.name}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
+    if (!S.seenF.has(f.id)) { S.seenF.add(f.id); S.fopen.add(f.id); }
+    const fop = filtering || S.fopen.has(f.id), grp = h('div', {class: 'fgrp' + (fop ? ' open' : '')}), body = h('div', {class: 'tbody', 'data-f': f.id});
+    const tog = () => { S.fopen.has(f.id) ? S.fopen.delete(f.id) : S.fopen.add(f.id); renderTree(); };
+    grp.append(h('div', {class: 'tfile', tabindex: 0, role: 'button', 'aria-expanded': fop, title: f.name + ' — aç/kapat', onclick: e => { if (!e.target.closest('button')) tog(); }, onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(); } }},
+      h('span', {class: 'twisty'}, fop ? '▼' : '▶'), h('span', {class: 'nm'}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
       f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => binExportDialog(f)}, '.mat') : null,
       f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
     const devs = new Map();
@@ -75,24 +79,27 @@ function renderTree() {
     for (const [dev, bm] of devs) {
       const dk = f.id + '/' + dev, open = filtering || S.open.has(dk);
       const total = [...bm.values()].reduce((a, b) => a + b.length, 0);
-      box.append(h('div', {class: 'tdev', onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
+      body.append(h('div', {class: 'tdev', onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
       if (!open) continue;
       for (const [base, list] of bm) {
         if (list.length > 1 && list.every(c => c.base === base)) {
           const bk = dk + '/' + base, bo = filtering || S.open.has(bk);
-          box.append(h('div', {class: 'trow', ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
+          body.append(h('div', {class: 'trow', ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
             h('span', {class: 'twisty'}, bo ? '▼' : '▶'), kic(list[0].kind), h('span', {class: 'nm'}, hl(base)), h('span', {class: 'meta'}, list.length + ' kanal'),
             h('button', {class: 'add', 'data-ic': 'stack', title: 'Her kanalı ayrı alt grafiğe ekle', onclick: e => { e.stopPropagation(); addToNewAxes(list, false); }}), h('button', {class: 'add', 'data-ic': 'layers', title: 'Hepsini tek (yeni) grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addGroup(list); }})));
-          if (bo) for (const c of list) box.append(chRow(c, c.comp || c.rest, true));
-        } else { if ((f.binary || f.unv) && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) box.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) box.append(chRow(c, c.rest, false)); }
+          if (bo) for (const c of list) body.append(chRow(c, c.comp || c.rest, true));
+        } else { if ((f.binary || f.unv) && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) body.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) body.append(chRow(c, c.rest, false)); }
       }
     }
+    if (fop) grp.append(body); box.append(grp);
   }
   if (!S.files.length) box.append(h('div', {class: 'note', style: 'padding:14px'}, 'Henüz dosya yok. "Dosya aç…" düğmesini kullanın veya .mat dosyalarını pencereye sürükleyin.'));
-  box.scrollTop = st; updateSelInfo();
+  if (typeof syncFeatUI === 'function' && S.xyPlot) syncFeatUI();
+  for (const x of box.querySelectorAll('.tbody')) if (scs[x.dataset.f]) x.scrollTop = scs[x.dataset.f]; updateSelInfo();
 }
 const hl = label => { const q = S.q, i = q ? String(label).toLowerCase().indexOf(q) : -1; return i < 0 ? [label] : [label.slice(0, i), h('mark', null, label.slice(i, i + q.length)), label.slice(i + q.length)]; };
-function dblAct(e, list) { const same = (S.pref.dbl === 'same') !== !!e.shiftKey; return same ? addToAxes(activeAxes(), list) : addToNewAxes(list, false); }
+function dblAct(e, list) {
+  if (list.length && list.every(c => c.file && c.file.feature)) return featAdd(list); const same = (S.pref.dbl === 'same') !== !!e.shiftKey; return same ? addToAxes(activeAxes(), list) : addToNewAxes(list, false); }
 function chMM(c) { if (!c.data) return ''; if (!c._mm) { let lo = Infinity, hi = -Infinity; const d = c.data; for (let i = 0; i < d.length; i++) { const v = d[i]; if (v < lo) lo = v; if (v > hi) hi = v; } c._mm = [lo, hi]; } return '\nmin ' + fmtNum(c._mm[0], 5) + ' · max ' + fmtNum(c._mm[1], 5); }
 function chRow(c, label, sub) {
   S.rowOrder.push(c);
@@ -118,8 +125,11 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 
 /* ---------- dosya işlemleri ---------- */
 async function openFiles(files) {
-  files = [...files]; const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)), other = files.filter(f => !/\.(mat|unv|uff)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  files = [...files]; const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)); let other = files.filter(f => !/\.(mat|unv|uff)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  const tabs = other.filter(f => /\.(csv|tsv|txt)$/i.test(f.name)); other = other.filter(f => !tabs.includes(f)); const tabsX = [];
+  if (other.length && other.every(f => /\.xlsx$/i.test(f.name))) { const keep = []; for (const f of other) { try { const sh = await XLSX.read(f); if (sh.some(s => /cerceve|çerçeve|frame/i.test(s.name))) keep.push(f); else tabsX.push([f, sh]); } catch (e) { toast('Excel okunamadı: ' + (e.message || e), 7000); } } other = keep; }
   for (const u of unvs) await unvOpen(u);
+  for (const t of tabs) await tableOpen(t); for (const [f, sh] of tabsX) await tableOpen(f, sh);
   if (other.length) await binFilesIn(other);
   for (const file of files) {
     await busy('Dosya taranıyor: ' + file.name, async () => {
@@ -146,6 +156,7 @@ function nextColor() { return PAL[S.colorIdx++ % PAL.length]; }
 function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), width: 1, visible: true}; }
 function axisLabelFor(ax) { const ks = new Set(ax.traces.map(t => t.ch.kind)), us = new Set(ax.traces.map(t => t.ch.unit || '')); ax.ylabel = us.size === 1 && [...us][0] ? [...us][0] : ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; }
 async function addToNewAxes(chs, one) {
+  if (chs.length && chs.every(c => c.file && c.file.feature)) return featAdd(chs);
   { const sp = chs.filter(c => c.spec); if (sp.length) { await addSpec(sp); chs = chs.filter(c => !c.spec); if (!chs.length) return; } }
   const first = !S.plot.axes.length;
   if (one) { const ax = S.plot.addAxes(); for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }
@@ -154,6 +165,7 @@ async function addToNewAxes(chs, one) {
   await loadForPlot(chs, first);
 }
 async function addToAxes(ax, chs) {
+  if (chs.length && chs.every(c => c.file && c.file.feature)) return featAdd(chs);
   { const sp = chs.filter(c => c.spec); if (sp.length) { await addSpec(sp); chs = chs.filter(c => !c.spec); if (!chs.length) return; } }
   if (!ax) return addToNewAxes(chs, true);
   const first = !S.plot.axes.length; for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax);
@@ -215,15 +227,15 @@ function buildToolbar() {
     h('span', {class: 'sep'}), ib('tb-del', 'del', 'Sil', 'Seçili noktaları sil (Delete)', deleteSelection));
   $('#tb-del').disabled = true;
 }
-function curPlot() { return S.view === 'spec' ? S.specPlot : S.plot; }
+function curPlot() { return S.view === 'spec' ? S.specPlot : S.view === 'xy' ? S.xyPlot : S.plot; }
 function setMode(m) {
-  S.plot.mode = m; S.specPlot.mode = ['box', 'lasso'].includes(m) ? 'pan' : m;
+  S.plot.mode = m; S.specPlot.mode = ['box', 'lasso'].includes(m) ? 'pan' : m; if (S.xyPlot) S.xyPlot.mode = ['box', 'lasso'].includes(m) ? 'pan' : m;
   for (const [k] of TOOLS) { const b = $('#tool-' + k); if (b) b.classList.toggle('on', k === m); }
   if (m !== 'box' && m !== 'lasso') { /* seçim kalsın */ }
 }
 function switchView(v) {
   S.view = v; for (const b of $('#viewtabs').children) b.classList.toggle('on', b.dataset.v === v);
-  for (const id of ['time', 'spec', 'sgram']) $('#v-' + id).classList.toggle('hidden', id !== v);
+  for (const id of ['time', 'spec', 'sgram', 'xy']) $('#v-' + id).classList.toggle('hidden', id !== v);
   $('#toolbar').style.display = v === 'sgram' ? 'none' : '';
-  S.plot.resize(); S.specPlot.resize(); S.specView.resize(); updateStats();
+  S.plot.resize(); S.specPlot.resize(); S.specView.resize(); if (S.xyPlot) S.xyPlot.resize(); updateStats();
 }

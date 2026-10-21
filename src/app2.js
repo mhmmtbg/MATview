@@ -7,10 +7,10 @@ const num = id => parseFloat($('#' + id).value), sv = id => $('#' + id).value, c
 const card = (title, ...c) => h('div', {class: 'card'}, h('h4', null, title), ...c);
 const btn = (t, fn, cls, id) => h('button', {class: cls || '', onclick: fn, id}, t);
 
-const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'İfade'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['output', 'Çıktı']];
+const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'Formül'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['feat', 'Veri'], ['output', 'Çıktı']];
 function buildRight() {
   const tabs = $('#rtabs'), body = $('#rbody'); tabs.replaceChildren(); body.replaceChildren(); S.panels = {};
-  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, output: buildOutput};
+  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, output: buildOutput};
   for (const [k, t] of TABS) {
     tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => setTab(k)}, h('span', {class: 'tl'}, t)));
     const p = builders[k](); p.id = 'p-' + k; if (k !== S.tab) p.classList.add('hidden'); body.append(p); S.panels[k] = p;
@@ -39,7 +39,7 @@ function buildTraces() {
 function applyXlim() { const ax = activeAxes(); if (!ax) return; S.plot.setXlim(ax, num('xmin'), num('xmax')); S.plot.invalidate(); syncLimits(); }
 function clearPlot() { S.plot.axes.slice().forEach(a => S.plot.removeAxes(a)); S.plot.active = null; S.colorIdx = 0; refreshAll(); }
 function applyFs() { const tr = activeTrace(); const v = num('fsIn'); if (!tr || !(v > 0)) return; tr.ch.setFs(v); S.plot.fitAll(true); refreshAll(); toast('Örnekleme frekansı güncellendi'); }
-function refreshAll() { refreshAxesUI(); refreshTraceInfo(); updateStats(); S.plot.invalidate(); }
+function refreshAll() { refreshAxesUI(); refreshTraceInfo(); updateStats(); S.plot.invalidate(); if (typeof refreshCalcUI === 'function') refreshCalcUI(); }
 function refreshAxesUI() {
   const box = $('#axesList'); if (!box) return; box.replaceChildren();
   S.plot.axes.forEach((ax, i) => {
@@ -166,17 +166,18 @@ function buildAnalyze() {
   return r;
 }
 function specRange(tr, ax, scope) { const ch = tr.ch; return scope === 'vis' ? visRange(tr, ax) : [0, ch.n]; }
-async function computeSpectrum() {
+async function computeSpectrum(only) {
   const ax = activeAxes(); if (!ax || !ax.traces.length) return toast('Önce Zaman grafiğine bir iz ekleyin');
+  const list = only && only.ch ? [only] : ax.traces.filter(t => t.ch);
   await busy('Spektrum hesaplanıyor…', async prog => {
     const o = {nfft: +sv('spN'), win: sv('spWin'), overlap: +sv('spOv'), scale: sv('spScale'), maxSeg: 4000};
     const ys = sv('spY'), P = S.specPlot; P.axes.slice().forEach(a => P.removeAxes(a));
     const sa = P.addAxes({xlog: sv('spX') === 'log', ylog: ys === 'log', title: ax.title || ''});
-    const k0 = ax.traces.find(t => t.visible && t.ch), ku = k0 ? (k0.ch.unit || (k0.ch.kind === 'vib' ? 'g' : 'birim')) : 'birim', u2 = ku.length > 1 ? '(' + ku + ')' : ku;
+    const k0 = list.find(t => t.visible && t.ch), ku = k0 ? (k0.ch.unit || (k0.ch.kind === 'vib' ? 'g' : 'birim')) : 'birim', u2 = ku.length > 1 ? '(' + ku + ')' : ku;
     sa.isDb = ys === 'db';
     sa.ylabel = o.scale === 'psd' ? (ys === 'db' ? `PSD (dB re 1 ${u2}²/Hz)` : `PSD (${u2}²/Hz)`) : (ys === 'db' ? `Genlik (dB re 1 ${u2})` : (o.scale === 'amp' ? `Tepe genlik (${ku})` : `RMS genlik (${ku})`)); sa.xlabel = 'Frekans (Hz)';
     let k = 0, info = [];
-    for (const tr of ax.traces) {
+    for (const tr of list) {
       if (!tr.visible) continue; await ensureLoaded(tr.ch); const ch = tr.ch; const [a, b] = specRange(tr, ax, sv('spScope'));
       if (b - a < 64) { toast('Aralık çok kısa: ' + tr.label); continue; }
       const seg = DSP.segment(ch.data, ch.del, a, b); const res = DSP.welch(seg, ch.fs, o);
@@ -184,7 +185,7 @@ async function computeSpectrum() {
       const sd = DSP.stats(seg, null, 0, seg.length); if (!(sd.std > 1e-9 * (Math.abs(sd.mean) + 1e-12))) toast('Uyarı: ' + tr.label + ' seçili aralıkta sabit (değişmiyor), spektrum anlamsız.', 6000);
       const t = {kind: 'xy', x: res.f, y, label: tr.label, color: tr.color, width: 1, visible: true, raw: res.y, scale: o.scale, df: res.df, srcKind: ch.kind};
       if (ck('spPeak')) t.peaks = findPeaks(res.f, y, 3);
-      sa.traces.push(t); info.push(`${tr.label}: Δf=${fmtNum(res.df, 4)} Hz, ${res.nseg} bölüt`); prog(++k / ax.traces.length);
+      sa.traces.push(t); info.push(`${tr.label}: Δf=${fmtNum(res.df, 4)} Hz, ${res.nseg} bölüt`); prog(++k / list.length);
     }
     $('#spInfo').textContent = info.join('\n'); $('#spInfo').style.whiteSpace = 'pre-line';
     if (!sa.traces.length) { P.removeAxes(sa); return; }
@@ -230,19 +231,6 @@ async function applyFilterUI() {
 }
 
 /* ---------- İfade ---------- */
-function buildExpr() {
-  const r = h('div');
-  r.append(card('MATLAB tarzı ifade',
-    h('textarea', {id: 'exprIn', rows: 3, style: 'width:100%;font-family:ui-monospace,Consolas,monospace', placeholder: 'ör.  sqrt(ts41_X^2 + ts41_Y^2 + ts41_Z^2)'}),
-    fr('Sonuç adı', h('input', {type: 'text', id: 'exprName', value: 'ifade1'})),
-    fr('Kanal ekle', h('select', {id: 'exprPick'}), btn('Ekle', () => { const s = $('#exprPick').value; if (!s) return; const t = $('#exprIn'); const p = t.selectionStart; t.value = t.value.slice(0, p) + s + t.value.slice(t.selectionEnd); t.focus(); })),
-    h('div', {class: 'btns'}, btn('Hesapla ve grafiğe ekle', runExpr, 'primary'), btn('Seçili kanal adlarını ekle', () => { const t = $('#exprIn'); t.value += chsFromSel().map(c => c.name).join(' + '); })),
-    h('div', {id: 'exprMsg', class: 'note'})));
-  r.append(card('Söz dizimi',
-    h('div', {class: 'note', style: 'white-space:pre-line'}, 'Kanallar: tam kanal adı veya benzersiz son ek (ör. ts41_X).\nİşleçler: + − * / ^ ve parantez.\nSkaler: abs sqrt sin cos exp log log10 db sign …\nKanal: diff gradient integrate cumsum detrend demean movmean(x,w) movmedian(x,w) env(x)\nSüzgeç: lp(x,fc) hp(x,fc) bp(x,f1,f2) notch(x,f0,Q)\nİstatistik: mean std rms max min median p2p (skaler döner)\nFarklı uzunluktaki kanallar ilk operanda göre yeniden örneklenir.')));
-  return r;
-}
-function refreshExprPick() { const s = $('#exprPick'); if (!s) return; const keep = s.value; s.replaceChildren(h('option', {value: ''}, '— seç —')); const seen = new Set(); for (const ax of S.plot.axes) for (const t of ax.traces) if (!seen.has(t.ch.uid)) { seen.add(t.ch.uid); s.append(h('option', {value: t.ch.name}, t.ch.name)); } s.value = keep; }
 function resolveChannel(name) {
   let m = []; for (const f of allFiles()) for (const c of f.channels) if (c.name === name) m.push(c);
   if (!m.length) for (const f of allFiles()) for (const c of f.channels) if (c.name.endsWith('_' + name) || c.rest === name) m.push(c);
@@ -250,21 +238,6 @@ function resolveChannel(name) {
   if (m.length > 1) { const onPlot = m.filter(c => S.plot.axes.some(a => a.traces.some(t => t.ch === c))); if (onPlot.length === 1) return onPlot[0]; throw new Error('Belirsiz ad "' + name + '": ' + m.slice(0, 3).map(c => c.name).join(', ') + '…'); }
   return m[0];
 }
-async function runExpr() {
-  const src = sv('exprIn').trim(); if (!src) return; const msg = $('#exprMsg'); msg.textContent = '';
-  await busy('Hesaplanıyor…', async () => {
-    try {
-      const ids = [...new Set(EXPR.identifiers(src))].filter(i => !/^(pi|e)$/i.test(i) && !new RegExp('\\b' + i + '\\s*\\(').test(src.replace(new RegExp('\\b' + i + '\\b(?!\\s*\\()', 'g'), '')));
-      const map = {};
-      for (const id of ids) { const c = resolveChannel(id); await ensureLoaded(c); map[id] = {v: c.del ? DSP.segment(c.data, c.del, 0, c.n) : c.data, fs: c.fs, ch: c}; }
-      const res = EXPR.run(src, {DSP, resolve: n => { if (!map[n]) { const c = resolveChannel(n); throw new Error('Yüklenmemiş: ' + c.name); } return map[n]; }});
-      if (typeof res === 'number') { msg.textContent = 'Sonuç (skaler): ' + res; return; }
-      const name = sanitizeName(sv('exprName') || 'ifade'); const c = addDerived(name, res.v, res.ch, 0, true);
-      await addDerivedToPlot(c, null); msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
-    } catch (e) { msg.textContent = 'Hata: ' + e.message; }
-  });
-}
-
 /* ---------- Akustik ---------- */
 function buildAcoustic() {
   const r = h('div');
@@ -412,7 +385,7 @@ async function acWav(clean) {
 /* ---------- Çıktı ---------- */
 function buildOutput() {
   const r = h('div');
-  r.append(card('Grafik', fr('Ölçek', selIn('pngScale', [[1, '1×'], [2, '2×'], [3, '3×']], 2)), chkIn('pngLight', 'Açık tema ile (baskı için)', true), h('div', {class: 'btns'}, btn('PNG kaydet', savePng, 'primary'), btn('Panoya kopyala', copyPng))));
+  r.append(card('Görüntü (açık olan görünüm)', h('div', {class: 'note'}, 'Zaman, Spektrum ve Spektrogram görünümlerinin hepsi PNG veya SVG (vektör) olarak kaydedilir.'), fr('PNG ölçeği', selIn('pngScale', [[1, '1×'], [2, '2×'], [3, '3×'], [4, '4×']], 2)), chkIn('pngLight', 'Açık tema ile (baskı için)', true), h('div', {class: 'btns'}, btn('PNG kaydet', savePng, 'primary'), btn('SVG kaydet', saveSvg), btn('Panoya kopyala', copyPng))));
   r.append(card('Veri (CSV / MAT)',
     h('div', {class: 'note'}, 'Grafikteki izlerin verisi aktarılır.'),
     fr('Aralık', selIn('exScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
@@ -423,16 +396,33 @@ function buildOutput() {
   return r;
 }
 // Çıktı alırken: grafikte titreşim izi varsa ve Grms lejantı kapalıysa sorar
-function pngAsk(scale, light, then) {
-  const render = grms => { const old = S.plot.grms; if (grms) S.plot.grms = grms; try { return S.plot.toPNG(scale, light); } finally { S.plot.grms = old; S.plot.invalidate(); } };
+function pngAsk(scale, light, then, svg) {
+  const render = grms => { const old = S.plot.grms; if (grms) S.plot.grms = grms; try { return svg ? S.plot.toSVG(light) : S.plot.toPNG(scale, light); } finally { S.plot.grms = old; S.plot.invalidate(); } };
   const hasVib = S.plot.axes.some(ax => ax.traces.some(t => t.kind === 'ts' && t.ch.kind === 'vib'));
   if (!hasVib || S.plot.grms.mode !== 'off') return then(render(null));
   const body = h('div', null, h('div', {class: 'note'}, 'Grafikte titreşim verisi var. Lejanta Grms değeri eklensin mi?'),
     fr('Lejant', selIn('gqMode', [['all', 'Grms ekle (tüm kayıt)'], ['vis', 'Grms ekle (görünen aralık)'], ['off', 'Ekleme']], 'all')), chkIn('gqDc', 'DC (ortalama) çıkar', true));
   modal('Lejant', body, [{t: 'Devam', primary: true, fn: () => { then(render({mode: sv('gqMode'), dc: ck('gqDc')})); }}, {t: 'Vazgeç'}]);
 }
-async function savePng() { pngAsk(+sv('pngScale'), ck('pngLight'), c => c.toBlob(b => saveBlob(b, 'grafik.png'))); }
-async function copyPng() { pngAsk(2, ck('pngLight'), async c => { try { const b = await new Promise(r => c.toBlob(r)); await navigator.clipboard.write([new ClipboardItem({'image/png': b})]); toast('Panoya kopyalandı'); } catch (e) { toast('Panoya kopyalanamadı: ' + e.message); } }); }
+const VIEWNAME = {time: 'zaman', spec: 'spektrum', sgram: 'spektrogram', xy: 'dagilim'};
+function exportTarget() { return S.view === 'sgram' ? S.specView : S.view === 'spec' ? S.specPlot : S.view === 'xy' ? S.xyPlot : S.plot; }
+function exportReady() { const T = exportTarget(); if (T === S.specView ? !T.spec : !T.axes.length) { toast('Bu görünümde kaydedilecek grafik yok'); return null; } return T; }
+const expOpt = () => ({scale: $('#pngScale') ? +sv('pngScale') : 2, light: $('#pngLight') ? ck('pngLight') : true});
+async function savePng() {
+  const T = exportReady(); if (!T) return; const o = expOpt(), nm = 'MATView_' + VIEWNAME[S.view];
+  if (T === S.plot) pngAsk(o.scale, o.light, c => c.toBlob(b => saveBlob(b, nm + '.png'))); else T.toPNG(o.scale, o.light).toBlob(b => saveBlob(b, nm + '.png'));
+}
+async function saveSvg() {
+  const T = exportReady(); if (!T) return; const o = expOpt(), nm = 'MATView_' + VIEWNAME[S.view], out = x => saveBlob(new Blob([x], {type: 'image/svg+xml'}), nm + '.svg');
+  if (T === S.plot) pngAsk(1, o.light, out, true); else out(T.toSVG(o.light));
+}
+async function copyPng() {
+  const T = exportReady(); if (!T) return; const o = expOpt();
+  const go = async c => { try { const b = await new Promise(r => c.toBlob(r)); await navigator.clipboard.write([new ClipboardItem({'image/png': b})]); toast('Panoya kopyalandı'); } catch (e) { toast('Panoya kopyalanamadı: ' + e.message); } };
+  if (T === S.plot) pngAsk(2, o.light, go); else go(T.toPNG(2, o.light));
+}
+async function graphSpectrum(ax, tr) { S.plot.active = ax; if (tr) ax.active = ax.traces.indexOf(tr); setTab('analyze'); await computeSpectrum(tr); }
+async function graphSpectrogram(ax, tr) { S.plot.active = ax; tr = tr || ax.traces.find(t => t.visible && t.ch) || ax.traces.find(t => t.ch); if (!tr) return toast('Bu grafikte zaman izi yok'); ax.active = ax.traces.indexOf(tr); setTab('analyze'); await computeSpectrogram(); }
 function plotChannels() { const seen = new Set(), out = []; for (const ax of S.plot.axes) for (const t of ax.traces) if (t.visible && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); out.push({ch: t.ch, ax}); } return out; }
 async function exportData(kind) {
   const list = plotChannels(); if (!list.length) return toast('Grafikte iz yok');
@@ -497,7 +487,7 @@ async function loadSession(file) {
 function timeDialog() {
   const body = h('div'); if (!S.files.length) body.append(h('div', {class: 'note'}, 'Önce bir dosya açın.'));
   const rows = [];
-  for (const f of S.files.filter(x => !x.binary && !x.unv)) {
+  for (const f of S.files.filter(x => !x.binary && !x.unv && !x.table)) {
     const ndev = Object.keys(f.gcache || {}).length, lost = Object.values(f.gcache || {}).reduce((a, g) => a + g.lost, 0), nocnt = f.channels.some(c => !(c.devKey && f.gcache[c.devKey]));
     const t = h('input', {type: 'number', step: 'any', value: f.Tpkt * 1000}), b = h('input', {type: 'number', step: 'any', value: f.baseFs}); rows.push({f, t, b});
     body.append(h('div', {class: 'card'}, h('h4', null, f.name), h('div', {class: 'note'}, `${ndev} cihazda cnt sayacı bulundu · toplam kayıp paket: ${lost}`),
@@ -533,12 +523,13 @@ function init() {
   S.plot.selectionTargets = ax => ck('applyAll') ? ax.traces.filter(t => t.visible) : ax.traces.length ? [ax.traces[Math.min(ax.active || 0, ax.traces.length - 1)]] : [];
   S.specPlot = new Plot($('#cv-spec'), {xlabel: 'Frekans (Hz)', xName: 'f', emptyText: 'Spektrum için sağdaki "Analiz" sekmesinden "Spektrumu hesapla"ya basın',
     onHover: p => { $('#hoverinfo').textContent = p ? `f = ${fmtNum(p.x, 7)} Hz    y = ${fmtNum(p.y, 6)}` : ''; }});
+  S.xyPlot = new Plot($('#cv-xy'), {xlabel: 'x', xName: 'x', emptyText: 'Sağdaki “Veri” sekmesinden X ve Y sütunlarını seçip “Çiz”e basın', onHover: p => { $('#hoverinfo').textContent = p ? `x = ${fmtNum(p.x, 7)}    y = ${fmtNum(p.y, 6)}` : ''; }}); S.xyPlot.grms = {mode: 'off', dc: true};
   S.specView = new SpecView($('#cv-sgram')); S.specView.onHover = p => { $('#hoverinfo').textContent = `t = ${fmtNum(p.t, 6)} s   f = ${fmtNum(p.f, 6)} Hz` + (p.v != null ? `   ${p.v.toFixed(1)} dB` : ''); };
   buildToolbar(); buildRight(); renderChips(); renderTree(); refreshAll(); refreshCleanInfo(); setMode('pan');
   for (const b of $('#viewtabs').children) b.onclick = () => { switchView(b.dataset.v); };
   $('#btnBin').onclick = () => binDialog();
   $('#btnOpen').onclick = async () => {
-    if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat', '.unv', '.uff']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
+    if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat', '.unv', '.uff', '.csv', '.tsv', '.txt', '.xlsx']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
     $('#fileIn').click();
   };
   $('#fileIn').onchange = e => { openFiles(e.target.files); e.target.value = ''; };
@@ -566,8 +557,8 @@ function init() {
     else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
-  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshExprPick(); }, 1500);
-  initUX(); startupFiles();
+  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); }, 1500);
+  initUX(); syncFeatUI(); startupFiles();
 }
 async function startupFiles() {
   try {

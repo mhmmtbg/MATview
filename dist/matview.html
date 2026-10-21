@@ -24,7 +24,7 @@ input[type=color]{width:24px;height:20px;padding:0;border:1px solid var(--border
 .hidden{display:none!important}
 .muted{color:var(--muted)}
 .spacer{flex:1}
-#app{display:grid;grid-template-columns:290px 1fr 360px;grid-template-rows:44px 1fr;height:100vh}
+#app{display:grid;grid-template-columns:290px 1fr 360px;grid-template-rows:44px minmax(0,1fr);height:100vh;overflow:hidden}
 #top{grid-column:1/4;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--border)}
 .brand{display:flex;align-items:center;gap:8px;margin-right:12px}.brand .sub{color:var(--muted)}
 #left,#right{background:var(--panel);display:flex;flex-direction:column;min-height:0;min-width:0}
@@ -141,10 +141,22 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
 .dz.over{background:color-mix(in srgb,var(--accent) 22%,var(--panel))}
 #welcome{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--panel);z-index:3;text-align:center}
 .wbox{max-width:640px;padding:20px}.wbox h2{margin:0 0 4px;font-size:26px}
-.wcards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0}
+.wcards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
 .wcard{display:flex!important;flex-direction:column;gap:6px;padding:18px 10px!important;border-radius:6px}.wcard b{font-size:14px}.wcard span:not(.ico){color:var(--muted);font-size:12px}.wcard .ic{width:28px;height:28px}
 .wcard:hover{border-color:var(--accent)}
 #busycancel{margin-top:10px}
+
+#left,#right{overflow:hidden}.rbody{min-height:0}
+.tree{display:flex;flex-direction:column;overflow:hidden;padding:0;min-height:0}
+.fgrp{display:flex;flex-direction:column;min-height:0;flex:0 0 auto;border-bottom:1px solid var(--border)}
+.fgrp.open{flex:0 1 auto}
+.tbody{overflow:auto;flex:1 1 auto;min-height:0;padding:2px 0}
+.tfile{position:static;cursor:pointer;border-top:none}.tfile:hover{background:var(--hover)}
+.tree>.note{overflow:auto}
+.chip{padding:4px 7px;border-radius:5px;gap:0}.chips{gap:5px}
+.chip:focus-visible{outline-offset:1px}
+.qp{display:flex;align-items:center;gap:6px;flex:1}.qp label{color:var(--muted);white-space:nowrap}.qp input{width:100%}
+.rtabs button:not(.on) .tl{display:none}.rtabs button.on{flex:2.4}.rtabs button{padding:7px 2px 6px}
 </style>
 </head>
 <body>
@@ -155,6 +167,7 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
     <div class="dd"><button id="btnOpenM" class="primary" data-ic="open" aria-haspopup="true" title="Dosya aç"><span class="lbl">Aç</span><span class="car">▾</span></button>
       <div class="ddm hidden" id="mOpen">
         <button id="btnOpen" data-ic="file" title="MATLAB (.mat) veya UNV dosyası aç">MAT / UNV dosyası…</button>
+        <button id="btnTab" data-ic="table" title="CSV / Excel tablosu: zaman serisi veya özellik/regresyon verisi">Tablo (CSV / Excel)…</button>
         <button id="btnBin" data-ic="bin" title="Binary dosyayı Excel çerçeve tanımıyla çöz">Binary dosya (Excel çerçeve)…</button>
       </div></div>
     <div class="dd"><button id="btnSet" data-ic="settings" aria-haspopup="true" title="Ayarlar"><span class="lbl">Ayarlar</span><span class="car">▾</span></button>
@@ -166,7 +179,7 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
         <button id="btnHelp" data-ic="help">Yardım</button>
       </div></div>
     <button id="btnTheme" data-ic="theme" title="Açık/koyu tema" aria-label="Tema"></button>
-    <input type="file" id="fileIn" accept=".mat,.unv,.uff" multiple hidden>
+    <input type="file" id="fileIn" accept=".mat,.unv,.uff,.csv,.tsv,.txt,.xlsx" multiple hidden>
   </header>
   <aside id="left">
     <div class="pane-h">Dosyalar ve değişkenler</div>
@@ -182,17 +195,19 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
   </aside>
   <main id="center">
     <div id="viewbar">
-      <div class="seg" id="viewtabs"><button data-v="time" class="on">Zaman</button><button data-v="spec">Spektrum</button><button data-v="sgram">Spektrogram</button></div>
+      <div class="seg" id="viewtabs"><button data-v="time" class="on">Zaman</button><button data-v="spec">Spektrum</button><button data-v="sgram">Spektrogram</button><button data-v="xy" class="hidden" title="Zamandan bağımsız (özellik / regresyon) veri">Dağılım</button></div>
       <div class="spacer"></div>
       <span id="hoverinfo" class="muted"></span>
+      <button id="btnPng" data-ic="download" title="Açık görünümü PNG olarak kaydet">PNG</button><button id="btnSvg" data-ic="download" title="Açık görünümü SVG (vektör) olarak kaydet">SVG</button>
     </div>
     <div id="toolbar"></div>
     <div id="stage">
       <div class="view" id="v-time"><canvas id="cv-time"></canvas></div>
       <div class="view hidden" id="v-spec"><canvas id="cv-spec"></canvas></div>
       <div class="view hidden" id="v-sgram"><canvas id="cv-sgram"></canvas></div>
+      <div class="view hidden" id="v-xy"><canvas id="cv-xy"></canvas></div>
       <div id="welcome" class="hidden"><div class="wbox"><h2>MATView</h2><p class="muted">Başlamak için bir veri dosyası açın ya da pencereye sürükleyip bırakın.</p>
-        <div class="wcards"><button id="wMat" data-ic="file" class="wcard"><b>MAT dosyası</b><span>MATLAB v5 / v7.3</span></button><button id="wUnv" data-ic="unv" class="wcard"><b>UNV / UFF</b><span>Spektrum kayıtları (58)</span></button><button id="wBin" data-ic="bin" class="wcard"><b>Binary</b><span>Excel çerçeve tanımıyla</span></button></div>
+        <div class="wcards"><button id="wMat" data-ic="file" class="wcard"><b>MAT dosyası</b><span>MATLAB v5 / v7.3</span></button><button id="wUnv" data-ic="unv" class="wcard"><b>UNV / UFF</b><span>Spektrum kayıtları (58)</span></button><button id="wTab" data-ic="table" class="wcard"><b>CSV / Excel</b><span>Zaman serisi veya özellik verisi</span></button><button id="wBin" data-ic="bin" class="wcard"><b>Binary</b><span>Excel çerçeve tanımıyla</span></button></div>
         <p class="note">İpucu: Kanala çift tıklayın = yeni alt grafik · Shift+çift tık = aktif grafiğe ekle · Kanalı grafiğe sürükleyin. <kbd>?</kbd> kısayollar.</p></div></div>
       <div id="dropmsg" class="hidden">.mat dosyalarını buraya bırakın</div>
     </div>
@@ -1252,13 +1267,54 @@ const EXPR = (() => {
     const red = (a, f) => isV(a) ? f(a.v) : a;
     const sortedMed = v => { const c = Float64Array.from(v).sort(); return c[c.length >> 1]; };
     const F1 = {abs: Math.abs, sqrt: Math.sqrt, sin: Math.sin, cos: Math.cos, tan: Math.tan, exp: Math.exp, log: Math.log, log10: Math.log10, sign: Math.sign, round: Math.round, floor: Math.floor, ceil: Math.ceil, asin: Math.asin, acos: Math.acos, atan: Math.atan, deg2rad: x => x * Math.PI / 180, rad2deg: x => x * 180 / Math.PI, db: x => 20 * Math.log10(Math.abs(x) + 1e-30)};
-    const RED = {mean: v => { let s = 0; for (const x of v) s += x; return s / v.length; }, std: v => { let s = 0, s2 = 0; for (const x of v) { s += x; s2 += x * x; } const n = v.length, m = s / n; return Math.sqrt(Math.max(0, (s2 - n * m * m) / (n - 1))); }, rms: v => { let s = 0; for (const x of v) s += x * x; return Math.sqrt(s / v.length); }, max: v => { let m = -Infinity; for (const x of v) if (x > m) m = x; return m; }, min: v => { let m = Infinity; for (const x of v) if (x < m) m = x; return m; }, median: sortedMed, sum: v => { let s = 0; for (const x of v) s += x; return s; }, p2p: v => { let a = Infinity, b = -Infinity; for (const x of v) { if (x < a) a = x; if (x > b) b = x; } return b - a; }};
+    const RED = {var: v => { let s = 0, s2 = 0; for (const x of v) { s += x; s2 += x * x; } const n = v.length, m = s / n; return Math.max(0, (s2 - n * m * m) / (n - 1)); }, meanabs: v => { let s = 0; for (const x of v) s += Math.abs(x); return s / v.length; }, count: v => v.length, energy: v => { let s = 0; for (const x of v) s += x * x; return s; }, skew: v => { const n = v.length; let m = 0; for (const x of v) m += x; m /= n; let a = 0, b = 0; for (const x of v) { const d = x - m; a += d * d; b += d * d * d; } return (b / n) / Math.pow(a / n || 1, 1.5); }, kurt: v => { const n = v.length; let m = 0; for (const x of v) m += x; m /= n; let a = 0, b = 0; for (const x of v) { const d = x - m; a += d * d; b += d * d * d * d; } return (b / n) / Math.pow(a / n || 1, 2); }, crest: v => { let s = 0, pk = 0; for (const x of v) { s += x * x; if (Math.abs(x) > pk) pk = Math.abs(x); } return pk / (Math.sqrt(s / v.length) || 1); }, mean: v => { let s = 0; for (const x of v) s += x; return s / v.length; }, std: v => { let s = 0, s2 = 0; for (const x of v) { s += x; s2 += x * x; } const n = v.length, m = s / n; return Math.sqrt(Math.max(0, (s2 - n * m * m) / (n - 1))); }, rms: v => { let s = 0; for (const x of v) s += x * x; return Math.sqrt(s / v.length); }, max: v => { let m = -Infinity; for (const x of v) if (x > m) m = x; return m; }, min: v => { let m = Infinity; for (const x of v) if (x < m) m = x; return m; }, median: sortedMed, sum: v => { let s = 0; for (const x of v) s += x; return s; }, p2p: v => { let a = Infinity, b = -Infinity; for (const x of v) { if (x < a) a = x; if (x > b) b = x; } return b - a; }};
+
+    const trapz = a => { const n = a.v.length, o = new Float64Array(n), dt = 1 / a.fs; let s = 0; for (let i = 1; i < n; i++) { const x = a.v[i], y = a.v[i - 1]; s += (isFinite(x) && isFinite(y) ? (x + y) * 0.5 : 0) * dt; o[i] = s; } return o; };
+    const mov = (v, w, kind) => {
+      const n = v.length, o = new Float64Array(n), lo0 = Math.floor(w / 2);
+      if (kind === 'movmax' || kind === 'movmin') {
+        const mx = kind === 'movmax', dq = new Int32Array(n); let hd = 0, tl = 0, nxt = 0;
+        for (let i = 0; i < n; i++) { const hi = Math.min(n - 1, i - lo0 + w - 1); while (nxt <= hi) { while (tl > hd && (mx ? v[dq[tl - 1]] <= v[nxt] : v[dq[tl - 1]] >= v[nxt])) tl--; dq[tl++] = nxt++; } while (dq[hd] < i - lo0) hd++; o[i] = v[dq[hd]]; }
+        return o;
+      }
+      const c1 = new Float64Array(n + 1), c2 = new Float64Array(n + 1); for (let i = 0; i < n; i++) { const x = isFinite(v[i]) ? v[i] : 0; c1[i + 1] = c1[i] + x; c2[i + 1] = c2[i] + x * x; }
+      for (let i = 0; i < n; i++) {
+        const lo = Math.max(0, i - lo0), hi = Math.min(n - 1, i - lo0 + w - 1), m = hi - lo + 1, s1 = c1[hi + 1] - c1[lo], s2 = c2[hi + 1] - c2[lo];
+        o[i] = kind === 'movrms' ? Math.sqrt(Math.max(0, s2 / m)) : kind === 'movsum' ? s1 : Math.max(0, (s2 - s1 * s1 / m) / Math.max(1, m - 1)) ** (kind === 'movstd' ? 0.5 : 1);
+      }
+      return o;
+    };
+    const polyTrend = (v, ord) => {
+      const n = v.length, m = Math.max(0, Math.min(8, ord)), K = 2 * m + 1, S = new Float64Array(K), B = new Float64Array(m + 1);
+      for (let i = 0; i < n; i++) { const t = n > 1 ? 2 * i / (n - 1) - 1 : 0, y = v[i]; if (!isFinite(y)) continue; let p = 1; for (let k = 0; k < K; k++) { S[k] += p; if (k <= m) B[k] += y * p; p *= t; } }
+      const A = []; for (let r = 0; r <= m; r++) { A.push([]); for (let c = 0; c <= m; c++) A[r].push(S[r + c]); A[r].push(B[r]); }
+      for (let c = 0; c <= m; c++) { let pv = c; for (let r = c + 1; r <= m; r++) if (Math.abs(A[r][c]) > Math.abs(A[pv][c])) pv = r; [A[c], A[pv]] = [A[pv], A[c]]; const d = A[c][c] || 1e-300; for (let r = 0; r <= m; r++) if (r !== c) { const q = A[r][c] / d; for (let k = c; k <= m + 1; k++) A[r][k] -= q * A[c][k]; } }
+      const co = A.map((r, i) => r[m + 1] / (r[i] || 1e-300)), o = new Float64Array(n);
+      for (let i = 0; i < n; i++) { const t = n > 1 ? 2 * i / (n - 1) - 1 : 0; let y = 0; for (let k = m; k >= 0; k--) y = y * t + co[k]; o[i] = y; }
+      return o;
+    };
     function filt(a, type, p) { a = vec(a, type); const sos = ctx.DSP.design(type, p, a.fs); return {v: ctx.DSP.filtfilt(sos, a.v), fs: a.fs, ch: a.ch}; }
     function call(f, args) {
       f = f.toLowerCase();
       if (F1[f]) { if (args.length !== 1) throw new Error(f + ' tek argüman alır'); return map1(args[0], F1[f]); }
       if (RED[f] && args.length === 1) return red(args[0], RED[f]);
       switch (f) {
+        case 'integral': case 'integrate': case 'cumtrapz': { const a = vec(args[0], f); return {v: trapz(a), fs: a.fs, ch: a.ch}; }
+        case 'integral2': case 'integrate2': case 'dblint': { const a = vec(args[0], f), u = {v: trapz(a), fs: a.fs}; return {v: trapz(u), fs: a.fs, ch: a.ch}; }
+        case 'gradient': case 'turev': case 'deriv': { const a = vec(args[0], f), n = a.v.length, o = new Float64Array(n); if (n > 1) { for (let i = 1; i < n - 1; i++) o[i] = (a.v[i + 1] - a.v[i - 1]) * a.fs / 2; o[0] = (a.v[1] - a.v[0]) * a.fs; o[n - 1] = (a.v[n - 1] - a.v[n - 2]) * a.fs; } return {v: o, fs: a.fs, ch: a.ch}; }
+        case 'turev2': case 'deriv2': { const a = vec(args[0], f), n = a.v.length, o = new Float64Array(n), k = a.fs * a.fs; for (let i = 1; i < n - 1; i++) o[i] = (a.v[i + 1] - 2 * a.v[i] + a.v[i - 1]) * k; if (n > 2) { o[0] = o[1]; o[n - 1] = o[n - 2]; } return {v: o, fs: a.fs, ch: a.ch}; }
+        case 'movrms': case 'movstd': case 'movsum': case 'movmax': case 'movmin': case 'movvar': { const a = vec(args[0], f), w = Math.max(1, Math.round(scal(args[1], f))); return {v: mov(a.v, w, f), fs: a.fs, ch: a.ch}; }
+        case 'smooth': return call('movmean', args);
+        case 'zscore': { const a = vec(args[0], f), m = RED.mean(a.v), sd = RED.std(a.v) || 1; return {v: a.v.map(x => (x - m) / sd), fs: a.fs, ch: a.ch}; }
+        case 'normalize': case 'rescale': { const a = vec(args[0], f), lo = RED.min(a.v), hi = RED.max(a.v), A = args.length > 2 ? scal(args[1], f) : 0, B = args.length > 2 ? scal(args[2], f) : 1, k = (B - A) / ((hi - lo) || 1); return {v: a.v.map(x => A + (x - lo) * k), fs: a.fs, ch: a.ch}; }
+        case 'clip': { const a = vec(args[0], f), lo = scal(args[1], f), hi = scal(args[2], f); return {v: a.v.map(x => Math.min(hi, Math.max(lo, x))), fs: a.fs, ch: a.ch}; }
+        case 'shift': { const a = vec(args[0], f), k = Math.round(scal(args[1], f)), n = a.v.length, o = new Float64Array(n); for (let i = 0; i < n; i++) { const j = i - k; o[i] = j >= 0 && j < n ? a.v[j] : NaN; } return {v: o, fs: a.fs, ch: a.ch}; }
+        case 'unwrap': { const a = vec(args[0], f), n = a.v.length, o = new Float64Array(n); let off = 0; if (n) o[0] = a.v[0]; for (let i = 1; i < n; i++) { const d = a.v[i] - a.v[i - 1]; if (d > Math.PI) off -= 2 * Math.PI * Math.ceil((d - Math.PI) / (2 * Math.PI)); else if (d < -Math.PI) off += 2 * Math.PI * Math.ceil((-d - Math.PI) / (2 * Math.PI)); o[i] = a.v[i] + off; } return {v: o, fs: a.fs, ch: a.ch}; }
+        case 'detrend': { const a = vec(args[0], f), ord = args.length > 1 ? Math.round(scal(args[1], f)) : 1, tr = polyTrend(a.v, ord), o = new Float64Array(a.v.length); for (let i = 0; i < o.length; i++) o[i] = a.v[i] - tr[i]; return {v: o, fs: a.fs, ch: a.ch}; }
+        case 'trend': case 'polyfit': { const a = vec(args[0], f); return {v: polyTrend(a.v, args.length > 1 ? Math.round(scal(args[1], f)) : 1), fs: a.fs, ch: a.ch}; }
+        case 'decimate': { const a = vec(args[0], f), k = Math.max(1, Math.round(scal(args[1], f))), m = Math.floor(a.v.length / k), o = new Float64Array(m); for (let i = 0; i < m; i++) { let s = 0; for (let j = 0; j < k; j++) s += a.v[i * k + j]; o[i] = s / k; } return {v: o, fs: a.fs / k, ch: a.ch}; }
+        case 'percentile': case 'prctile': { const a = vec(args[0], f), p = scal(args[1], f), c = Float64Array.from(a.v).sort(), q = Math.min(c.length - 1, Math.max(0, p / 100 * (c.length - 1))), i = Math.floor(q); return c[i] + (c[Math.min(c.length - 1, i + 1)] - c[i]) * (q - i); }
+        case 'corr': case 'cov': { const a = vec(args[0], f), b = vec(args[1], f), n = Math.min(a.v.length, b.v.length); let sa = 0, sb = 0; for (let i = 0; i < n; i++) { sa += a.v[i]; sb += b.v[i]; } sa /= n; sb /= n; let sab = 0, saa = 0, sbb = 0; for (let i = 0; i < n; i++) { const x = a.v[i] - sa, y = b.v[i] - sb; sab += x * y; saa += x * x; sbb += y * y; } return f === 'cov' ? sab / (n - 1) : sab / Math.sqrt(saa * sbb || 1); }
         case 'diff': { const a = vec(args[0], f), o = new Float64Array(a.v.length); for (let i = 1; i < o.length; i++) o[i] = a.v[i] - a.v[i - 1]; return {v: o, fs: a.fs, ch: a.ch}; }
         case 'gradient': case 'turev': { const a = vec(args[0], f), o = new Float64Array(a.v.length); for (let i = 1; i < o.length; i++) o[i] = (a.v[i] - a.v[i - 1]) * a.fs; return {v: o, fs: a.fs, ch: a.ch}; }
         case 'cumsum': { const a = vec(args[0], f), o = new Float64Array(a.v.length); let s = 0; for (let i = 0; i < o.length; i++) { s += a.v[i]; o[i] = s; } return {v: o, fs: a.fs, ch: a.ch}; }
@@ -1329,6 +1385,47 @@ function logTicks(lo, hi) {
   return {ticks: out, minor};
 }
 function fmtLog(v) { if (v >= 1000 && v < 1e6) return (v / 1000) + 'k'; if (v >= 1e6) return (v / 1e6) + 'M'; return +v.toPrecision(3) + ''; }
+
+
+/* ---------- Canvas2D -> SVG kaydedici: Plot/SpecView aynı çizim koduyla vektör çıktı üretir ---------- */
+class SvgCtx {
+  constructor(W, H) {
+    this.W = W; this.H = H; this.o = []; this.cid = 0; this._m = document.createElement('canvas').getContext('2d');
+    this.fillStyle = '#000'; this.strokeStyle = '#000'; this.lineWidth = 1; this.font = '10px sans-serif'; this.textAlign = 'start'; this.textBaseline = 'alphabetic'; this.globalAlpha = 1; this.lineJoin = 'miter'; this.imageSmoothingEnabled = true;
+    this.dash = []; this.tf = [1, 0, 0, 1, 0, 0]; this.stack = []; this.open = 0; this.d = '';
+  }
+  static esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  _n(v) { return +v.toFixed(2); }
+  _p(x, y) { const m = this.tf; return [this._n(m[0] * x + m[2] * y + m[4]), this._n(m[1] * x + m[3] * y + m[5])]; }
+  save() { this.stack.push({st: [this.fillStyle, this.strokeStyle, this.lineWidth, this.font, this.textAlign, this.textBaseline, this.globalAlpha, this.lineJoin, this.dash, this.tf.slice()], open: this.open}); this.open = 0; }
+  restore() { for (let i = 0; i < this.open; i++) this.o.push('</g>'); const e = this.stack.pop(); if (!e) return; [this.fillStyle, this.strokeStyle, this.lineWidth, this.font, this.textAlign, this.textBaseline, this.globalAlpha, this.lineJoin, this.dash, this.tf] = e.st; this.open = e.open; }
+  setTransform(a, b, c, d, e, f) { this.tf = [a, b, c, d, e, f]; }
+  _mul(a, b, c, d, e, f) { const m = this.tf; this.tf = [m[0] * a + m[2] * b, m[1] * a + m[3] * b, m[0] * c + m[2] * d, m[1] * c + m[3] * d, m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5]]; }
+  translate(x, y) { this._mul(1, 0, 0, 1, x, y); } scale(x, y) { this._mul(x, 0, 0, y, 0, 0); } rotate(a) { const c = Math.cos(a), s = Math.sin(a); this._mul(c, s, -s, c, 0, 0); }
+  setLineDash(a) { this.dash = a || []; }
+  beginPath() { this.d = ''; } closePath() { this.d += 'Z'; }
+  moveTo(x, y) { const p = this._p(x, y); this.d += 'M' + p[0] + ' ' + p[1]; } lineTo(x, y) { const p = this._p(x, y); this.d += 'L' + p[0] + ' ' + p[1]; }
+  rect(x, y, w, h) { this.moveTo(x, y); this.lineTo(x + w, y); this.lineTo(x + w, y + h); this.lineTo(x, y + h); this.closePath(); }
+  arc(x, y, r, a0, a1) { const p0 = this._p(x - r, y), p1 = this._p(x + r, y), rr = this._n(r * Math.hypot(this.tf[0], this.tf[1])); this.d += `M${p0[0]} ${p0[1]}A${rr} ${rr} 0 1 0 ${p1[0]} ${p1[1]}A${rr} ${rr} 0 1 0 ${p0[0]} ${p0[1]}`; }
+  clip() { const id = 'c' + (this.cid++); this.o.push(`<clipPath id="${id}"><path d="${this.d}"/></clipPath><g clip-path="url(#${id})">`); this.open++; }
+  _col(c) { return c; }
+  _stroke() { let a = `stroke="${this.strokeStyle}" stroke-width="${this._n(this.lineWidth * Math.hypot(this.tf[0], this.tf[1]))}" fill="none" stroke-linejoin="${this.lineJoin === 'round' ? 'round' : 'miter'}"`; if (this.dash.length) a += ` stroke-dasharray="${this.dash.join(' ')}"`; if (this.globalAlpha < 1) a += ` stroke-opacity="${this.globalAlpha}"`; return a; }
+  _fill() { let a = `fill="${this.fillStyle}"`; if (this.globalAlpha < 1) a += ` fill-opacity="${this.globalAlpha}"`; return a; }
+  stroke() { if (this.d) this.o.push(`<path d="${this.d}" ${this._stroke()}/>`); }
+  fill() { if (this.d) this.o.push(`<path d="${this.d}" ${this._fill()} stroke="none"/>`); }
+  fillRect(x, y, w, h) { const s = this.d; this.beginPath(); this.rect(x, y, w, h); this.fill(); this.d = s; }
+  strokeRect(x, y, w, h) { const s = this.d; this.beginPath(); this.rect(x, y, w, h); this.stroke(); this.d = s; }
+  measureText(t) { this._m.font = this.font; return this._m.measureText(t); }
+  fillText(t, x, y) {
+    const m = this.tf, anchor = {center: 'middle', right: 'end', end: 'end'}[this.textAlign] || 'start', bl = {top: 'hanging', middle: 'central', bottom: 'text-after-edge', hanging: 'hanging'}[this.textBaseline] || 'auto';
+    this.o.push(`<text transform="matrix(${m.map(v => +v.toFixed(5)).join(' ')})" x="${this._n(x)}" y="${this._n(y)}" text-anchor="${anchor}" dominant-baseline="${bl}" style="font:${SvgCtx.esc(this.font)}" ${this._fill()}>${SvgCtx.esc(t)}</text>`);
+  }
+  drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh) {
+    const kx = dw / sw, ky = dh / sh, a = this._p(dx - sx * kx, dy - sy * ky), url = img.toDataURL('image/png');
+    this.o.push(`<image x="${a[0]}" y="${a[1]}" width="${this._n(img.width * kx)}" height="${this._n(img.height * ky)}" preserveAspectRatio="none" style="image-rendering:pixelated" href="${url}"/>`);
+  }
+  toString() { const close = '</g>'.repeat(this.open); return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${this.W}" height="${this.H}" viewBox="0 0 ${this.W} ${this.H}">\n${this.o.join('\n')}${close}\n</svg>\n`; }
+}
 
 class Plot {
   constructor(canvas, opts = {}) {
@@ -1679,6 +1776,7 @@ class Plot {
   }
   clearSelection() { this.sel = null; this.onSelect(null); this.invalidate(); }
 
+  toSVG(light = true) { const c = new SvgCtx(this.W, this.H), keep = this.cursors; this.render(c, this.W, this.H, light ? THEMES.light : curTheme(), true); this.cursors = keep; return c.toString(); }
   toPNG(scale = 2, light = true) {
     const w = this.W, h = this.H, c = document.createElement('canvas'); c.width = w * scale; c.height = h * scale;
     const ctx = c.getContext('2d'); ctx.scale(scale, scale);
@@ -1690,6 +1788,7 @@ class Plot {
 // ---- iz yardımcıları ----
 function trBounds(tr, xlog) {
   if (tr.kind === 'ts') { const ch = tr.ch; return [ch.t(0), ch.t(ch.n - 1)]; }
+  if (tr.marker || tr.bars) { if (!tr._xb) { let lo = Infinity, hi = -Infinity, pl = Infinity; for (let i = 0; i < tr.x.length; i++) { const v = tr.x[i]; if (!isFinite(v)) continue; if (v < lo) lo = v; if (v > hi) hi = v; if (v > 0 && v < pl) pl = v; } const w = tr.bars ? tr.bars / 2 : 0; tr._xb = [lo - w, hi + w, pl]; } return isFinite(tr._xb[0]) ? [xlog ? tr._xb[2] : tr._xb[0], tr._xb[1]] : null; }
   const x = tr.x; if (!x || !x.length) return null;
   let lo = xlog ? Math.max(x[0], 1e-300) : x[0];
   if (xlog) for (let i = 0; i < x.length; i++) if (x[i] > 0) { lo = x[i]; break; }
@@ -1702,6 +1801,7 @@ function trYRange(tr, ax) {
     const i0 = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))), i1 = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1);
     if (i1 <= i0) return null; return ch.minmax(i0, i1) ? [ch._mn, ch._mx] : null;
   }
+  if (tr.marker || tr.bars) { let lo = tr.bars ? 0 : Infinity, hi = -Infinity; for (let i = 0; i < tr.x.length; i++) { const xv = tr.x[i], v = tr.y[i]; if (!isFinite(v) || xv < ax.xlim[0] || xv > ax.xlim[1]) continue; if (ax.ylog && v <= 0) continue; if (v < lo) lo = v; if (v > hi) hi = v; } return isFinite(hi) && isFinite(lo) ? [lo, hi] : null; }
   const x = tr.x, y = tr.y; let i0 = Math.max(0, lowerBound(x, ax.xlim[0]) - 1), i1 = Math.min(x.length, lowerBound(x, ax.xlim[1]) + 1);
   let lo = Infinity, hi = -Infinity;
   for (let i = i0; i < i1; i++) { const v = y[i]; if (!isFinite(v)) continue; if (ax.ylog && v <= 0) continue; if (v < lo) lo = v; if (v > hi) hi = v; }
@@ -1745,6 +1845,21 @@ function drawTrace(ctx, tr, ax, P, T) {
       }
       ctx.stroke();
     }
+  } else if (tr.bars) { // histogram çubukları
+    const x = tr.x, y = tr.y, w = tr.bars; ctx.globalAlpha = tr.alpha || 0.7;
+    for (let i = 0; i < x.length; i++) { if (!(y[i] > 0)) continue; const a = P.xPx(ax, x[i] - w / 2), b = P.xPx(ax, x[i] + w / 2); if (b < r.x || a > r.x + r.w) continue; const y0 = P.yPx(ax, ax.ylog ? ax.ylim[0] : 0), y1 = P.yPx(ax, y[i]); ctx.fillRect(a + .5, y1, Math.max(1, b - a - 1), y0 - y1); }
+    ctx.globalAlpha = 1;
+  } else if (tr.marker) { // dağılım (scatter) işaretçileri
+    const x = tr.x, y = tr.y, n = x.length, sz = tr.msize || 4, svg = ctx instanceof SvgCtx, step = Math.max(1, Math.floor(n / (svg ? 15000 : 200000)));
+    let lut = null, cv = tr.cval; if (cv) { lut = cmapLUT('viridis'); }
+    ctx.globalAlpha = tr.alpha || (n > 20000 ? 0.35 : n > 2000 ? 0.55 : 0.85);
+    for (let i = 0; i < n; i += step) {
+      const xv = x[i], yv = y[i]; if (!isFinite(xv) || !isFinite(yv) || (ax.ylog && yv <= 0) || (ax.xlog && xv <= 0)) continue; const px = P.xPx(ax, xv), py = P.yPx(ax, yv);
+      if (px < r.x - sz || px > r.x + r.w + sz || py < r.y - sz || py > r.y + r.h + sz) continue;
+      if (cv) { const q = Math.max(0, Math.min(255, Math.round((cv[i] - tr.cmin) / ((tr.cmax - tr.cmin) || 1) * 255))); ctx.fillStyle = `rgb(${lut[q * 3]},${lut[q * 3 + 1]},${lut[q * 3 + 2]})`; }
+      ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
   } else { // xy
     const x = tr.x, y = tr.y, n = x.length; if (!n) return;
     const i0 = Math.max(0, lowerBound(x, ax.xlim[0]) - 1), i1 = Math.min(n - 1, lowerBound(x, ax.xlim[1]) + 1), count = i1 - i0 + 1;
@@ -1765,6 +1880,8 @@ function drawTrace(ctx, tr, ax, P, T) {
   }
 }
 function nearest(P, ax, tr, px, py) {
+  if (tr.marker) { let best = null; const x = tr.x, y = tr.y, step = Math.max(1, Math.floor(x.length / 300000)); for (let i = 0; i < x.length; i += step) { if (!isFinite(x[i]) || !isFinite(y[i])) continue; const d = Math.hypot(P.xPx(ax, x[i]) - px, P.yPx(ax, y[i]) - py); if (!best || d < best.d) best = {tr, d, x: x[i], y: y[i], i}; } return best; }
+  if (tr.bars) return null;
   if (tr.kind === 'ts') {
     const ch = tr.ch; if (!ch.data) return null;
     const x = P.pxX(ax, px), fi = ch.timeIdx(x), spp = Math.max(1, (ax.xlim[1] - ax.xlim[0]) / ax.rect.w * (ch.n / Math.max(1e-9, ch.t(ch.n - 1) - ch.t(0)))), w = Math.ceil(spp * 3);
@@ -1847,9 +1964,12 @@ class SpecView {
     g.putImageData(im, 0, 0); this.img = c; this.invalidate();
   }
   invalidate() { if (this._raf) return; this._raf = requestAnimationFrame(() => { this._raf = null; this.draw(); }); }
-  draw() {
-    const ctx = this.cv.getContext('2d'), T = curTheme(); ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); ctx.fillStyle = T.bg; ctx.fillRect(0, 0, this.W, this.H);
-    if (!this.spec) { ctx.fillStyle = T.muted; ctx.textAlign = 'center'; ctx.font = '14px system-ui'; ctx.fillText('Spektrogram için bir iz seçip "Hesapla"ya basın', this.W / 2, this.H / 2); return; }
+  draw() { const ctx = this.cv.getContext('2d'); ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.render(ctx, this.W, this.H, curTheme()); }
+  toPNG(scale = 2, light = true) { const c = document.createElement('canvas'); c.width = this.W * scale; c.height = this.H * scale; const g = c.getContext('2d'); g.scale(scale, scale); this.render(g, this.W, this.H, light ? THEMES.light : curTheme()); return c; }
+  toSVG(light = true) { const c = new SvgCtx(this.W, this.H); this.render(c, this.W, this.H, light ? THEMES.light : curTheme()); return c.toString(); }
+  render(ctx, W, H, T) {
+    ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+    if (!this.spec) { ctx.fillStyle = T.muted; ctx.textAlign = 'center'; ctx.font = '14px system-ui'; ctx.fillText('Spektrogram için bir iz seçip "Hesapla"ya basın', W / 2, H / 2); return; }
     const r = this.rect(), s = this.spec;
     const tx = t => r.x + (t - this.xlim[0]) / (this.xlim[1] - this.xlim[0]) * r.w, fy = f => r.y + r.h - (f - this.ylim[0]) / (this.ylim[1] - this.ylim[0]) * r.h;
     ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
@@ -1901,7 +2021,7 @@ const KIND = {
   temp: {name: 'Sıcaklık', ylabel: 'Sıcaklık', color: '#A2142F'}, press: {name: 'Basınç', ylabel: 'Basınç', color: '#7E2F8E'},
   strain: {name: 'Gerinim', ylabel: 'Gerinim', color: '#77AC30'}, volt: {name: 'Gerilim', ylabel: 'Gerilim', color: '#EDB120'},
   curr: {name: 'Akım', ylabel: 'Akım', color: '#4DBEEE'}, pos: {name: 'Konum/Açı', ylabel: 'Konum/Açı', color: '#5b7c99'},
-  state: {name: 'Durum/Bit', ylabel: 'Durum', color: '#8b929b'}, other: {name: 'Diğer', ylabel: '', color: '#8b929b'}, spec: {name: 'Spektrum (UNV)', ylabel: '', color: '#b58900'}, calc: {name: 'Türetilmiş', ylabel: '', color: '#2aa198'}
+  feat: {name: 'Özellik / Sütun', ylabel: '', color: '#5b7c99'}, state: {name: 'Durum/Bit', ylabel: 'Durum', color: '#8b929b'}, other: {name: 'Diğer', ylabel: '', color: '#8b929b'}, spec: {name: 'Spektrum (UNV)', ylabel: '', color: '#b58900'}, calc: {name: 'Türetilmiş', ylabel: '', color: '#2aa198'}
 };
 function kindOf(full, rest) {
   const s = rest.toLowerCase();
@@ -2037,7 +2157,7 @@ function devKeyOf(full) { const m = DEV_RE.exec(full); return m ? m[1] + '|' + m
 
 function applyTiming(f) {
   for (const ch of f.channels) {
-    if (ch.derived || ch.bin || ch.spec) continue;
+    if (ch.derived || ch.bin || ch.spec || ch.tbl) continue;
     const gc = ch.devKey && f.gcache ? f.gcache[ch.devKey] : null;
     if (gc) { ch.g = gc.g; ch.spp = ch.n / gc.np; ch.Tpkt = f.Tpkt; ch.dtS = ch.Tpkt / ch.spp; }
     else { ch.g = null; ch.dtS = 1 / (f.baseFs * ch.n / (f.baseN || ch.n)); ch.spp = 1; ch.Tpkt = ch.dtS; }
@@ -2055,7 +2175,7 @@ function h(tag, attrs, ...kids) {
 const S = {
   files: [], derived: null, plot: null, specPlot: null, specView: null, view: 'time',
   undo: [], redo: [], kinds: new Set(), q: '', selCh: new Set(), open: new Set(), tab: 'traces',
-  colorIdx: 0, noise: null, audio: null, pref: {dbl: 'new'}, collapsed: new Set(), rowOrder: []
+  colorIdx: 0, noise: null, audio: null, pref: {dbl: 'new'}, fopen: new Set(), seenF: new Set(), collapsed: new Set(), rowOrder: []
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function toast(msg, ms = 3500, act) { const t = $('#toast'); t.replaceChildren(msg); if (act) t.append(' ', h('button', {class: 'tact', onclick: () => { t.classList.add('hidden'); act.fn(); }}, act.t)); t.classList.remove('hidden'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), ms); }
@@ -2104,16 +2224,20 @@ async function ensureLoaded(ch) {
 function renderChips() {
   const kinds = new Set(); for (const f of allFiles()) for (const c of f.channels) kinds.add(c.kind);
   const box = $('#chips'); box.replaceChildren();
-  for (const k of Object.keys(KIND)) if (kinds.has(k)) box.append(h('span', {class: 'chip' + (S.kinds.has(k) ? ' on' : ''), onclick: () => { S.kinds.has(k) ? S.kinds.delete(k) : S.kinds.add(k); renderChips(); renderTree(); }}, kic(k, 13), KIND[k].name));
+  for (const k of Object.keys(KIND)) if (kinds.has(k)) box.append(h('span', {class: 'chip' + (S.kinds.has(k) ? ' on' : ''), title: KIND[k].name + ' kanallarını süz', role: 'button', 'aria-label': KIND[k].name, tabindex: 0, onkeydown: e => { if (e.key === 'Enter') e.target.click(); }, onclick: () => { S.kinds.has(k) ? S.kinds.delete(k) : S.kinds.add(k); renderChips(); renderTree(); }}, kic(k, 15)));
 }
 const allFiles = () => S.derived && S.derived.channels.length ? [...S.files, S.derived] : S.files;
 function chMatches(c) { if (S.kinds.size && !S.kinds.has(c.kind)) return false; if (S.q && !c.name.toLowerCase().includes(S.q)) return false; return true; }
 function renderTree() {
-  const box = $('#tree'); const st = box.scrollTop; box.replaceChildren(); S.rowOrder = [];
+  const box = $('#tree'); const scs = {}; box.querySelectorAll('.tbody').forEach(x => scs[x.dataset.f] = x.scrollTop); box.replaceChildren(); S.rowOrder = [];
   const filtering = S.q || S.kinds.size;
   for (const f of allFiles()) {
     const chs = f.channels.filter(chMatches);
-    box.append(h('div', {class: 'tfile'}, h('span', {class: 'nm', title: f.name}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
+    if (!S.seenF.has(f.id)) { S.seenF.add(f.id); S.fopen.add(f.id); }
+    const fop = filtering || S.fopen.has(f.id), grp = h('div', {class: 'fgrp' + (fop ? ' open' : '')}), body = h('div', {class: 'tbody', 'data-f': f.id});
+    const tog = () => { S.fopen.has(f.id) ? S.fopen.delete(f.id) : S.fopen.add(f.id); renderTree(); };
+    grp.append(h('div', {class: 'tfile', tabindex: 0, role: 'button', 'aria-expanded': fop, title: f.name + ' — aç/kapat', onclick: e => { if (!e.target.closest('button')) tog(); }, onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(); } }},
+      h('span', {class: 'twisty'}, fop ? '▼' : '▶'), h('span', {class: 'nm'}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
       f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => binExportDialog(f)}, '.mat') : null,
       f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
     const devs = new Map();
@@ -2121,24 +2245,27 @@ function renderTree() {
     for (const [dev, bm] of devs) {
       const dk = f.id + '/' + dev, open = filtering || S.open.has(dk);
       const total = [...bm.values()].reduce((a, b) => a + b.length, 0);
-      box.append(h('div', {class: 'tdev', onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
+      body.append(h('div', {class: 'tdev', onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
       if (!open) continue;
       for (const [base, list] of bm) {
         if (list.length > 1 && list.every(c => c.base === base)) {
           const bk = dk + '/' + base, bo = filtering || S.open.has(bk);
-          box.append(h('div', {class: 'trow', ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
+          body.append(h('div', {class: 'trow', ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
             h('span', {class: 'twisty'}, bo ? '▼' : '▶'), kic(list[0].kind), h('span', {class: 'nm'}, hl(base)), h('span', {class: 'meta'}, list.length + ' kanal'),
             h('button', {class: 'add', 'data-ic': 'stack', title: 'Her kanalı ayrı alt grafiğe ekle', onclick: e => { e.stopPropagation(); addToNewAxes(list, false); }}), h('button', {class: 'add', 'data-ic': 'layers', title: 'Hepsini tek (yeni) grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addGroup(list); }})));
-          if (bo) for (const c of list) box.append(chRow(c, c.comp || c.rest, true));
-        } else { if ((f.binary || f.unv) && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) box.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) box.append(chRow(c, c.rest, false)); }
+          if (bo) for (const c of list) body.append(chRow(c, c.comp || c.rest, true));
+        } else { if ((f.binary || f.unv) && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) body.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) body.append(chRow(c, c.rest, false)); }
       }
     }
+    if (fop) grp.append(body); box.append(grp);
   }
   if (!S.files.length) box.append(h('div', {class: 'note', style: 'padding:14px'}, 'Henüz dosya yok. "Dosya aç…" düğmesini kullanın veya .mat dosyalarını pencereye sürükleyin.'));
-  box.scrollTop = st; updateSelInfo();
+  if (typeof syncFeatUI === 'function' && S.xyPlot) syncFeatUI();
+  for (const x of box.querySelectorAll('.tbody')) if (scs[x.dataset.f]) x.scrollTop = scs[x.dataset.f]; updateSelInfo();
 }
 const hl = label => { const q = S.q, i = q ? String(label).toLowerCase().indexOf(q) : -1; return i < 0 ? [label] : [label.slice(0, i), h('mark', null, label.slice(i, i + q.length)), label.slice(i + q.length)]; };
-function dblAct(e, list) { const same = (S.pref.dbl === 'same') !== !!e.shiftKey; return same ? addToAxes(activeAxes(), list) : addToNewAxes(list, false); }
+function dblAct(e, list) {
+  if (list.length && list.every(c => c.file && c.file.feature)) return featAdd(list); const same = (S.pref.dbl === 'same') !== !!e.shiftKey; return same ? addToAxes(activeAxes(), list) : addToNewAxes(list, false); }
 function chMM(c) { if (!c.data) return ''; if (!c._mm) { let lo = Infinity, hi = -Infinity; const d = c.data; for (let i = 0; i < d.length; i++) { const v = d[i]; if (v < lo) lo = v; if (v > hi) hi = v; } c._mm = [lo, hi]; } return '\nmin ' + fmtNum(c._mm[0], 5) + ' · max ' + fmtNum(c._mm[1], 5); }
 function chRow(c, label, sub) {
   S.rowOrder.push(c);
@@ -2164,8 +2291,11 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 
 /* ---------- dosya işlemleri ---------- */
 async function openFiles(files) {
-  files = [...files]; const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)), other = files.filter(f => !/\.(mat|unv|uff)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  files = [...files]; const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)); let other = files.filter(f => !/\.(mat|unv|uff)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  const tabs = other.filter(f => /\.(csv|tsv|txt)$/i.test(f.name)); other = other.filter(f => !tabs.includes(f)); const tabsX = [];
+  if (other.length && other.every(f => /\.xlsx$/i.test(f.name))) { const keep = []; for (const f of other) { try { const sh = await XLSX.read(f); if (sh.some(s => /cerceve|çerçeve|frame/i.test(s.name))) keep.push(f); else tabsX.push([f, sh]); } catch (e) { toast('Excel okunamadı: ' + (e.message || e), 7000); } } other = keep; }
   for (const u of unvs) await unvOpen(u);
+  for (const t of tabs) await tableOpen(t); for (const [f, sh] of tabsX) await tableOpen(f, sh);
   if (other.length) await binFilesIn(other);
   for (const file of files) {
     await busy('Dosya taranıyor: ' + file.name, async () => {
@@ -2192,6 +2322,7 @@ function nextColor() { return PAL[S.colorIdx++ % PAL.length]; }
 function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), width: 1, visible: true}; }
 function axisLabelFor(ax) { const ks = new Set(ax.traces.map(t => t.ch.kind)), us = new Set(ax.traces.map(t => t.ch.unit || '')); ax.ylabel = us.size === 1 && [...us][0] ? [...us][0] : ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; }
 async function addToNewAxes(chs, one) {
+  if (chs.length && chs.every(c => c.file && c.file.feature)) return featAdd(chs);
   { const sp = chs.filter(c => c.spec); if (sp.length) { await addSpec(sp); chs = chs.filter(c => !c.spec); if (!chs.length) return; } }
   const first = !S.plot.axes.length;
   if (one) { const ax = S.plot.addAxes(); for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }
@@ -2200,6 +2331,7 @@ async function addToNewAxes(chs, one) {
   await loadForPlot(chs, first);
 }
 async function addToAxes(ax, chs) {
+  if (chs.length && chs.every(c => c.file && c.file.feature)) return featAdd(chs);
   { const sp = chs.filter(c => c.spec); if (sp.length) { await addSpec(sp); chs = chs.filter(c => !c.spec); if (!chs.length) return; } }
   if (!ax) return addToNewAxes(chs, true);
   const first = !S.plot.axes.length; for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax);
@@ -2261,17 +2393,17 @@ function buildToolbar() {
     h('span', {class: 'sep'}), ib('tb-del', 'del', 'Sil', 'Seçili noktaları sil (Delete)', deleteSelection));
   $('#tb-del').disabled = true;
 }
-function curPlot() { return S.view === 'spec' ? S.specPlot : S.plot; }
+function curPlot() { return S.view === 'spec' ? S.specPlot : S.view === 'xy' ? S.xyPlot : S.plot; }
 function setMode(m) {
-  S.plot.mode = m; S.specPlot.mode = ['box', 'lasso'].includes(m) ? 'pan' : m;
+  S.plot.mode = m; S.specPlot.mode = ['box', 'lasso'].includes(m) ? 'pan' : m; if (S.xyPlot) S.xyPlot.mode = ['box', 'lasso'].includes(m) ? 'pan' : m;
   for (const [k] of TOOLS) { const b = $('#tool-' + k); if (b) b.classList.toggle('on', k === m); }
   if (m !== 'box' && m !== 'lasso') { /* seçim kalsın */ }
 }
 function switchView(v) {
   S.view = v; for (const b of $('#viewtabs').children) b.classList.toggle('on', b.dataset.v === v);
-  for (const id of ['time', 'spec', 'sgram']) $('#v-' + id).classList.toggle('hidden', id !== v);
+  for (const id of ['time', 'spec', 'sgram', 'xy']) $('#v-' + id).classList.toggle('hidden', id !== v);
   $('#toolbar').style.display = v === 'sgram' ? 'none' : '';
-  S.plot.resize(); S.specPlot.resize(); S.specView.resize(); updateStats();
+  S.plot.resize(); S.specPlot.resize(); S.specView.resize(); if (S.xyPlot) S.xyPlot.resize(); updateStats();
 }
 
 /* ===== Uygulama: paneller, analiz, akustik, çıktı, başlatma ===== */
@@ -2283,10 +2415,10 @@ const num = id => parseFloat($('#' + id).value), sv = id => $('#' + id).value, c
 const card = (title, ...c) => h('div', {class: 'card'}, h('h4', null, title), ...c);
 const btn = (t, fn, cls, id) => h('button', {class: cls || '', onclick: fn, id}, t);
 
-const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'İfade'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['output', 'Çıktı']];
+const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'Formül'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['feat', 'Veri'], ['output', 'Çıktı']];
 function buildRight() {
   const tabs = $('#rtabs'), body = $('#rbody'); tabs.replaceChildren(); body.replaceChildren(); S.panels = {};
-  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, output: buildOutput};
+  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, output: buildOutput};
   for (const [k, t] of TABS) {
     tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => setTab(k)}, h('span', {class: 'tl'}, t)));
     const p = builders[k](); p.id = 'p-' + k; if (k !== S.tab) p.classList.add('hidden'); body.append(p); S.panels[k] = p;
@@ -2315,7 +2447,7 @@ function buildTraces() {
 function applyXlim() { const ax = activeAxes(); if (!ax) return; S.plot.setXlim(ax, num('xmin'), num('xmax')); S.plot.invalidate(); syncLimits(); }
 function clearPlot() { S.plot.axes.slice().forEach(a => S.plot.removeAxes(a)); S.plot.active = null; S.colorIdx = 0; refreshAll(); }
 function applyFs() { const tr = activeTrace(); const v = num('fsIn'); if (!tr || !(v > 0)) return; tr.ch.setFs(v); S.plot.fitAll(true); refreshAll(); toast('Örnekleme frekansı güncellendi'); }
-function refreshAll() { refreshAxesUI(); refreshTraceInfo(); updateStats(); S.plot.invalidate(); }
+function refreshAll() { refreshAxesUI(); refreshTraceInfo(); updateStats(); S.plot.invalidate(); if (typeof refreshCalcUI === 'function') refreshCalcUI(); }
 function refreshAxesUI() {
   const box = $('#axesList'); if (!box) return; box.replaceChildren();
   S.plot.axes.forEach((ax, i) => {
@@ -2442,17 +2574,18 @@ function buildAnalyze() {
   return r;
 }
 function specRange(tr, ax, scope) { const ch = tr.ch; return scope === 'vis' ? visRange(tr, ax) : [0, ch.n]; }
-async function computeSpectrum() {
+async function computeSpectrum(only) {
   const ax = activeAxes(); if (!ax || !ax.traces.length) return toast('Önce Zaman grafiğine bir iz ekleyin');
+  const list = only && only.ch ? [only] : ax.traces.filter(t => t.ch);
   await busy('Spektrum hesaplanıyor…', async prog => {
     const o = {nfft: +sv('spN'), win: sv('spWin'), overlap: +sv('spOv'), scale: sv('spScale'), maxSeg: 4000};
     const ys = sv('spY'), P = S.specPlot; P.axes.slice().forEach(a => P.removeAxes(a));
     const sa = P.addAxes({xlog: sv('spX') === 'log', ylog: ys === 'log', title: ax.title || ''});
-    const k0 = ax.traces.find(t => t.visible && t.ch), ku = k0 ? (k0.ch.unit || (k0.ch.kind === 'vib' ? 'g' : 'birim')) : 'birim', u2 = ku.length > 1 ? '(' + ku + ')' : ku;
+    const k0 = list.find(t => t.visible && t.ch), ku = k0 ? (k0.ch.unit || (k0.ch.kind === 'vib' ? 'g' : 'birim')) : 'birim', u2 = ku.length > 1 ? '(' + ku + ')' : ku;
     sa.isDb = ys === 'db';
     sa.ylabel = o.scale === 'psd' ? (ys === 'db' ? `PSD (dB re 1 ${u2}²/Hz)` : `PSD (${u2}²/Hz)`) : (ys === 'db' ? `Genlik (dB re 1 ${u2})` : (o.scale === 'amp' ? `Tepe genlik (${ku})` : `RMS genlik (${ku})`)); sa.xlabel = 'Frekans (Hz)';
     let k = 0, info = [];
-    for (const tr of ax.traces) {
+    for (const tr of list) {
       if (!tr.visible) continue; await ensureLoaded(tr.ch); const ch = tr.ch; const [a, b] = specRange(tr, ax, sv('spScope'));
       if (b - a < 64) { toast('Aralık çok kısa: ' + tr.label); continue; }
       const seg = DSP.segment(ch.data, ch.del, a, b); const res = DSP.welch(seg, ch.fs, o);
@@ -2460,7 +2593,7 @@ async function computeSpectrum() {
       const sd = DSP.stats(seg, null, 0, seg.length); if (!(sd.std > 1e-9 * (Math.abs(sd.mean) + 1e-12))) toast('Uyarı: ' + tr.label + ' seçili aralıkta sabit (değişmiyor), spektrum anlamsız.', 6000);
       const t = {kind: 'xy', x: res.f, y, label: tr.label, color: tr.color, width: 1, visible: true, raw: res.y, scale: o.scale, df: res.df, srcKind: ch.kind};
       if (ck('spPeak')) t.peaks = findPeaks(res.f, y, 3);
-      sa.traces.push(t); info.push(`${tr.label}: Δf=${fmtNum(res.df, 4)} Hz, ${res.nseg} bölüt`); prog(++k / ax.traces.length);
+      sa.traces.push(t); info.push(`${tr.label}: Δf=${fmtNum(res.df, 4)} Hz, ${res.nseg} bölüt`); prog(++k / list.length);
     }
     $('#spInfo').textContent = info.join('\n'); $('#spInfo').style.whiteSpace = 'pre-line';
     if (!sa.traces.length) { P.removeAxes(sa); return; }
@@ -2506,19 +2639,6 @@ async function applyFilterUI() {
 }
 
 /* ---------- İfade ---------- */
-function buildExpr() {
-  const r = h('div');
-  r.append(card('MATLAB tarzı ifade',
-    h('textarea', {id: 'exprIn', rows: 3, style: 'width:100%;font-family:ui-monospace,Consolas,monospace', placeholder: 'ör.  sqrt(ts41_X^2 + ts41_Y^2 + ts41_Z^2)'}),
-    fr('Sonuç adı', h('input', {type: 'text', id: 'exprName', value: 'ifade1'})),
-    fr('Kanal ekle', h('select', {id: 'exprPick'}), btn('Ekle', () => { const s = $('#exprPick').value; if (!s) return; const t = $('#exprIn'); const p = t.selectionStart; t.value = t.value.slice(0, p) + s + t.value.slice(t.selectionEnd); t.focus(); })),
-    h('div', {class: 'btns'}, btn('Hesapla ve grafiğe ekle', runExpr, 'primary'), btn('Seçili kanal adlarını ekle', () => { const t = $('#exprIn'); t.value += chsFromSel().map(c => c.name).join(' + '); })),
-    h('div', {id: 'exprMsg', class: 'note'})));
-  r.append(card('Söz dizimi',
-    h('div', {class: 'note', style: 'white-space:pre-line'}, 'Kanallar: tam kanal adı veya benzersiz son ek (ör. ts41_X).\nİşleçler: + − * / ^ ve parantez.\nSkaler: abs sqrt sin cos exp log log10 db sign …\nKanal: diff gradient integrate cumsum detrend demean movmean(x,w) movmedian(x,w) env(x)\nSüzgeç: lp(x,fc) hp(x,fc) bp(x,f1,f2) notch(x,f0,Q)\nİstatistik: mean std rms max min median p2p (skaler döner)\nFarklı uzunluktaki kanallar ilk operanda göre yeniden örneklenir.')));
-  return r;
-}
-function refreshExprPick() { const s = $('#exprPick'); if (!s) return; const keep = s.value; s.replaceChildren(h('option', {value: ''}, '— seç —')); const seen = new Set(); for (const ax of S.plot.axes) for (const t of ax.traces) if (!seen.has(t.ch.uid)) { seen.add(t.ch.uid); s.append(h('option', {value: t.ch.name}, t.ch.name)); } s.value = keep; }
 function resolveChannel(name) {
   let m = []; for (const f of allFiles()) for (const c of f.channels) if (c.name === name) m.push(c);
   if (!m.length) for (const f of allFiles()) for (const c of f.channels) if (c.name.endsWith('_' + name) || c.rest === name) m.push(c);
@@ -2526,21 +2646,6 @@ function resolveChannel(name) {
   if (m.length > 1) { const onPlot = m.filter(c => S.plot.axes.some(a => a.traces.some(t => t.ch === c))); if (onPlot.length === 1) return onPlot[0]; throw new Error('Belirsiz ad "' + name + '": ' + m.slice(0, 3).map(c => c.name).join(', ') + '…'); }
   return m[0];
 }
-async function runExpr() {
-  const src = sv('exprIn').trim(); if (!src) return; const msg = $('#exprMsg'); msg.textContent = '';
-  await busy('Hesaplanıyor…', async () => {
-    try {
-      const ids = [...new Set(EXPR.identifiers(src))].filter(i => !/^(pi|e)$/i.test(i) && !new RegExp('\\b' + i + '\\s*\\(').test(src.replace(new RegExp('\\b' + i + '\\b(?!\\s*\\()', 'g'), '')));
-      const map = {};
-      for (const id of ids) { const c = resolveChannel(id); await ensureLoaded(c); map[id] = {v: c.del ? DSP.segment(c.data, c.del, 0, c.n) : c.data, fs: c.fs, ch: c}; }
-      const res = EXPR.run(src, {DSP, resolve: n => { if (!map[n]) { const c = resolveChannel(n); throw new Error('Yüklenmemiş: ' + c.name); } return map[n]; }});
-      if (typeof res === 'number') { msg.textContent = 'Sonuç (skaler): ' + res; return; }
-      const name = sanitizeName(sv('exprName') || 'ifade'); const c = addDerived(name, res.v, res.ch, 0, true);
-      await addDerivedToPlot(c, null); msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
-    } catch (e) { msg.textContent = 'Hata: ' + e.message; }
-  });
-}
-
 /* ---------- Akustik ---------- */
 function buildAcoustic() {
   const r = h('div');
@@ -2688,7 +2793,7 @@ async function acWav(clean) {
 /* ---------- Çıktı ---------- */
 function buildOutput() {
   const r = h('div');
-  r.append(card('Grafik', fr('Ölçek', selIn('pngScale', [[1, '1×'], [2, '2×'], [3, '3×']], 2)), chkIn('pngLight', 'Açık tema ile (baskı için)', true), h('div', {class: 'btns'}, btn('PNG kaydet', savePng, 'primary'), btn('Panoya kopyala', copyPng))));
+  r.append(card('Görüntü (açık olan görünüm)', h('div', {class: 'note'}, 'Zaman, Spektrum ve Spektrogram görünümlerinin hepsi PNG veya SVG (vektör) olarak kaydedilir.'), fr('PNG ölçeği', selIn('pngScale', [[1, '1×'], [2, '2×'], [3, '3×'], [4, '4×']], 2)), chkIn('pngLight', 'Açık tema ile (baskı için)', true), h('div', {class: 'btns'}, btn('PNG kaydet', savePng, 'primary'), btn('SVG kaydet', saveSvg), btn('Panoya kopyala', copyPng))));
   r.append(card('Veri (CSV / MAT)',
     h('div', {class: 'note'}, 'Grafikteki izlerin verisi aktarılır.'),
     fr('Aralık', selIn('exScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
@@ -2699,16 +2804,33 @@ function buildOutput() {
   return r;
 }
 // Çıktı alırken: grafikte titreşim izi varsa ve Grms lejantı kapalıysa sorar
-function pngAsk(scale, light, then) {
-  const render = grms => { const old = S.plot.grms; if (grms) S.plot.grms = grms; try { return S.plot.toPNG(scale, light); } finally { S.plot.grms = old; S.plot.invalidate(); } };
+function pngAsk(scale, light, then, svg) {
+  const render = grms => { const old = S.plot.grms; if (grms) S.plot.grms = grms; try { return svg ? S.plot.toSVG(light) : S.plot.toPNG(scale, light); } finally { S.plot.grms = old; S.plot.invalidate(); } };
   const hasVib = S.plot.axes.some(ax => ax.traces.some(t => t.kind === 'ts' && t.ch.kind === 'vib'));
   if (!hasVib || S.plot.grms.mode !== 'off') return then(render(null));
   const body = h('div', null, h('div', {class: 'note'}, 'Grafikte titreşim verisi var. Lejanta Grms değeri eklensin mi?'),
     fr('Lejant', selIn('gqMode', [['all', 'Grms ekle (tüm kayıt)'], ['vis', 'Grms ekle (görünen aralık)'], ['off', 'Ekleme']], 'all')), chkIn('gqDc', 'DC (ortalama) çıkar', true));
   modal('Lejant', body, [{t: 'Devam', primary: true, fn: () => { then(render({mode: sv('gqMode'), dc: ck('gqDc')})); }}, {t: 'Vazgeç'}]);
 }
-async function savePng() { pngAsk(+sv('pngScale'), ck('pngLight'), c => c.toBlob(b => saveBlob(b, 'grafik.png'))); }
-async function copyPng() { pngAsk(2, ck('pngLight'), async c => { try { const b = await new Promise(r => c.toBlob(r)); await navigator.clipboard.write([new ClipboardItem({'image/png': b})]); toast('Panoya kopyalandı'); } catch (e) { toast('Panoya kopyalanamadı: ' + e.message); } }); }
+const VIEWNAME = {time: 'zaman', spec: 'spektrum', sgram: 'spektrogram', xy: 'dagilim'};
+function exportTarget() { return S.view === 'sgram' ? S.specView : S.view === 'spec' ? S.specPlot : S.view === 'xy' ? S.xyPlot : S.plot; }
+function exportReady() { const T = exportTarget(); if (T === S.specView ? !T.spec : !T.axes.length) { toast('Bu görünümde kaydedilecek grafik yok'); return null; } return T; }
+const expOpt = () => ({scale: $('#pngScale') ? +sv('pngScale') : 2, light: $('#pngLight') ? ck('pngLight') : true});
+async function savePng() {
+  const T = exportReady(); if (!T) return; const o = expOpt(), nm = 'MATView_' + VIEWNAME[S.view];
+  if (T === S.plot) pngAsk(o.scale, o.light, c => c.toBlob(b => saveBlob(b, nm + '.png'))); else T.toPNG(o.scale, o.light).toBlob(b => saveBlob(b, nm + '.png'));
+}
+async function saveSvg() {
+  const T = exportReady(); if (!T) return; const o = expOpt(), nm = 'MATView_' + VIEWNAME[S.view], out = x => saveBlob(new Blob([x], {type: 'image/svg+xml'}), nm + '.svg');
+  if (T === S.plot) pngAsk(1, o.light, out, true); else out(T.toSVG(o.light));
+}
+async function copyPng() {
+  const T = exportReady(); if (!T) return; const o = expOpt();
+  const go = async c => { try { const b = await new Promise(r => c.toBlob(r)); await navigator.clipboard.write([new ClipboardItem({'image/png': b})]); toast('Panoya kopyalandı'); } catch (e) { toast('Panoya kopyalanamadı: ' + e.message); } };
+  if (T === S.plot) pngAsk(2, o.light, go); else go(T.toPNG(2, o.light));
+}
+async function graphSpectrum(ax, tr) { S.plot.active = ax; if (tr) ax.active = ax.traces.indexOf(tr); setTab('analyze'); await computeSpectrum(tr); }
+async function graphSpectrogram(ax, tr) { S.plot.active = ax; tr = tr || ax.traces.find(t => t.visible && t.ch) || ax.traces.find(t => t.ch); if (!tr) return toast('Bu grafikte zaman izi yok'); ax.active = ax.traces.indexOf(tr); setTab('analyze'); await computeSpectrogram(); }
 function plotChannels() { const seen = new Set(), out = []; for (const ax of S.plot.axes) for (const t of ax.traces) if (t.visible && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); out.push({ch: t.ch, ax}); } return out; }
 async function exportData(kind) {
   const list = plotChannels(); if (!list.length) return toast('Grafikte iz yok');
@@ -2773,7 +2895,7 @@ async function loadSession(file) {
 function timeDialog() {
   const body = h('div'); if (!S.files.length) body.append(h('div', {class: 'note'}, 'Önce bir dosya açın.'));
   const rows = [];
-  for (const f of S.files.filter(x => !x.binary && !x.unv)) {
+  for (const f of S.files.filter(x => !x.binary && !x.unv && !x.table)) {
     const ndev = Object.keys(f.gcache || {}).length, lost = Object.values(f.gcache || {}).reduce((a, g) => a + g.lost, 0), nocnt = f.channels.some(c => !(c.devKey && f.gcache[c.devKey]));
     const t = h('input', {type: 'number', step: 'any', value: f.Tpkt * 1000}), b = h('input', {type: 'number', step: 'any', value: f.baseFs}); rows.push({f, t, b});
     body.append(h('div', {class: 'card'}, h('h4', null, f.name), h('div', {class: 'note'}, `${ndev} cihazda cnt sayacı bulundu · toplam kayıp paket: ${lost}`),
@@ -2809,12 +2931,13 @@ function init() {
   S.plot.selectionTargets = ax => ck('applyAll') ? ax.traces.filter(t => t.visible) : ax.traces.length ? [ax.traces[Math.min(ax.active || 0, ax.traces.length - 1)]] : [];
   S.specPlot = new Plot($('#cv-spec'), {xlabel: 'Frekans (Hz)', xName: 'f', emptyText: 'Spektrum için sağdaki "Analiz" sekmesinden "Spektrumu hesapla"ya basın',
     onHover: p => { $('#hoverinfo').textContent = p ? `f = ${fmtNum(p.x, 7)} Hz    y = ${fmtNum(p.y, 6)}` : ''; }});
+  S.xyPlot = new Plot($('#cv-xy'), {xlabel: 'x', xName: 'x', emptyText: 'Sağdaki “Veri” sekmesinden X ve Y sütunlarını seçip “Çiz”e basın', onHover: p => { $('#hoverinfo').textContent = p ? `x = ${fmtNum(p.x, 7)}    y = ${fmtNum(p.y, 6)}` : ''; }}); S.xyPlot.grms = {mode: 'off', dc: true};
   S.specView = new SpecView($('#cv-sgram')); S.specView.onHover = p => { $('#hoverinfo').textContent = `t = ${fmtNum(p.t, 6)} s   f = ${fmtNum(p.f, 6)} Hz` + (p.v != null ? `   ${p.v.toFixed(1)} dB` : ''); };
   buildToolbar(); buildRight(); renderChips(); renderTree(); refreshAll(); refreshCleanInfo(); setMode('pan');
   for (const b of $('#viewtabs').children) b.onclick = () => { switchView(b.dataset.v); };
   $('#btnBin').onclick = () => binDialog();
   $('#btnOpen').onclick = async () => {
-    if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat', '.unv', '.uff']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
+    if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat', '.unv', '.uff', '.csv', '.tsv', '.txt', '.xlsx']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
     $('#fileIn').click();
   };
   $('#fileIn').onchange = e => { openFiles(e.target.files); e.target.value = ''; };
@@ -2842,8 +2965,8 @@ function init() {
     else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
-  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshExprPick(); }, 1500);
-  initUX(); startupFiles();
+  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); }, 1500);
+  initUX(); syncFeatUI(); startupFiles();
 }
 async function startupFiles() {
   try {
@@ -3240,12 +3363,14 @@ const IC = {
   acoustic: '<path d="M2 6h3l4-3v10l-4-3H2zM11 5.5a3.5 3.5 0 010 5M13 3.5a6 6 0 010 9"/>', traces: '<path d="M1.5 11l3-5 3 3 3-6 3 4"/>',
   clean: '<path d="M3 12l5-8 5 3-4 7H5zM7 14h7"/>', analyze: '<path d="M1 8h2l1.5-5 2 10 2-8 1.5 3H15"/>', clear: '<path d="M3 4l10 10M13 4L3 14"/>', palette: '<path d="M8 1.5a6.5 6.5 0 100 13c1 0 1.5-.7 1.2-1.5-.3-.9.2-1.7 1.2-1.7H12a2.5 2.5 0 002.5-2.5C14.5 4.3 11.6 1.5 8 1.5z"/><path d="M5 7h.1M8 5h.1M11 7h.1"/>',
   undo: '<path d="M5 3L2 6l3 3M2 6h7a4 4 0 010 8H6"/>',
+  feat: '<path d="M2 3h12v10H2zM2 7h12M6 3v10"/>',
   expr: '<path d="M10 2.5C7 2.5 8 6 7 8s-1 5.5-4 5.5M4 7h6"/>', output: '<path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/>',
+  sgram: '<path d="M2 2h12v12H2zM2 6h12M2 10h12M6 2v12M10 2v12M8 8h2v2H8z"/>',
   vib: '<path d="M1 8l2-4 2 8 2-8 2 8 2-8 2 4"/>', temp: '<path d="M7 9.5V3a1 1 0 012 0v6.5a2.5 2.5 0 11-2 0z"/>', press: '<path d="M2 11a6 6 0 1112 0zM8 11l3-5"/>',
   strain: '<path d="M2 8h12M2 5v6M14 5v6M5 6.5l1 3 2-3 1 3 1-3"/>', volt: '<path d="M9 1.5L4 9h4l-1 5.5L12 7H8z"/>', curr: '<path d="M2 8h12M10 5l3 3-3 3"/>',
   pos: '<circle cx="8" cy="8" r="2"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/>', state: '<path d="M2 11h3V5h3v6h3V5h3"/>', other: '<path d="M2 8h12"/>'
 };
-KIND.ac.ic = 'acoustic'; for (const k of Object.keys(KIND)) KIND[k].ic = KIND[k].ic || (IC[k] ? k : k === 'spec' ? 'unv' : k === 'calc' ? 'fx' : 'other');
+KIND.ac.ic = 'acoustic'; KIND.feat.ic = 'chart'; for (const k of Object.keys(KIND)) KIND[k].ic = KIND[k].ic || (IC[k] ? k : k === 'spec' ? 'unv' : k === 'calc' ? 'fx' : 'other');
 const ic = (n, s = 16) => '<svg class="ic" width="' + s + '" height="' + s + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IC[n] || '') + '</svg>';
 function icEl(n, s) { const sp = document.createElement('span'); sp.className = 'ico'; sp.innerHTML = ic(n, s); return sp; }
 const kic = (k, s = 14) => { const sp = icEl((KIND[k] || KIND.other).ic, s); sp.style.color = (KIND[k] || KIND.other).color; return sp; };
@@ -3306,6 +3431,7 @@ function ctxMenu(x, y, items) {
 function traceMenu(P, ax, k, x, y) {
   const tr = ax.traces[k], items = [{t: tr.visible ? 'Gizle' : 'Göster', ic: 'eye', fn: () => { tr.visible = !tr.visible; P.invalidate(); afterStruct(P); }},
     {t: 'Rengi değiştir…', ic: 'palette', fn: () => { const c = h('input', {type: 'color', value: tr.color, style: 'position:fixed;left:-99px'}); document.body.append(c); c.oninput = () => { tr.color = c.value; P.invalidate(); }; c.onchange = () => { c.remove(); afterStruct(P); }; c.click(); }},
+    ...(P === S.plot && tr.ch ? [{t: 'Spektrum (yalnız bu iz)', ic: 'unv', fn: () => graphSpectrum(ax, tr)}, {t: 'Spektrogram (bu iz)', ic: 'sgram', fn: () => graphSpectrogram(ax, tr)}, '-'] : []),
     {t: 'Çizgi: ince', fn: () => { tr.width = .75; P.invalidate(); }}, {t: 'Çizgi: orta', fn: () => { tr.width = 1.5; P.invalidate(); }}, {t: 'Çizgi: kalın', fn: () => { tr.width = 3; P.invalidate(); }}, '-',
     {t: 'İzi kaldır', ic: 'trash', fn: () => removeTraceUndo(P, ax, k)}];
   if (P === S.plot) {
@@ -3337,6 +3463,7 @@ function buildOv(P, ov) {
     const bar = h('div', {class: 'axbar' + (P.active === ax ? ' act' : '') + (ov._hov === ax ? ' show' : '')});
     bar.append(mk('close', 'Bu alt grafiği kaldır', () => removeAxesUndo(P, ax)));
     if (ax.traces.length) bar.append(mk('clean', 'Alt grafiği boşalt: tüm izleri temizle (grafik kalır)', () => clearAxesUndo(P, ax)));
+    if (main && ax.traces.some(t => t.ch)) bar.append(mk('unv', 'Bu alt grafiğin spektrumunu hesapla (PSD/FFT)', () => graphSpectrum(ax)), mk('sgram', 'Bu alt grafiğin spektrogramını hesapla', () => graphSpectrogram(ax)));
     if (n > 1) bar.append(mk('up', 'Yukarı taşı', () => moveAxes(P, ax, -1)), mk('down', 'Aşağı taşı', () => moveAxes(P, ax, 1)), mk('expand', 'Yüksekliği büyüt / normale döndür', () => { ax.hw = (ax.hw || 1) > 1.5 ? 1 : 2.5; P.invalidate(); }));
     if (i > 0 && main) bar.append(mk('merge', 'Bir üstteki alt grafikle birleştir (aynı eksen)', () => mergeUp(P, ax)));
     ov.append(bar); const part = {ax, bar, upd() { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; }}; ov._parts.push(part);
@@ -3403,13 +3530,13 @@ function initUX() {
   try { S.collapsed = new Set(JSON.parse(localStorage.getItem('mv.collapsed') || '[]')); } catch (_) { S.collapsed = new Set(); }
   try { S.pref.dbl = localStorage.getItem('mv.dbl') || 'new'; } catch (_) {}
   const od = S.plot.onDraw; S.plot.onDraw = () => { od(); syncOverlay(S.plot); syncWelcome(); };
-  S.specPlot.onDraw = () => syncOverlay(S.specPlot);
+  S.specPlot.onDraw = () => syncOverlay(S.specPlot); S.xyPlot.onDraw = () => syncOverlay(S.xyPlot);
   for (const [dd, menu] of [['btnOpenM', 'mOpen'], ['btnSet', 'mSet']]) $('#' + dd).onclick = e => { e.stopPropagation(); const m = $('#' + menu), was = m.classList.contains('hidden'); closeMenus(); m.classList.toggle('hidden', !was); };
   document.addEventListener('click', e => { if (!e.target.closest('.dd') ) closeMenus(); else if (e.target.closest('.ddm button')) closeMenus(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenus(); });
-  $('#btnKeys').onclick = shortcutsDialog;
+  $('#btnKeys').onclick = shortcutsDialog; $('#btnPng').onclick = savePng; $('#btnSvg').onclick = saveSvg;
   $('#btnDbl').onclick = () => { S.pref.dbl = S.pref.dbl === 'same' ? 'new' : 'same'; try { localStorage.setItem('mv.dbl', S.pref.dbl); } catch (_) {} updDblBtn(); toast('Çift tık artık: ' + (S.pref.dbl === 'same' ? 'aktif grafiğe ekle' : 'yeni alt grafik')); };
-  $('#wMat').onclick = () => $('#btnOpen').click(); $('#wUnv').onclick = () => $('#btnOpen').click(); $('#wBin').onclick = () => $('#btnBin').click();
+  $('#btnTab').onclick = () => { $('#fileIn').click(); }; $('#wTab').onclick = () => $('#fileIn').click(); $('#wMat').onclick = () => $('#btnOpen').click(); $('#wUnv').onclick = () => $('#btnOpen').click(); $('#wBin').onclick = () => $('#btnBin').click();
   $('#btnSelAll').onclick = () => { const all = S.rowOrder || []; if (all.length && all.every(c => S.selCh.has(c.uid))) S.selCh.clear(); else for (const c of all) S.selCh.add(c.uid); renderTree(); };
   window.addEventListener('keydown', e => { const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return; if (e.key === '?') { e.preventDefault(); shortcutsDialog(); } });
   window.addEventListener('dragstart', e => { if (e.dataTransfer && [...e.dataTransfer.types].length === 0) return; }, true);
@@ -3418,6 +3545,372 @@ function initUX() {
   updDblBtn(); decorate(document);
   let pend = 0; new MutationObserver(() => { if (!pend) pend = requestAnimationFrame(() => { pend = 0; decorate(document); }); }).observe(document.body, {childList: true, subtree: true});
   syncWelcome();
+}
+
+/* ===== Formül sekmesi: hızlı hesaplar, iki kanal işlemleri, skaler istatistik, serbest formül ===== */
+const QOPS = [
+  ['Türev / integral', [
+    ['int', 'İntegral  ∫x dt', 'integral(A)', [], 'int'], ['int2', 'İkinci integral  ∬x dt²', 'integral2(A)', [], 'int'],
+    ['der', 'Türev  dx/dt', 'deriv(A)', [], 'der'], ['der2', 'İkinci türev  d²x/dt²', 'deriv2(A)', [], 'der'], ['cs', 'Kümülatif toplam', 'cumsum(A)', [], 'none']]],
+  ['Kayan pencere', [
+    ['mrms', 'Kayan RMS', 'movrms(A,{w1})', [{win: 1, label: 'Pencere (s)', def: 0.1}]], ['mmean', 'Kayan ortalama', 'movmean(A,{w1})', [{win: 1, label: 'Pencere (s)', def: 0.1}]],
+    ['mstd', 'Kayan standart sapma', 'movstd(A,{w1})', [{win: 1, label: 'Pencere (s)', def: 0.1}]], ['mmax', 'Kayan maksimum (üst zarf)', 'movmax(A,{w1})', [{win: 1, label: 'Pencere (s)', def: 0.1}]],
+    ['mmin', 'Kayan minimum (alt zarf)', 'movmin(A,{w1})', [{win: 1, label: 'Pencere (s)', def: 0.1}]], ['mmed', 'Kayan medyan', 'movmedian(A,{w1})', [{win: 1, label: 'Pencere (s)', def: 0.05}]]]],
+  ['Ölçekleme / dönüşüm', [
+    ['abs', 'Mutlak değer', 'abs(A)', []], ['sq', 'Kare', 'A^2', [], 'none'], ['sqrt', 'Karekök', 'sqrt(A)', [], 'none'], ['db', 'Desibel (20·log10|x|)', 'db(A)', [], 'none'],
+    ['z', 'Standartlaştır (z-skoru)', 'zscore(A)', [], 'none'], ['nrm', '0–1 aralığına normalize', 'normalize(A)', [], 'none'], ['mul', 'Çarpan uygula (×k)', '(A)*{p1}', [{label: 'k', def: 1}]], ['off', 'Ofset ekle (+c)', '(A)+{p1}', [{label: 'c', def: 0}]],
+    ['clip', 'Kırp (alt, üst)', 'clip(A,{p1},{p2})', [{label: 'Alt', def: -1}, {label: 'Üst', def: 1}]], ['neg', 'İşaret değiştir', '-A', []]]],
+  ['Eğilim', [
+    ['dc', 'DC (ortalama) çıkar', 'demean(A)', []], ['lin', 'Doğrusal eğilim çıkar', 'detrend(A)', []], ['poly', 'Polinom eğilim çıkar', 'detrend(A,{p1})', [{label: 'Derece', def: 2}]], ['trend', 'Polinom eğilim eğrisi', 'trend(A,{p1})', [{label: 'Derece', def: 2}]]]],
+  ['Süzgeç', [
+    ['lp', 'Alçak geçiren', 'lp(A,{p1})', [{label: 'Fc (Hz)', def: 100}]], ['hp', 'Yüksek geçiren', 'hp(A,{p1})', [{label: 'Fc (Hz)', def: 10}]],
+    ['bp', 'Band geçiren', 'bp(A,{p1},{p2})', [{label: 'F1 (Hz)', def: 10}, {label: 'F2 (Hz)', def: 200}]], ['nt', 'Çentik (notch)', 'notch(A,{p1},{p2})', [{label: 'F0 (Hz)', def: 50}, {label: 'Q', def: 30}]]]],
+  ['Diğer', [
+    ['env', 'Zarf (Hilbert)', 'env(A)', []], ['dec', 'Seyrelt (blok ortalaması)', 'decimate(A,{p1})', [{label: 'N', def: 4}], 'fs'], ['sh', 'Örnek kaydır', 'shift(A,{p1})', [{label: 'Örnek', def: 10}]], ['unw', 'Faz aç (unwrap)', 'unwrap(A)', []]]]
+];
+const QSCAL = [['rms', 'RMS'], ['mean', 'Ortalama'], ['std', 'Standart sapma'], ['var', 'Varyans'], ['max', 'Maksimum'], ['min', 'Minimum'], ['p2p', 'Tepe-tepe'], ['median', 'Medyan'], ['crest', 'Tepe faktörü (tepe/RMS)'],
+  ['kurt', 'Basıklık (kurtosis)'], ['skew', 'Çarpıklık'], ['meanabs', 'Mutlak ortalama'], ['energy', 'Enerji (Σx²)'], ['percentile', 'Yüzdelik (p)']];
+const QPAIR = [['A+B', 'Toplam  A + B'], ['A-B', 'Fark  A − B'], ['A*B', 'Çarpım  A · B'], ['A/B', 'Oran  A / B'], ['sqrt(A^2+B^2)', 'Bileşke  √(A²+B²)'], ['atan2(A,B)', 'Açı  atan2(A,B)'], ['corr(A,B)', 'Korelasyon (skaler)'], ['cov(A,B)', 'Kovaryans (skaler)']];
+const opMap = () => { const m = {}; for (const [, l] of QOPS) for (const o of l) m[o[0]] = o; return m; };
+function buildExpr() {
+  const r = h('div'), OM = opMap();
+  const og = QOPS.map(([g, l]) => h('optgroup', {label: g}, l.map(o => h('option', {value: o[0]}, o[1]))));
+  const p = i => h('span', {class: 'qp hidden', id: 'qpw' + i}, h('label', {id: 'qpl' + i}, ''), h('input', {type: 'number', id: 'qp' + i, step: 'any'}));
+  r.append(card('Hızlı hesap (aktif iz)',
+    h('div', {id: 'qSrc', class: 'note'}, 'Önce grafikten bir iz seçin.'),
+    fr('Hesap', h('select', {id: 'qOp', onchange: syncQop}, og)),
+    h('div', {class: 'fr'}, p(1), p(2)),
+    fr('Sonuç', selIn('qDest', [['new', 'Yeni alt grafik'], ['act', 'Aktif alt grafik']], 'new')),
+    h('div', {class: 'btns'}, btn('Hesapla ve ekle', runQuick, 'primary'), btn('Formüle yaz', () => { const f = quickFormula(); if (f) { $('#exprIn').value = f.src; $('#exprIn').dataset.pre = 'A'; toast('Formül alanına yazıldı (A = aktif iz)'); } })),
+    h('div', {id: 'qMsg', class: 'note'})));
+  r.append(card('İki kanal işlemi',
+    h('div', {class: 'note'}, 'A = aktif iz. B = grafikteki başka bir iz.'),
+    fr('B kanalı', h('select', {id: 'pB'})), fr('İşlem', selIn('pOp', QPAIR, 'A+B')),
+    h('div', {class: 'btns'}, btn('Hesapla', runPair, 'primary')), h('div', {id: 'pMsg', class: 'note'})));
+  r.append(card('Skaler hesap (tek sayı)',
+    h('div', {class: 'note'}, 'Aktif alt grafikteki görünür izlerin tamamı için hesaplanır.'),
+    fr('Ölçü', selIn('sOp', QSCAL, 'rms')), fr('p (yüzdelik)', numIn('sP', 95)), h('div', {class: 'btns'}, btn('Hesapla', runScal, 'primary')), h('pre', {id: 'sOut', class: 'note', style: 'white-space:pre-wrap;margin:6px 0 0'})));
+  r.append(card('Formül',
+    h('textarea', {id: 'exprIn', rows: 3, style: 'width:100%;font-family:ui-monospace,Consolas,monospace', placeholder: 'ör.  sqrt(ts41_X^2 + ts41_Y^2 + ts41_Z^2)'}),
+    fr('Sonuç adı', h('input', {type: 'text', id: 'exprName', value: 'formul1'})),
+    fr('Kanal ekle', h('select', {id: 'exprPick'}), btn('Ekle', () => { const s = $('#exprPick').value; if (!s) return; const t = $('#exprIn'); const p = t.selectionStart; t.value = t.value.slice(0, p) + s + t.value.slice(t.selectionEnd); t.focus(); })),
+    h('div', {class: 'btns'}, btn('Hesapla ve grafiğe ekle', runExpr, 'primary'), btn('Seçili kanal adlarını ekle', () => { $('#exprIn').value += chsFromSel().map(c => c.name).join(' + '); })),
+    h('div', {id: 'exprMsg', class: 'note'})));
+  r.append(card('Söz dizimi',
+    h('div', {class: 'note', style: 'white-space:pre-line'}, 'Kanallar: tam kanal adı veya benzersiz son ek (ör. ts41_X). İşleçler: + − * / ^ ve parantez.\nSkaler fonksiyon: abs sqrt sin cos tan exp log log10 db sign round floor ceil atan2(a,b) pow(a,b) max(a,b) min(a,b)\nİntegral/türev: integral(x) integral2(x) cumtrapz(x) deriv(x) deriv2(x) diff(x) cumsum(x)\nKayan: movmean movmedian movrms movstd movmax movmin movsum (x,w)\nÖlçekleme: zscore normalize rescale(x,a,b) clip(x,lo,hi) shift(x,n) unwrap demean detrend(x[,derece]) trend(x,derece) decimate(x,n)\nSüzgeç: lp(x,fc) hp(x,fc) bp(x,f1,f2) notch(x,f0,Q) · zarf: env(x)\nSkaler döner: mean std var rms max min median sum p2p crest kurt skew meanabs energy count percentile(x,p) corr(a,b) cov(a,b)\nFarklı uzunluktaki kanallar ilk operanda göre yeniden örneklenir.')));
+  setTimeout(() => { syncQop(); refreshCalcUI(); }, 0);
+  return r;
+}
+function syncQop() {
+  const o = opMap()[sv('qOp')]; if (!o) return; const ps = o[3] || [];
+  for (let i = 1; i <= 2; i++) { const w = $('#qpw' + i), p = ps[i - 1]; w.classList.toggle('hidden', !p); if (p) { $('#qpl' + i).textContent = p.label; if ($('#qp' + i).dataset.op !== o[0]) { $('#qp' + i).value = p.def; $('#qp' + i).dataset.op = o[0]; } } }
+}
+function refreshCalcUI() {
+  const tr = typeof activeTrace === 'function' && S.plot ? activeTrace() : null, q = $('#qSrc'); if (q) q.textContent = tr && tr.ch ? 'Kaynak: ' + tr.ch.name + (tr.ch.unit ? ' [' + tr.ch.unit + ']' : '') + ' · fs ' + fmtNum(tr.ch.fs, 5) + ' Hz' : 'Önce grafikten bir zaman izi seçin.';
+  const pick = $('#exprPick'); if (pick) { const keep = pick.value; pick.replaceChildren(h('option', {value: ''}, '— seç —')); const seen = new Set(); for (const ax of S.plot.axes) for (const t of ax.traces) if (t.ch && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); pick.append(h('option', {value: t.ch.name}, t.ch.name)); } pick.value = keep; }
+  const pb = $('#pB'); if (pb) { const keep = pb.value; pb.replaceChildren(); const seen = new Set(); for (const ax of S.plot.axes) for (const t of ax.traces) if (t.ch && t.ch !== (tr && tr.ch) && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); pb.append(h('option', {value: t.ch.uid}, t.ch.name)); } if ([...pb.options].some(o => o.value === keep)) pb.value = keep; }
+}
+// ---- çekirdek: formülü değerlendir (önceden bağlanmış değişkenlerle: A, B …) ----
+async function evalFormula(src, pre) {
+  pre = pre || {};
+  const ids = [...new Set(EXPR.identifiers(src))].filter(i => !/^(pi|e)$/i.test(i) && !new RegExp('\\b' + i + '\\s*\\(').test(src.replace(new RegExp('\\b' + i + '\\b(?!\\s*\\()', 'g'), '')));
+  const map = {};
+  for (const id of ids) { const c = pre[id] || resolveChannel(id); await ensureLoaded(c); map[id] = {v: c.del ? DSP.segment(c.data, c.del, 0, c.n) : c.data, fs: c.fs, ch: c}; }
+  return EXPR.run(src, {DSP, resolve: n => { if (!map[n]) throw new Error('Yüklenmemiş: ' + n); return map[n]; }});
+}
+const UNIT_FX = {int: u => u ? u + '·s' : '', der: u => u ? u + '/s' : '', none: () => '', fs: u => u};
+function addResult(res, name, opt) {
+  opt = opt || {}; const src = res.ch, c = addDerived(cleanName(name), res.v, src, 0, true);
+  if (res.fs && src && res.v.length !== src.n) { c.g = null; c.t0 = src.t(0); c.setFs(res.fs); }
+  if (opt.unit != null) c.unit = opt.unit; else if (src && src.unit) c.unit = src.unit;
+  if (opt.kind) c.kind = opt.kind;
+  const ax = opt.dest === 'act' && activeAxes() ? activeAxes() : S.plot.addAxes(); const tr = makeTrace(c); ax.traces.push(tr); S.plot.active = ax;
+  if (ax.traces.every(t => t.ch)) axisLabelFor(ax); if (c.unit) ax.ylabel = c.unit; switchView('time'); refreshAll(); S.plot.fitAll(true);
+  return c;
+}
+function quickFormula() {
+  const tr = activeTrace(); if (!tr || !tr.ch) { toast('Önce grafikten bir zaman izi seçin'); return null; }
+  const o = opMap()[sv('qOp')], ch = tr.ch; let src = o[2];
+  const ps = o[3] || [], vals = ps.map((p, i) => num('qp' + (i + 1)));
+  src = src.replace(/\{w1\}/g, Math.max(1, Math.round((vals[0] || 0.1) * ch.fs))).replace(/\{p1\}/g, vals[0]).replace(/\{p2\}/g, vals[1]);
+  if (vals.some(v => !isFinite(v))) { toast('Parametre değerini girin'); return null; }
+  return {src, o, ch};
+}
+async function runQuick() {
+  const f = quickFormula(); if (!f) return; const msg = $('#qMsg'); msg.textContent = '';
+  await busy('Hesaplanıyor…', async () => {
+    try {
+      const res = await evalFormula(f.src, {A: f.ch}); if (typeof res === 'number') { msg.textContent = 'Sonuç: ' + res; return; }
+      const fx = UNIT_FX[f.o[4]], tag = f.o[0], u = f.ch.unit || '';
+      addResult(res, f.ch.name + '_' + tag, {dest: sv('qDest'), unit: fx ? fx(u) : u, kind: fx && f.o[4] !== 'fs' ? 'calc' : null});
+      msg.textContent = f.o[1].replace(/\s{2}.*/, '') + ' → ' + fmtCnt(res.v.length) + ' örnek eklendi';
+    } catch (e) { msg.textContent = 'Hata: ' + e.message; }
+  });
+}
+async function runPair() {
+  const a = activeTrace(), msg = $('#pMsg'); msg.textContent = ''; if (!a || !a.ch) return toast('Önce aktif iz seçin (A)');
+  const bu = +sv('pB'), b = chByUid(bu); if (!b) return toast('B kanalı seçin'); const ex = sv('pOp');
+  await busy('Hesaplanıyor…', async () => {
+    try {
+      const res = await evalFormula(ex, {A: a.ch, B: b}); if (typeof res === 'number') { msg.textContent = QPAIR.find(q => q[0] === ex)[1].replace(/\s{2}.*/, '') + ' = ' + (+res.toPrecision(6)); return; }
+      const nm = a.ch.name + '_' + {'A+B': 'topl', 'A-B': 'fark', 'A*B': 'carp', 'A/B': 'oran', 'sqrt(A^2+B^2)': 'bileske', 'atan2(A,B)': 'aci'}[ex] + '_' + b.name;
+      addResult(res, nm, {dest: 'new', unit: ex === 'A/B' || ex === 'A*B' || ex === 'atan2(A,B)' ? '' : a.ch.unit, kind: ex === 'A+B' || ex === 'A-B' || ex.startsWith('sqrt') ? null : 'calc'}); msg.textContent = 'Eklendi: ' + nm;
+    } catch (e) { msg.textContent = 'Hata: ' + e.message; }
+  });
+}
+async function runScal() {
+  const ax = activeAxes(), out = $('#sOut'); out.textContent = ''; if (!ax) return toast('Önce grafikte iz olmalı');
+  const fn = sv('sOp'), arg = fn === 'percentile' ? ',' + num('sP') : '', lines = [];
+  await busy('Hesaplanıyor…', async () => {
+    try { for (const t of ax.traces) { if (!t.visible || !t.ch) continue; const v = await evalFormula(fn + '(A' + arg + ')', {A: t.ch}); lines.push(t.label + ':  ' + (+v.toPrecision(7)) + (t.ch.unit && ['rms', 'mean', 'std', 'max', 'min', 'p2p', 'median', 'meanabs', 'percentile'].includes(fn) ? ' ' + t.ch.unit : '')); } }
+    catch (e) { lines.push('Hata: ' + e.message); }
+  });
+  out.textContent = lines.join('\n');
+}
+async function runExpr() {
+  const src = sv('exprIn').trim(); if (!src) return; const msg = $('#exprMsg'); msg.textContent = '';
+  await busy('Hesaplanıyor…', async () => {
+    try {
+      const pre = {}; if ($('#exprIn').dataset.pre === 'A') { const tr = activeTrace(); if (tr && tr.ch) pre.A = tr.ch; }
+      const res = await evalFormula(src, pre);
+      if (typeof res === 'number') { msg.textContent = 'Sonuç (skaler): ' + res; return; }
+      const name = sanitizeName(sv('exprName') || 'formul'); addResult(res, name, {dest: 'new'}); msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
+    } catch (e) { msg.textContent = 'Hata: ' + e.message; }
+  });
+}
+
+/* ===== CSV / Excel tablo içe aktarma + zaman serisi / özellik (regresyon) verisi ayrımı ===== */
+function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const head = text.split(/\r?\n/).filter(l => l.trim()).slice(0, 8); let delim = ',', bs = -1;
+  for (const d of [';', '\t', '|', ',']) { const c = head.map(l => l.split(d).length - 1); const sc = c[0] > 0 && c.every(x => x === c[0]) ? c[0] : (c[0] > 0 ? 0.5 : -1); if (sc > bs) { bs = sc; delim = d; } }
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); cur = ''; if (row.length > 1 || row[0].trim() !== '') rows.push(row); row = []; }
+    else cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return {rows, delim};
+}
+async function readTextSmart(file) {
+  const buf = await file.arrayBuffer();
+  try { return new TextDecoder('utf-8', {fatal: true}).decode(buf); } catch (e) { return new TextDecoder('windows-1254').decode(buf); }
+}
+const NUMRE = /^[-+]?(\d+([.,]\d*)?|[.,]\d+)([eE][-+]?\d+)?$/;
+function toNum(v) {
+  if (typeof v === 'number') return v; if (v == null) return NaN; const s = String(v).trim(); if (s === '') return NaN;
+  if (NUMRE.test(s)) return parseFloat(s.replace(',', '.')); const l = s.toLowerCase(); if (l === 'nan' || l === 'na' || l === '-' || l === 'null') return NaN;
+  return Number(s);
+}
+function toDateSec(v) { if (typeof v === 'number') return NaN; const s = String(v).trim(); if (!/\d/.test(s) || !/[-\/:.]/.test(s) || NUMRE.test(s)) return NaN; let t = Date.parse(s); if (isNaN(t)) { const m = /^(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?)?$/.exec(s); if (m) t = new Date(+m[3] < 100 ? 2000 + +m[3] : +m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0), m[7] ? Math.round(+('0.' + m[7]) * 1000) : 0).getTime(); } return isNaN(t) ? NaN : t / 1000; }
+const NMX = (name, re) => re.test(name);
+function guessKind(name, unit) {
+  const s = (name + ' ' + unit).toLowerCase();
+  if (/sicak|temp|°c|\bdeg ?c/.test(s)) return 'temp'; if (/bas[ıi]n|press|\bbar\b|\bpsi\b|\bpa\b/.test(s)) return 'press'; if (/ivme|accel|titre|vib|\bg\b|\bgrms\b/.test(s)) return 'vib';
+  if (/akustik|acoust|\bspl\b|ses\b/.test(s)) return 'ac'; if (/volt|gerilim|\bv\b/.test(s)) return 'volt'; if (/ak[ıi]m|amper|current|\ba\b/.test(s)) return 'curr'; if (/gerinim|strain/.test(s)) return 'strain';
+  return 'other';
+}
+const cleanName = s => String(s).trim().replace(/[^A-Za-z0-9_À-ɏ]+/g, '_').replace(/^_+|_+$/g, '') || 'sutun';
+function analyzeSheet(T) {
+  const sh = T.sheets[T.si], rows = sh.rows.filter(r => r && r.some(v => v != null && String(v).trim() !== '')); T.nrows = rows.length;
+  const ncol = Math.min(2000, rows.reduce((m, r) => Math.max(m, r.length), 0));
+  const isNum = v => typeof v === 'number' || NUMRE.test(String(v == null ? '' : v).trim()) || (v != null && String(v).trim() !== '' && isFinite(Number(String(v).trim())));
+  if (T.header === undefined) { const a = rows[0] || [], b = rows[1] || []; const aTxt = a.filter(v => v != null && String(v).trim() !== '' && !isNum(v)).length, bNum = b.filter(isNum).length; T.header = aTxt > 0 && (bNum >= Math.max(1, b.length / 2) || aTxt >= a.length / 2); }
+  const start = T.header ? 1 : 0, cols = [], used = new Set();
+  for (let c = 0; c < ncol; c++) {
+    const raw = []; for (let r = start; r < rows.length; r++) raw.push(rows[r][c]);
+    const smp = raw.filter(v => v != null && String(v).trim() !== '').slice(0, 2000); const nn = smp.filter(isNum).length, nd = smp.filter(v => !isNum(v) && !isNaN(toDateSec(v))).length;
+    const kind = !smp.length ? 'text' : nn >= smp.length * 0.9 ? 'num' : nd >= smp.length * 0.9 ? 'date' : 'text';
+    let nm = T.header && rows[0][c] != null && String(rows[0][c]).trim() !== '' ? String(rows[0][c]).trim() : 'Sütun' + (c + 1), unit = '';
+    const m = /^(.*?)\s*[\(\[]([^\)\]]*)[\)\]]\s*$/.exec(nm); if (m && m[1]) { nm = m[1].trim(); unit = m[2].trim(); }
+    let base = cleanName(nm), k = base, i = 2; while (used.has(k)) k = base + '_' + i++; used.add(k);
+    cols.push({i: c, title: nm, name: k, unit, kind, raw, use: kind !== 'text'});
+  }
+  T.cols = cols;
+  const tc = cols.findIndex(c => c.kind === 'date' || (c.kind === 'num' && /^(t|time|zaman|s[uü]re|timestamp|tarih|date|saat)(\b|_)|\(s\)|\[s\]|^t\(/i.test(c.title + (c.unit ? '(' + c.unit + ')' : ''))));
+  const nums = cols.filter(c => c.kind === 'num').length, c0 = cols[0] && cols[0].kind === 'num' ? numsOf(cols[0]) : null;
+  let uni = false; if (c0 && c0.length > 3) { const dt = c0[1] - c0[0]; uni = dt > 0 && c0.every((v, i) => i === 0 || Math.abs(v - c0[i - 1] - dt) <= 1e-6 * Math.abs(dt) + 1e-12); }
+  T.tcol = tc >= 0 ? tc : (uni && nums > 1 && !/\b(id|no|sira|index)\b/i.test(cols[0].title) ? 0 : -1);
+  T.dtype = tc >= 0 || nums <= 1 ? 'time' : (T.tcol === 0 ? 'time' : 'feature');
+  T.tunit = T.tunit || (cols[T.tcol] && /\(ms\)|\[ms\]|msn|milisaniye/i.test(cols[T.tcol].title + cols[T.tcol].unit) ? 'ms' : 's'); T.fs = T.fs || 1; T.why = tc >= 0 ? 'Zaman sütunu bulundu: "' + cols[tc].title + '"' : T.dtype === 'feature' ? 'Zaman benzeri sütun yok, birden çok sayısal sütun var' : 'Tek sayısal sütun / düzgün artan ilk sütun';
+}
+function numsOf(col) { if (!col._n) { const o = new Float64Array(col.raw.length); for (let i = 0; i < o.length; i++) o[i] = col.kind === 'date' ? toDateSec(col.raw[i]) : toNum(col.raw[i]); col._n = o; } return col._n; }
+async function tableOpen(file, sheets) {
+  const T = {name: file.name, si: 0};
+  try {
+    if (sheets) T.sheets = sheets; else if (/\.xlsx$/i.test(file.name)) T.sheets = await XLSX.read(file);
+    else { const p = parseCSV(await readTextSmart(file)); T.sheets = [{name: 'CSV', rows: p.rows}]; }
+    if (!T.sheets.length || !T.sheets.some(s => s.rows && s.rows.length > 1)) throw new Error('Dosyada veri satırı bulunamadı');
+    T.si = Math.max(0, T.sheets.findIndex(s => s.rows && s.rows.length > 1)); analyzeSheet(T);
+  } catch (e) { console.error(e); toast('Tablo okunamadı: ' + (e.message || e) + ' — .csv, .tsv, .txt veya .xlsx kullanın.', 9000); return; }
+  tableDialog(T);
+}
+function tableDialog(T) {
+  const dyn = h('div'), body = h('div', null, dyn);
+  const R = () => {
+    dyn.replaceChildren();
+    const num = T.cols.filter(c => c.kind !== 'text');
+    dyn.append(h('div', {class: 'fr'}, h('label', null, 'Dosya'), h('b', null, T.name), h('span', {class: 'muted'}, ' · ' + fmtCnt(T.nrows - (T.header ? 1 : 0)) + ' satır · ' + T.cols.length + ' sütun')));
+    if (T.sheets.length > 1) dyn.append(fr('Sayfa', h('select', {onchange: e => { T.si = +e.target.value; T.header = undefined; analyzeSheet(T); R(); }}, T.sheets.map((s, i) => h('option', {value: i, selected: i === T.si}, s.name + ' (' + (s.rows || []).length + ' satır)')))));
+    dyn.append(h('div', {class: 'fr chk'}, h('label', null, 'İlk satır sütun başlığı'), h('input', {type: 'checkbox', checked: T.header, onchange: e => { T.header = e.target.checked; analyzeSheet(T); R(); }})));
+    dyn.append(h('div', {class: 'note'}, 'Otomatik tür: ' + (T.dtype === 'time' ? 'ZAMAN SERİSİ' : 'ÖZELLİK / REGRESYON VERİSİ') + ' — ' + T.why + '. Gerekirse değiştirin.'));
+    dyn.append(fr('Veri türü', h('select', {onchange: e => { T.dtype = e.target.value; R(); }}, h('option', {value: 'time', selected: T.dtype === 'time'}, 'Zaman serisi (zamana bağlı sinyal) → Zaman grafiği'), h('option', {value: 'feature', selected: T.dtype === 'feature'}, 'Özellik / regresyon (zamandan bağımsız) → Dağılım grafiği'))));
+    if (T.dtype === 'time') {
+      dyn.append(fr('Zaman sütunu', h('select', {onchange: e => { T.tcol = +e.target.value; R(); }}, h('option', {value: -1, selected: T.tcol < 0}, '— yok (örnek sırası, sabit fs) —'), num.map(c => h('option', {value: c.i, selected: c.i === T.tcol}, c.title + (c.kind === 'date' ? ' (tarih/saat)' : ''))))));
+      if (T.tcol >= 0 && T.cols[T.tcol].kind === 'num') dyn.append(fr('Zaman birimi', selIn('tbTU', [['s', 'saniye'], ['ms', 'milisaniye'], ['us', 'mikrosaniye'], ['min', 'dakika'], ['h', 'saat']], T.tunit)));
+      if (T.tcol < 0) dyn.append(fr('Örnekleme fs (Hz)', numIn('tbFs', T.fs, {min: 1e-9})));
+      const tv = T.tcol >= 0 ? tmeta(T) : null; if (tv) dyn.append(h('div', {class: 'note'}, tv));
+    }
+    const tb = h('table', {class: 'ftab'}), hd = h('tr', null, ...['Al', 'Sütun', 'Ad (formülde)', 'Birim', 'Tür', 'Aralık', 'Örnek'].map(x => h('th', null, x)));
+    tb.append(h('thead', null, hd));
+    for (const c of T.cols) {
+      const isT = T.dtype === 'time' && c.i === T.tcol, v = c.kind !== 'text' ? numsOf(c) : null; let lo = Infinity, hi = -Infinity, nan = 0; if (v) for (let i = 0; i < v.length; i++) { const x = v[i]; if (!isFinite(x)) { nan++; continue; } if (x < lo) lo = x; if (x > hi) hi = x; }
+      tb.append(h('tr', null, h('td', null, h('input', {type: 'checkbox', checked: c.use && !isT, disabled: c.kind === 'text' || isT, onchange: e => { c.use = e.target.checked; }})), h('td', null, c.title), h('td', null, h('input', {type: 'text', value: c.name, style: 'width:110px', onchange: e => { c.name = cleanName(e.target.value); e.target.value = c.name; }})),
+        h('td', null, h('input', {type: 'text', value: c.unit, style: 'width:50px', onchange: e => { c.unit = e.target.value.trim(); }})), h('td', null, isT ? 'zaman' : c.kind === 'num' ? 'sayısal' : c.kind === 'date' ? 'tarih' : 'metin (atlanır)'),
+        h('td', {class: 'muted'}, v && isFinite(lo) ? fmtNum(lo, 5) + ' … ' + fmtNum(hi, 5) + (nan ? ' · ' + nan + ' boş' : '') : '—'), h('td', {class: 'muted'}, String(c.raw[0] ?? '').slice(0, 14))));
+    }
+    dyn.append(h('div', {style: 'overflow:auto;max-height:260px;margin-top:6px'}, tb));
+  };
+  const tmeta = T => {
+    const c = T.cols[T.tcol], v = numsOf(c), k = c.kind === 'date' ? 1 : {s: 1, ms: 1e-3, us: 1e-6, min: 60, h: 3600}[T.tunit] || 1, d = []; for (let i = 1; i < v.length; i++) { const x = (v[i] - v[i - 1]) * k; if (x > 0) d.push(x); }
+    if (!d.length) return 'Uyarı: zaman sütunu artan değil.'; d.sort((a, b) => a - b); const md = d[d.length >> 1], uni = d.length >= v.length * 0.9 && d.every(x => Math.abs(x - md) <= 0.02 * md);
+    return 'Örnekleme aralığı ' + fmtNum(md, 6) + ' s (fs ≈ ' + fmtNum(1 / md, 6) + ' Hz) · ' + (uni ? 'düzenli' : 'DÜZENSİZ zaman damgaları (olduğu gibi korunur; spektrum için fs yaklaşıktır)');
+  };
+  R();
+  modal('Tablo içe aktar — ' + T.name, body, [{t: 'İçe aktar', primary: true, fn: () => { try { if ($('#tbTU')) T.tunit = sv('tbTU'); if ($('#tbFs')) T.fs = num('tbFs'); tableImport(T); } catch (e) { toast('İçe aktarma hatası: ' + e.message, 8000); return false; } }}, {t: 'İptal'}]);
+}
+function tableImport(T) {
+  const use = T.cols.filter(c => c.use && c.kind !== 'text' && !(T.dtype === 'time' && c.i === T.tcol)); if (!use.length) throw new Error('En az bir sayısal sütun seçin');
+  const n = T.cols[0].raw.length, f = {id: 'f' + (importFile.seq++), name: T.name + (T.sheets.length > 1 ? ' [' + T.sheets[T.si].name + ']' : ''), table: true, feature: T.dtype === 'feature', mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: 1, baseFs: 1, cnts: {}, baseN: n, cols: []};
+  let order = null, t = null, t0 = 0, dt = 1, uni = true;
+  if (T.dtype === 'time' && T.tcol >= 0) {
+    const c = T.cols[T.tcol], k = c.kind === 'date' ? 1 : {s: 1, ms: 1e-3, us: 1e-6, min: 60, h: 3600}[T.tunit] || 1, raw = numsOf(c); t = new Float64Array(n); for (let i = 0; i < n; i++) t[i] = raw[i] * k;
+    let ok = true; for (let i = 1; i < n; i++) if (!(t[i] >= t[i - 1])) { ok = false; break; }
+    if (!ok) { order = Array.from({length: n}, (_, i) => i).filter(i => isFinite(t[i])).sort((a, b) => t[a] - t[b]); t = Float64Array.from(order.map(i => t[i])); }
+    const d = []; for (let i = 1; i < t.length; i++) if (t[i] > t[i - 1]) d.push(t[i] - t[i - 1]); if (!d.length) throw new Error('Zaman sütunu artan değil');
+    d.sort((a, b) => a - b); dt = +d[d.length >> 1].toPrecision(9); uni = d.length >= t.length * 0.9 && d.every(x => Math.abs(x - dt) <= 0.02 * dt); t0 = t[0];
+  } else if (T.dtype === 'time') { dt = 1 / (T.fs || 1); }
+  for (const c of use) {
+    let v = Float64Array.from(numsOf(c)); if (order) v = Float64Array.from(order.map(i => v[i]));
+    const col = {name: c.name, unit: c.unit, data: v}; f.cols.push(col);
+    const ch = new Channel({name: c.name, rest: c.name, base: c.name, comp: '', dev: 'Sütunlar', kind: f.feature ? 'feat' : guessKind(c.title, c.unit), n: v.length, file: f, label: c.name, varIdx: -1, unit: c.unit, tbl: true, binLoad: async () => col.data});
+    if (f.feature) { ch.dtS = 1; ch.t0 = 0; } else if (t && !uni) { ch.g = Float64Array.from(t, x => (x - t0) / dt); ch.spp = 1; ch.Tpkt = dt; ch.t0 = t0; } else { ch.dtS = dt; ch.t0 = t0; ch.spp = 1; ch.Tpkt = dt; }
+    ch.data = v; f.channels.push(ch);
+  }
+  S.files.push(f); S.fopen.add(f.id); S.open.add(f.id + '/Sütunlar'); renderChips(); renderTree();
+  if (f.feature) { S.feat = {fid: f.id, x: '__idx', ys: new Set([f.cols[Math.min(1, f.cols.length - 1)].name]), type: 'scatter', fit: 'none', deg: 2, resid: false, color: '', bins: 0}; if (f.cols.length > 1) S.feat.x = f.cols[0].name; syncFeatUI(); setTab('feat'); featPlot(); }
+  else { const first = f.channels.slice(0, 4); if (!S.plot.axes.length) addToNewAxes(first, false); toast(f.name + ': ' + f.channels.length + ' kanal · fs ' + fmtNum(f.channels[0].fs, 5) + ' Hz'); }
+}
+
+/* ---------- Özellik / regresyon görünümü ---------- */
+function featFile() { return S.feat && S.files.find(x => x.id === S.feat.fid && x.feature); }
+function syncFeatUI() {
+  const has = S.files.some(f => f.feature), tabb = document.querySelector('#rtabs button[data-t=feat]'), vt = document.querySelector('#viewtabs button[data-v=xy]');
+  if (tabb) tabb.classList.toggle('hidden', !has); if (vt) vt.classList.toggle('hidden', !has);
+  if (!has && S.view === 'xy') switchView('time'); if (!has && S.tab === 'feat') setTab('traces');
+  if (has && !featFile()) { const f = S.files.find(x => x.feature); S.feat = {fid: f.id, x: f.cols[0].name, ys: new Set([f.cols[Math.min(1, f.cols.length - 1)].name]), type: 'scatter', fit: 'none', deg: 2, resid: false, color: '', bins: 0}; }
+  refreshFeatUI();
+}
+function buildFeat() { return h('div', null, h('div', {id: 'featBody'})); }
+function refreshFeatUI() {
+  const box = $('#featBody'); if (!box) return; box.replaceChildren(); const f = featFile(); if (!f) { box.append(h('div', {class: 'note'}, 'Zamandan bağımsız (özellik/regresyon) veri yok. “Aç ▸ Tablo (CSV / Excel)…” ile bir tablo içe aktarın.')); return; }
+  const F = S.feat, fl = S.files.filter(x => x.feature), cols = f.cols;
+  if (fl.length > 1) box.append(card('Veri kümesi', fr('Tablo', h('select', {onchange: e => { const g = fl.find(x => x.id === e.target.value); S.feat = {fid: g.id, x: g.cols[0].name, ys: new Set([g.cols[Math.min(1, g.cols.length - 1)].name]), type: 'scatter', fit: 'none', deg: 2, resid: false, color: '', bins: 0}; refreshFeatUI(); }}, fl.map(x => h('option', {value: x.id, selected: x.id === F.fid}, x.name))))));
+  const ylist = h('div', {style: 'max-height:150px;overflow:auto;border:1px solid var(--border);border-radius:4px;padding:4px'});
+  for (const c of cols) ylist.append(h('div', {class: 'fr chk', style: 'margin:1px 0'}, h('label', {for: 'fy_' + c.name}, c.name + (c.unit ? ' [' + c.unit + ']' : '')), h('input', {type: 'checkbox', id: 'fy_' + c.name, checked: F.ys.has(c.name), onchange: e => { e.target.checked ? F.ys.add(c.name) : F.ys.delete(c.name); }})));
+  box.append(card('Veri: ' + f.name + ' (' + fmtCnt(f.cols[0].data.length) + ' satır)',
+    fr('X (bağımsız)', h('select', {id: 'fX', onchange: e => { F.x = e.target.value; }}, h('option', {value: '__idx', selected: F.x === '__idx'}, 'Satır numarası'), cols.map(c => h('option', {value: c.name, selected: c.name === F.x}, c.name)))), h('div', {class: 'note'}, 'Y (bağımlı / hedef) sütunlar:'), ylist,
+    fr('Renk sütunu', h('select', {onchange: e => { F.color = e.target.value; }}, h('option', {value: '', selected: !F.color}, '— yok —'), cols.map(c => h('option', {value: c.name, selected: c.name === F.color}, c.name))))));
+  box.append(card('Grafik ve regresyon',
+    fr('Grafik türü', h('select', {onchange: e => { F.type = e.target.value; refreshFeatUI(); }}, [['scatter', 'Dağılım (nokta)'], ['line', 'Çizgi (X’e göre sıralı)'], ['both', 'Çizgi + nokta'], ['hist', 'Histogram (Y sütunları)']].map(([v, t]) => h('option', {value: v, selected: F.type === v}, t)))),
+    F.type === 'hist' ? fr('Kutu sayısı', h('input', {type: 'number', min: 0, step: 1, value: F.bins, title: '0 = otomatik (Sturges)', onchange: e => { F.bins = +e.target.value | 0; }})) : null,
+    F.type !== 'hist' ? fr('Regresyon', h('select', {onchange: e => { F.fit = e.target.value; refreshFeatUI(); }}, [['none', 'Yok'], ['linear', 'Doğrusal  y = a + b·x'], ['poly', 'Polinom (derece)'], ['exp', 'Üstel  y = a·e^(b·x)'], ['power', 'Güç  y = a·x^b'], ['log', 'Logaritmik  y = a + b·ln x']].map(([v, t]) => h('option', {value: v, selected: F.fit === v}, t)))) : null,
+    F.fit === 'poly' && F.type !== 'hist' ? fr('Derece', h('input', {type: 'number', min: 2, max: 8, step: 1, value: F.deg, onchange: e => { F.deg = Math.max(2, Math.min(8, +e.target.value | 0)); }})) : null,
+    F.fit !== 'none' && F.type !== 'hist' ? h('div', {class: 'fr chk'}, h('label', {for: 'fRes'}, 'Artık (residual) grafiği ekle'), h('input', {type: 'checkbox', id: 'fRes', checked: F.resid, onchange: e => { F.resid = e.target.checked; }})) : null,
+    h('div', {class: 'btns'}, btn('Çiz', featPlot, 'primary'), btn('Korelasyon matrisi', featCorr), btn('Sütun istatistikleri', featStats)),
+    h('pre', {id: 'featInfo', class: 'note', style: 'white-space:pre-wrap;margin:6px 0 0'})));
+}
+function polySolve(x, y, deg) {
+  const n = x.length; let lo = Infinity, hi = -Infinity; for (let i = 0; i < n; i++) { if (x[i] < lo) lo = x[i]; if (x[i] > hi) hi = x[i]; }
+  const mid = (lo + hi) / 2, sc = (hi - lo) / 2 || 1, m = deg, K = 2 * m + 1, S2 = new Float64Array(K), B = new Float64Array(m + 1);
+  for (let i = 0; i < n; i++) { const t = (x[i] - mid) / sc; let p = 1; for (let k = 0; k < K; k++) { S2[k] += p; if (k <= m) B[k] += y[i] * p; p *= t; } }
+  const A = []; for (let r = 0; r <= m; r++) { A.push([]); for (let c = 0; c <= m; c++) A[r].push(S2[r + c]); A[r].push(B[r]); }
+  for (let c = 0; c <= m; c++) { let pv = c; for (let r = c + 1; r <= m; r++) if (Math.abs(A[r][c]) > Math.abs(A[pv][c])) pv = r; [A[c], A[pv]] = [A[pv], A[c]]; const d = A[c][c] || 1e-300; for (let r = 0; r <= m; r++) if (r !== c) { const q = A[r][c] / d; for (let k = c; k <= m + 1; k++) A[r][k] -= q * A[c][k]; } }
+  const co = A.map((r, i) => r[m + 1] / (r[i] || 1e-300));
+  // t'ye göre katsayıları x'e çevir: sadece değerlendirme fonksiyonu veriyoruz; doğrusal için a,b ayrıca hesaplanır
+  const ev = xv => { const t = (xv - mid) / sc; let s = 0; for (let k = m; k >= 0; k--) s = s * t + co[k]; return s; };
+  let a = null, b = null; if (m === 1) { b = co[1] / sc; a = co[0] - co[1] * mid / sc; }
+  return {ev, a, b};
+}
+function fitXY(x, y, type, deg) {
+  const X = [], Y = []; for (let i = 0; i < x.length; i++) { let ok = isFinite(x[i]) && isFinite(y[i]); if (ok && (type === 'power' || type === 'log') && !(x[i] > 0)) ok = false; if (ok && (type === 'exp' || type === 'power') && !(y[i] > 0)) ok = false; if (ok) { X.push(x[i]); Y.push(y[i]); } }
+  if (X.length < 3) throw new Error('Yeterli geçerli nokta yok' + (type !== 'linear' && type !== 'poly' ? ' (bu model için x/y > 0 olmalı)' : ''));
+  const g = v => +v.toPrecision(4); let pred, eq;
+  if (type === 'linear') { const p = polySolve(X, Y, 1); pred = p.ev; eq = `y = ${g(p.a)} + ${g(p.b)}·x`; }
+  else if (type === 'poly') { const p = polySolve(X, Y, deg); pred = p.ev; eq = 'polinom derece ' + deg; }
+  else if (type === 'exp') { const p = polySolve(X, Y.map(Math.log), 1); pred = v => Math.exp(p.ev(v)); eq = `y = ${g(Math.exp(p.a))}·e^(${g(p.b)}·x)`; }
+  else if (type === 'power') { const p = polySolve(X.map(Math.log), Y.map(Math.log), 1); pred = v => Math.exp(p.ev(Math.log(v))); eq = `y = ${g(Math.exp(p.a))}·x^${g(p.b)}`; }
+  else { const p = polySolve(X.map(Math.log), Y, 1); pred = v => p.ev(Math.log(v)); eq = `y = ${g(p.a)} + ${g(p.b)}·ln x`; }
+  let m = 0; for (const v of Y) m += v; m /= Y.length; let ssr = 0, sst = 0; for (let i = 0; i < Y.length; i++) { const e = Y[i] - pred(X[i]); ssr += e * e; sst += (Y[i] - m) ** 2; }
+  return {pred, eq, r2: sst > 0 ? 1 - ssr / sst : 1, rmse: Math.sqrt(ssr / Y.length), n: Y.length, x0: Math.min(...X), x1: Math.max(...X)};
+}
+function featPlot() {
+  const f = featFile(); if (!f) return; const F = S.feat, P = S.xyPlot, info = [];
+  const col = n => f.cols.find(c => c.name === n), N = f.cols[0].data.length, ys = f.cols.filter(c => F.ys.has(c.name)); if (!ys.length) return toast('En az bir Y sütunu seçin');
+  const xc = F.x === '__idx' ? null : col(F.x), xdata = xc ? xc.data : Float64Array.from({length: N}, (_, i) => i + 1), xname = xc ? xc.name + (xc.unit ? ' (' + xc.unit + ')' : '') : 'Satır numarası';
+  P.axes.slice().forEach(a => P.removeAxes(a)); P.linkX = true;
+  const ax = P.addAxes({xlabel: xname, ylabel: ys.length === 1 ? ys[0].name + (ys[0].unit ? ' (' + ys[0].unit + ')' : '') : ys.map(c => c.unit).filter((v, i, a) => v && a.indexOf(v) === i).join(', ')}), cc = F.color ? col(F.color) : null;
+  let rax = null;
+  const palette = ['#0072BD', '#D95319', '#77AC30', '#7E2F8E', '#EDB120', '#4DBEEE', '#A2142F'];
+  if (F.type === 'hist') {
+    ax.xlabel = ys.length === 1 ? ys[0].name : 'Değer'; ax.ylabel = 'Adet';
+    let lo = Infinity, hi = -Infinity; for (const c of ys) for (const v of c.data) if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    ys.forEach((c, k) => {
+      const v = Array.from(c.data).filter(isFinite), nb = F.bins > 0 ? F.bins : Math.max(5, Math.ceil(Math.log2(v.length) + 1)), w = (hi - lo) / nb || 1, cnt = new Float64Array(nb), cx = new Float64Array(nb);
+      for (let i = 0; i < nb; i++) cx[i] = lo + (i + 0.5) * w; for (const e of v) cnt[Math.min(nb - 1, Math.floor((e - lo) / w))]++;
+      ax.traces.push({kind: 'xy', x: cx, y: cnt, bars: w, label: c.name, color: palette[k % palette.length], width: 1, visible: true}); info.push(`${c.name}: ${v.length} değer, ${nb} kutu, aralık ${fmtNum(lo, 5)} … ${fmtNum(hi, 5)}`);
+    });
+  } else {
+    ys.forEach((c, k) => {
+      const color = palette[k % palette.length], x = xdata, y = c.data;
+      let sx = x, sy = y; if (F.type !== 'scatter') { const idx = Array.from({length: N}, (_, i) => i).filter(i => isFinite(x[i]) && isFinite(y[i])).sort((a, b) => x[a] - x[b]); sx = Float64Array.from(idx.map(i => x[i])); sy = Float64Array.from(idx.map(i => y[i])); }
+      if (F.type !== 'line') { const t = {kind: 'xy', x, y, marker: true, msize: 4, label: c.name, color, width: 1, visible: true}; if (cc) { let lo = Infinity, hi = -Infinity; for (const v of cc.data) if (isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } t.cval = cc.data; t.cmin = lo; t.cmax = hi; } ax.traces.push(t); }
+      if (F.type !== 'scatter') ax.traces.push({kind: 'xy', x: sx, y: sy, label: F.type === 'line' ? c.name : c.name + ' (çizgi)', color, width: 1.2, visible: true});
+      if (F.fit !== 'none') {
+        try {
+          const r = fitXY(x, y, F.fit, F.deg), gx = []; for (let i = 0; i <= 300; i++) { const v = r.x0 + (r.x1 - r.x0) * i / 300; gx.push(v); }
+          const gy = gx.map(r.pred); ax.traces.push({kind: 'xy', x: Float64Array.from(gx), y: Float64Array.from(gy), label: `Uyum ${c.name}: ${r.eq}  R²=${+r.r2.toFixed(4)}`, color: '#1b1f24', width: 2, visible: true, dash: k % 2 ? [3, 3] : null});
+          info.push(`${c.name} ~ ${xc ? xc.name : 'satır no'}: ${r.eq}\n   R² = ${+r.r2.toFixed(5)} · RMSE = ${+r.rmse.toPrecision(4)} · n = ${r.n}`);
+          if (F.resid) { if (!rax) rax = P.addAxes({xlabel: xname, ylabel: 'Artık', title: 'Artıklar (y − uyum)'}); const rx = [], ry = []; for (let i = 0; i < N; i++) if (isFinite(x[i]) && isFinite(y[i]) && !((F.fit === 'power' || F.fit === 'log') && !(x[i] > 0))) { const p = r.pred(x[i]); if (isFinite(p)) { rx.push(x[i]); ry.push(y[i] - p); } } rax.traces.push({kind: 'xy', x: Float64Array.from(rx), y: Float64Array.from(ry), marker: true, msize: 3, label: 'Artık ' + c.name, color, width: 1, visible: true}); }
+        } catch (e) { info.push(c.name + ': uyum yapılamadı — ' + e.message); }
+      } else if (xc) { const r = pearson(x, y); if (r != null) info.push(`${c.name} ↔ ${xc.name}: korelasyon r = ${+r.toFixed(4)}`); }
+    });
+  }
+  if (cc) info.push('Nokta rengi: ' + cc.name + ' (' + fmtNum(Math.min(...cc.data.filter(isFinite)), 4) + ' → ' + fmtNum(Math.max(...cc.data.filter(isFinite)), 4) + ', koyu mordan sarıya)');
+  S.xyPlot.active = ax; switchView('xy'); P.fitAll(); if ($('#featInfo')) $('#featInfo').textContent = info.join('\n');
+}
+function pearson(a, b) { let n = 0, sa = 0, sb = 0; for (let i = 0; i < a.length; i++) if (isFinite(a[i]) && isFinite(b[i])) { n++; sa += a[i]; sb += b[i]; } if (n < 3) return null; sa /= n; sb /= n; let sab = 0, saa = 0, sbb = 0; for (let i = 0; i < a.length; i++) if (isFinite(a[i]) && isFinite(b[i])) { const x = a[i] - sa, y = b[i] - sb; sab += x * y; saa += x * x; sbb += y * y; } return saa > 0 && sbb > 0 ? sab / Math.sqrt(saa * sbb) : null; }
+function featCorr() {
+  const f = featFile(); if (!f) return; const cols = f.cols;
+  const tb = h('table', {class: 'kv', style: 'width:auto'}), hd = h('tr', null, h('th', null, ''), cols.map(c => h('th', {style: 'writing-mode:vertical-rl;transform:rotate(180deg);height:80px'}, c.name)));
+  tb.append(hd);
+  const col = r => { if (r == null) return 'var(--panel)'; const a = Math.min(1, Math.abs(r)); return r >= 0 ? `color-mix(in srgb, #D95319 ${Math.round(a * 85)}%, var(--panel))` : `color-mix(in srgb, #0072BD ${Math.round(a * 85)}%, var(--panel))`; };
+  cols.forEach((ci, i) => tb.append(h('tr', null, h('th', null, ci.name), cols.map((cj, j) => { const r = i === j ? 1 : pearson(ci.data, cj.data); return h('td', {style: 'text-align:center;cursor:pointer;background:' + col(r), title: ci.name + ' ↔ ' + cj.name + (r == null ? '' : '  r = ' + r.toFixed(4)) + '\nTıkla: X=' + cj.name + ', Y=' + ci.name, onclick: () => { if (i === j) return; S.feat.x = cj.name; S.feat.ys = new Set([ci.name]); S.feat.type = 'scatter'; refreshFeatUI(); featPlot(); $('#modal').classList.add('hidden'); }}, r == null ? '–' : r.toFixed(2)); }))));
+  modal('Korelasyon matrisi (Pearson r)', h('div', null, h('div', {class: 'note'}, 'Kırmızı: pozitif, mavi: negatif ilişki. Hücreye tıklayınca o çift için dağılım grafiği çizilir.'), h('div', {style: 'overflow:auto'}, tb)), [{t: 'Kapat', primary: true}]);
+}
+function featStats() {
+  const f = featFile(); if (!f) return; const tb = h('table', {class: 'kv'}); tb.append(h('tr', null, ['Sütun', 'n', 'Boş', 'Min', 'Maks', 'Ortalama', 'Std', 'Medyan'].map(x => h('th', null, x))));
+  for (const c of f.cols) { const v = Array.from(c.data).filter(isFinite), n = v.length; if (!n) continue; const s = [...v].sort((a, b) => a - b), m = v.reduce((a, b) => a + b, 0) / n, sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, n - 1)); tb.append(h('tr', null, h('td', null, c.name + (c.unit ? ' [' + c.unit + ']' : '')), h('td', null, n), h('td', null, c.data.length - n), [s[0], s[n - 1], m, sd, s[n >> 1]].map(x => h('td', null, fmtNum(x, 6))))); }
+  modal('Sütun istatistikleri — ' + f.name, h('div', {style: 'overflow:auto'}, tb), [{t: 'Kapat', primary: true}]);
+}
+function featAdd(list) {
+  const f = list[0].file; if (!S.feat || S.feat.fid !== f.id) S.feat = {fid: f.id, x: '__idx', ys: new Set(), type: 'scatter', fit: 'none', deg: 2, resid: false, color: '', bins: 0};
+  S.feat.ys = new Set(list.map(c => c.name)); if (S.feat.x === '__idx' && f.cols.length > 1) { const other = f.cols.find(c => !S.feat.ys.has(c.name)); if (other && list.length === 1) { S.feat.x = other.name; } }
+  setTab('feat'); refreshFeatUI(); featPlot();
 }
 
 </script>

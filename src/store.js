@@ -4,7 +4,7 @@ const KIND = {
   temp: {name: 'Sıcaklık', ylabel: 'Sıcaklık', color: '#A2142F'}, press: {name: 'Basınç', ylabel: 'Basınç', color: '#7E2F8E'},
   strain: {name: 'Gerinim', ylabel: 'Gerinim', color: '#77AC30'}, volt: {name: 'Gerilim', ylabel: 'Gerilim', color: '#EDB120'},
   curr: {name: 'Akım', ylabel: 'Akım', color: '#4DBEEE'}, pos: {name: 'Konum/Açı', ylabel: 'Konum/Açı', color: '#5b7c99'},
-  state: {name: 'Durum/Bit', ylabel: 'Durum', color: '#8b929b'}, other: {name: 'Diğer', ylabel: '', color: '#8b929b'}, spec: {name: 'Spektrum (UNV)', ylabel: '', color: '#b58900'}, calc: {name: 'Türetilmiş', ylabel: '', color: '#2aa198'}
+  feat: {name: 'Özellik / Sütun', ylabel: '', color: '#5b7c99'}, state: {name: 'Durum/Bit', ylabel: 'Durum', color: '#8b929b'}, other: {name: 'Diğer', ylabel: '', color: '#8b929b'}, spec: {name: 'Spektrum (UNV)', ylabel: '', color: '#b58900'}, calc: {name: 'Türetilmiş', ylabel: '', color: '#2aa198'}
 };
 function kindOf(full, rest) {
   const s = rest.toLowerCase();
@@ -140,7 +140,7 @@ function devKeyOf(full) { const m = DEV_RE.exec(full); return m ? m[1] + '|' + m
 
 function applyTiming(f) {
   for (const ch of f.channels) {
-    if (ch.derived || ch.bin || ch.spec) continue;
+    if (ch.derived || ch.bin || ch.spec || ch.tbl) continue;
     const gc = ch.devKey && f.gcache ? f.gcache[ch.devKey] : null;
     if (gc) { ch.g = gc.g; ch.spp = ch.n / gc.np; ch.Tpkt = f.Tpkt; ch.dtS = ch.Tpkt / ch.spp; }
     else { ch.g = null; ch.dtS = 1 / (f.baseFs * ch.n / (f.baseN || ch.n)); ch.spp = 1; ch.Tpkt = ch.dtS; }

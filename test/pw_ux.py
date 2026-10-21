@@ -55,7 +55,7 @@ async def main():
         print('heights', h0, '->', await pg.evaluate("S.plot.axes.map(a=>Math.round(a.rect.h))"))
         # çift tık tercih + ağaç satırı
         await pg.click('#btnSet'); await pg.screenshot(path=SHOT + '6_settings.png'); await pg.click('#btnKeys'); await pg.wait_for_timeout(200); await pg.screenshot(path=SHOT + '7_keys.png'); await pg.click('#mclose')
-        await pg.click('#rtabs >> text=Analiz'); await pg.screenshot(path=SHOT + '8_analyze.png')
+        await pg.click('#rtabs [data-t=analyze]'); await pg.screenshot(path=SHOT + '8_analyze.png')
         # sürükle-bırak bölgeleri
         await pg.evaluate("showDZ()"); await pg.screenshot(path=SHOT + '9_dz.png'); await pg.evaluate("hideDZ()")
         print('tabs rows (heights):', await pg.evaluate("document.querySelector('#rtabs').offsetHeight"), 'toolbar h:', await pg.evaluate("document.querySelector('#toolbar').offsetHeight"))

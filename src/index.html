@@ -14,6 +14,7 @@
     <div class="dd"><button id="btnOpenM" class="primary" data-ic="open" aria-haspopup="true" title="Dosya aç"><span class="lbl">Aç</span><span class="car">▾</span></button>
       <div class="ddm hidden" id="mOpen">
         <button id="btnOpen" data-ic="file" title="MATLAB (.mat) veya UNV dosyası aç">MAT / UNV dosyası…</button>
+        <button id="btnTab" data-ic="table" title="CSV / Excel tablosu: zaman serisi veya özellik/regresyon verisi">Tablo (CSV / Excel)…</button>
         <button id="btnBin" data-ic="bin" title="Binary dosyayı Excel çerçeve tanımıyla çöz">Binary dosya (Excel çerçeve)…</button>
       </div></div>
     <div class="dd"><button id="btnSet" data-ic="settings" aria-haspopup="true" title="Ayarlar"><span class="lbl">Ayarlar</span><span class="car">▾</span></button>
@@ -25,7 +26,7 @@
         <button id="btnHelp" data-ic="help">Yardım</button>
       </div></div>
     <button id="btnTheme" data-ic="theme" title="Açık/koyu tema" aria-label="Tema"></button>
-    <input type="file" id="fileIn" accept=".mat,.unv,.uff" multiple hidden>
+    <input type="file" id="fileIn" accept=".mat,.unv,.uff,.csv,.tsv,.txt,.xlsx" multiple hidden>
   </header>
   <aside id="left">
     <div class="pane-h">Dosyalar ve değişkenler</div>
@@ -41,17 +42,19 @@
   </aside>
   <main id="center">
     <div id="viewbar">
-      <div class="seg" id="viewtabs"><button data-v="time" class="on">Zaman</button><button data-v="spec">Spektrum</button><button data-v="sgram">Spektrogram</button></div>
+      <div class="seg" id="viewtabs"><button data-v="time" class="on">Zaman</button><button data-v="spec">Spektrum</button><button data-v="sgram">Spektrogram</button><button data-v="xy" class="hidden" title="Zamandan bağımsız (özellik / regresyon) veri">Dağılım</button></div>
       <div class="spacer"></div>
       <span id="hoverinfo" class="muted"></span>
+      <button id="btnPng" data-ic="download" title="Açık görünümü PNG olarak kaydet">PNG</button><button id="btnSvg" data-ic="download" title="Açık görünümü SVG (vektör) olarak kaydet">SVG</button>
     </div>
     <div id="toolbar"></div>
     <div id="stage">
       <div class="view" id="v-time"><canvas id="cv-time"></canvas></div>
       <div class="view hidden" id="v-spec"><canvas id="cv-spec"></canvas></div>
       <div class="view hidden" id="v-sgram"><canvas id="cv-sgram"></canvas></div>
+      <div class="view hidden" id="v-xy"><canvas id="cv-xy"></canvas></div>
       <div id="welcome" class="hidden"><div class="wbox"><h2>MATView</h2><p class="muted">Başlamak için bir veri dosyası açın ya da pencereye sürükleyip bırakın.</p>
-        <div class="wcards"><button id="wMat" data-ic="file" class="wcard"><b>MAT dosyası</b><span>MATLAB v5 / v7.3</span></button><button id="wUnv" data-ic="unv" class="wcard"><b>UNV / UFF</b><span>Spektrum kayıtları (58)</span></button><button id="wBin" data-ic="bin" class="wcard"><b>Binary</b><span>Excel çerçeve tanımıyla</span></button></div>
+        <div class="wcards"><button id="wMat" data-ic="file" class="wcard"><b>MAT dosyası</b><span>MATLAB v5 / v7.3</span></button><button id="wUnv" data-ic="unv" class="wcard"><b>UNV / UFF</b><span>Spektrum kayıtları (58)</span></button><button id="wTab" data-ic="table" class="wcard"><b>CSV / Excel</b><span>Zaman serisi veya özellik verisi</span></button><button id="wBin" data-ic="bin" class="wcard"><b>Binary</b><span>Excel çerçeve tanımıyla</span></button></div>
         <p class="note">İpucu: Kanala çift tıklayın = yeni alt grafik · Shift+çift tık = aktif grafiğe ekle · Kanalı grafiğe sürükleyin. <kbd>?</kbd> kısayollar.</p></div></div>
       <div id="dropmsg" class="hidden">.mat dosyalarını buraya bırakın</div>
     </div>

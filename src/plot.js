@@ -36,6 +36,47 @@ function logTicks(lo, hi) {
 }
 function fmtLog(v) { if (v >= 1000 && v < 1e6) return (v / 1000) + 'k'; if (v >= 1e6) return (v / 1e6) + 'M'; return +v.toPrecision(3) + ''; }
 
+
+/* ---------- Canvas2D -> SVG kaydedici: Plot/SpecView aynı çizim koduyla vektör çıktı üretir ---------- */
+class SvgCtx {
+  constructor(W, H) {
+    this.W = W; this.H = H; this.o = []; this.cid = 0; this._m = document.createElement('canvas').getContext('2d');
+    this.fillStyle = '#000'; this.strokeStyle = '#000'; this.lineWidth = 1; this.font = '10px sans-serif'; this.textAlign = 'start'; this.textBaseline = 'alphabetic'; this.globalAlpha = 1; this.lineJoin = 'miter'; this.imageSmoothingEnabled = true;
+    this.dash = []; this.tf = [1, 0, 0, 1, 0, 0]; this.stack = []; this.open = 0; this.d = '';
+  }
+  static esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  _n(v) { return +v.toFixed(2); }
+  _p(x, y) { const m = this.tf; return [this._n(m[0] * x + m[2] * y + m[4]), this._n(m[1] * x + m[3] * y + m[5])]; }
+  save() { this.stack.push({st: [this.fillStyle, this.strokeStyle, this.lineWidth, this.font, this.textAlign, this.textBaseline, this.globalAlpha, this.lineJoin, this.dash, this.tf.slice()], open: this.open}); this.open = 0; }
+  restore() { for (let i = 0; i < this.open; i++) this.o.push('</g>'); const e = this.stack.pop(); if (!e) return; [this.fillStyle, this.strokeStyle, this.lineWidth, this.font, this.textAlign, this.textBaseline, this.globalAlpha, this.lineJoin, this.dash, this.tf] = e.st; this.open = e.open; }
+  setTransform(a, b, c, d, e, f) { this.tf = [a, b, c, d, e, f]; }
+  _mul(a, b, c, d, e, f) { const m = this.tf; this.tf = [m[0] * a + m[2] * b, m[1] * a + m[3] * b, m[0] * c + m[2] * d, m[1] * c + m[3] * d, m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5]]; }
+  translate(x, y) { this._mul(1, 0, 0, 1, x, y); } scale(x, y) { this._mul(x, 0, 0, y, 0, 0); } rotate(a) { const c = Math.cos(a), s = Math.sin(a); this._mul(c, s, -s, c, 0, 0); }
+  setLineDash(a) { this.dash = a || []; }
+  beginPath() { this.d = ''; } closePath() { this.d += 'Z'; }
+  moveTo(x, y) { const p = this._p(x, y); this.d += 'M' + p[0] + ' ' + p[1]; } lineTo(x, y) { const p = this._p(x, y); this.d += 'L' + p[0] + ' ' + p[1]; }
+  rect(x, y, w, h) { this.moveTo(x, y); this.lineTo(x + w, y); this.lineTo(x + w, y + h); this.lineTo(x, y + h); this.closePath(); }
+  arc(x, y, r, a0, a1) { const p0 = this._p(x - r, y), p1 = this._p(x + r, y), rr = this._n(r * Math.hypot(this.tf[0], this.tf[1])); this.d += `M${p0[0]} ${p0[1]}A${rr} ${rr} 0 1 0 ${p1[0]} ${p1[1]}A${rr} ${rr} 0 1 0 ${p0[0]} ${p0[1]}`; }
+  clip() { const id = 'c' + (this.cid++); this.o.push(`<clipPath id="${id}"><path d="${this.d}"/></clipPath><g clip-path="url(#${id})">`); this.open++; }
+  _col(c) { return c; }
+  _stroke() { let a = `stroke="${this.strokeStyle}" stroke-width="${this._n(this.lineWidth * Math.hypot(this.tf[0], this.tf[1]))}" fill="none" stroke-linejoin="${this.lineJoin === 'round' ? 'round' : 'miter'}"`; if (this.dash.length) a += ` stroke-dasharray="${this.dash.join(' ')}"`; if (this.globalAlpha < 1) a += ` stroke-opacity="${this.globalAlpha}"`; return a; }
+  _fill() { let a = `fill="${this.fillStyle}"`; if (this.globalAlpha < 1) a += ` fill-opacity="${this.globalAlpha}"`; return a; }
+  stroke() { if (this.d) this.o.push(`<path d="${this.d}" ${this._stroke()}/>`); }
+  fill() { if (this.d) this.o.push(`<path d="${this.d}" ${this._fill()} stroke="none"/>`); }
+  fillRect(x, y, w, h) { const s = this.d; this.beginPath(); this.rect(x, y, w, h); this.fill(); this.d = s; }
+  strokeRect(x, y, w, h) { const s = this.d; this.beginPath(); this.rect(x, y, w, h); this.stroke(); this.d = s; }
+  measureText(t) { this._m.font = this.font; return this._m.measureText(t); }
+  fillText(t, x, y) {
+    const m = this.tf, anchor = {center: 'middle', right: 'end', end: 'end'}[this.textAlign] || 'start', bl = {top: 'hanging', middle: 'central', bottom: 'text-after-edge', hanging: 'hanging'}[this.textBaseline] || 'auto';
+    this.o.push(`<text transform="matrix(${m.map(v => +v.toFixed(5)).join(' ')})" x="${this._n(x)}" y="${this._n(y)}" text-anchor="${anchor}" dominant-baseline="${bl}" style="font:${SvgCtx.esc(this.font)}" ${this._fill()}>${SvgCtx.esc(t)}</text>`);
+  }
+  drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh) {
+    const kx = dw / sw, ky = dh / sh, a = this._p(dx - sx * kx, dy - sy * ky), url = img.toDataURL('image/png');
+    this.o.push(`<image x="${a[0]}" y="${a[1]}" width="${this._n(img.width * kx)}" height="${this._n(img.height * ky)}" preserveAspectRatio="none" style="image-rendering:pixelated" href="${url}"/>`);
+  }
+  toString() { const close = '</g>'.repeat(this.open); return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${this.W}" height="${this.H}" viewBox="0 0 ${this.W} ${this.H}">\n${this.o.join('\n')}${close}\n</svg>\n`; }
+}
+
 class Plot {
   constructor(canvas, opts = {}) {
     this.cv = canvas; this.opts = opts; this.mode = 'pan';
@@ -385,6 +426,7 @@ class Plot {
   }
   clearSelection() { this.sel = null; this.onSelect(null); this.invalidate(); }
 
+  toSVG(light = true) { const c = new SvgCtx(this.W, this.H), keep = this.cursors; this.render(c, this.W, this.H, light ? THEMES.light : curTheme(), true); this.cursors = keep; return c.toString(); }
   toPNG(scale = 2, light = true) {
     const w = this.W, h = this.H, c = document.createElement('canvas'); c.width = w * scale; c.height = h * scale;
     const ctx = c.getContext('2d'); ctx.scale(scale, scale);
@@ -396,6 +438,7 @@ class Plot {
 // ---- iz yardımcıları ----
 function trBounds(tr, xlog) {
   if (tr.kind === 'ts') { const ch = tr.ch; return [ch.t(0), ch.t(ch.n - 1)]; }
+  if (tr.marker || tr.bars) { if (!tr._xb) { let lo = Infinity, hi = -Infinity, pl = Infinity; for (let i = 0; i < tr.x.length; i++) { const v = tr.x[i]; if (!isFinite(v)) continue; if (v < lo) lo = v; if (v > hi) hi = v; if (v > 0 && v < pl) pl = v; } const w = tr.bars ? tr.bars / 2 : 0; tr._xb = [lo - w, hi + w, pl]; } return isFinite(tr._xb[0]) ? [xlog ? tr._xb[2] : tr._xb[0], tr._xb[1]] : null; }
   const x = tr.x; if (!x || !x.length) return null;
   let lo = xlog ? Math.max(x[0], 1e-300) : x[0];
   if (xlog) for (let i = 0; i < x.length; i++) if (x[i] > 0) { lo = x[i]; break; }
@@ -408,6 +451,7 @@ function trYRange(tr, ax) {
     const i0 = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))), i1 = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1);
     if (i1 <= i0) return null; return ch.minmax(i0, i1) ? [ch._mn, ch._mx] : null;
   }
+  if (tr.marker || tr.bars) { let lo = tr.bars ? 0 : Infinity, hi = -Infinity; for (let i = 0; i < tr.x.length; i++) { const xv = tr.x[i], v = tr.y[i]; if (!isFinite(v) || xv < ax.xlim[0] || xv > ax.xlim[1]) continue; if (ax.ylog && v <= 0) continue; if (v < lo) lo = v; if (v > hi) hi = v; } return isFinite(hi) && isFinite(lo) ? [lo, hi] : null; }
   const x = tr.x, y = tr.y; let i0 = Math.max(0, lowerBound(x, ax.xlim[0]) - 1), i1 = Math.min(x.length, lowerBound(x, ax.xlim[1]) + 1);
   let lo = Infinity, hi = -Infinity;
   for (let i = i0; i < i1; i++) { const v = y[i]; if (!isFinite(v)) continue; if (ax.ylog && v <= 0) continue; if (v < lo) lo = v; if (v > hi) hi = v; }
@@ -451,6 +495,21 @@ function drawTrace(ctx, tr, ax, P, T) {
       }
       ctx.stroke();
     }
+  } else if (tr.bars) { // histogram çubukları
+    const x = tr.x, y = tr.y, w = tr.bars; ctx.globalAlpha = tr.alpha || 0.7;
+    for (let i = 0; i < x.length; i++) { if (!(y[i] > 0)) continue; const a = P.xPx(ax, x[i] - w / 2), b = P.xPx(ax, x[i] + w / 2); if (b < r.x || a > r.x + r.w) continue; const y0 = P.yPx(ax, ax.ylog ? ax.ylim[0] : 0), y1 = P.yPx(ax, y[i]); ctx.fillRect(a + .5, y1, Math.max(1, b - a - 1), y0 - y1); }
+    ctx.globalAlpha = 1;
+  } else if (tr.marker) { // dağılım (scatter) işaretçileri
+    const x = tr.x, y = tr.y, n = x.length, sz = tr.msize || 4, svg = ctx instanceof SvgCtx, step = Math.max(1, Math.floor(n / (svg ? 15000 : 200000)));
+    let lut = null, cv = tr.cval; if (cv) { lut = cmapLUT('viridis'); }
+    ctx.globalAlpha = tr.alpha || (n > 20000 ? 0.35 : n > 2000 ? 0.55 : 0.85);
+    for (let i = 0; i < n; i += step) {
+      const xv = x[i], yv = y[i]; if (!isFinite(xv) || !isFinite(yv) || (ax.ylog && yv <= 0) || (ax.xlog && xv <= 0)) continue; const px = P.xPx(ax, xv), py = P.yPx(ax, yv);
+      if (px < r.x - sz || px > r.x + r.w + sz || py < r.y - sz || py > r.y + r.h + sz) continue;
+      if (cv) { const q = Math.max(0, Math.min(255, Math.round((cv[i] - tr.cmin) / ((tr.cmax - tr.cmin) || 1) * 255))); ctx.fillStyle = `rgb(${lut[q * 3]},${lut[q * 3 + 1]},${lut[q * 3 + 2]})`; }
+      ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
   } else { // xy
     const x = tr.x, y = tr.y, n = x.length; if (!n) return;
     const i0 = Math.max(0, lowerBound(x, ax.xlim[0]) - 1), i1 = Math.min(n - 1, lowerBound(x, ax.xlim[1]) + 1), count = i1 - i0 + 1;
@@ -471,6 +530,8 @@ function drawTrace(ctx, tr, ax, P, T) {
   }
 }
 function nearest(P, ax, tr, px, py) {
+  if (tr.marker) { let best = null; const x = tr.x, y = tr.y, step = Math.max(1, Math.floor(x.length / 300000)); for (let i = 0; i < x.length; i += step) { if (!isFinite(x[i]) || !isFinite(y[i])) continue; const d = Math.hypot(P.xPx(ax, x[i]) - px, P.yPx(ax, y[i]) - py); if (!best || d < best.d) best = {tr, d, x: x[i], y: y[i], i}; } return best; }
+  if (tr.bars) return null;
   if (tr.kind === 'ts') {
     const ch = tr.ch; if (!ch.data) return null;
     const x = P.pxX(ax, px), fi = ch.timeIdx(x), spp = Math.max(1, (ax.xlim[1] - ax.xlim[0]) / ax.rect.w * (ch.n / Math.max(1e-9, ch.t(ch.n - 1) - ch.t(0)))), w = Math.ceil(spp * 3);
@@ -553,9 +614,12 @@ class SpecView {
     g.putImageData(im, 0, 0); this.img = c; this.invalidate();
   }
   invalidate() { if (this._raf) return; this._raf = requestAnimationFrame(() => { this._raf = null; this.draw(); }); }
-  draw() {
-    const ctx = this.cv.getContext('2d'), T = curTheme(); ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); ctx.fillStyle = T.bg; ctx.fillRect(0, 0, this.W, this.H);
-    if (!this.spec) { ctx.fillStyle = T.muted; ctx.textAlign = 'center'; ctx.font = '14px system-ui'; ctx.fillText('Spektrogram için bir iz seçip "Hesapla"ya basın', this.W / 2, this.H / 2); return; }
+  draw() { const ctx = this.cv.getContext('2d'); ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.render(ctx, this.W, this.H, curTheme()); }
+  toPNG(scale = 2, light = true) { const c = document.createElement('canvas'); c.width = this.W * scale; c.height = this.H * scale; const g = c.getContext('2d'); g.scale(scale, scale); this.render(g, this.W, this.H, light ? THEMES.light : curTheme()); return c; }
+  toSVG(light = true) { const c = new SvgCtx(this.W, this.H); this.render(c, this.W, this.H, light ? THEMES.light : curTheme()); return c.toString(); }
+  render(ctx, W, H, T) {
+    ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+    if (!this.spec) { ctx.fillStyle = T.muted; ctx.textAlign = 'center'; ctx.font = '14px system-ui'; ctx.fillText('Spektrogram için bir iz seçip "Hesapla"ya basın', W / 2, H / 2); return; }
     const r = this.rect(), s = this.spec;
     const tx = t => r.x + (t - this.xlim[0]) / (this.xlim[1] - this.xlim[0]) * r.w, fy = f => r.y + r.h - (f - this.ylim[0]) / (this.ylim[1] - this.ylim[0]) * r.h;
     ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
