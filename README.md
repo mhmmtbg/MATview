@@ -39,3 +39,10 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 - **Alanlar** sayfası: birleşik değer tanımı (başlangıç hücresi, tür, bayt sırası, bit aralığı, `x` ile dönüşüm formülü, birim). Formüller uygulamada da düzenlenir.
 - Çözülmüş alanlar `.mat` olarak dışa aktarılabilir (isteğe bağlı olarak alt sistem başına ham bayt matrisleri).
 - Örnek: `ornek/ornek_cerceve.xlsx` + `ornek/ornek_veri.bin` (sentetik; `python3 test/make_sample.py ornek` ile yeniden üretilir).
+
+## UNV (dataset 58) ve profil karşılaştırma
+
+- `.unv` dosyası `Dosya aç…` ile (veya sürükleyerek) açılır; kanal sayısı dosyadan okunur. Kompleks kanallar Genlik / Faz / Re / Im olarak gelir. Spektrum görünümünde çizilir, lejantta PSD kanalları için Grms gösterilir.
+- `Kanal tablosu…` meta veriyi listeler; `Excel'e aktar` eski dönüştürücü betiklerdeki gibi `Kanal Bilgileri` + `Veri` sayfalarını yazar.
+- `UNV / Profil` sekmesinde profil (frekans–seviye noktaları, log-log doğrusal, ± dB tolerans) girilir, spektrum grafiğine eklenir ve ölçümlerle karşılaştırılır (Grms farkı, en büyük sapma, tolerans dışı yüzde). Profiller tarayıcı deposunda saklanır.
+- Örnek (sentetik): `ornek/ornek.unv`.

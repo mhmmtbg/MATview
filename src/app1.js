@@ -82,7 +82,7 @@ function renderTree() {
             h('span', {class: 'twisty'}, bo ? '▼' : '▶'), h('i', {class: 'dot', style: 'background:' + KIND[list[0].kind].color}), h('span', {class: 'nm'}, base), h('span', {class: 'meta'}, list.length + ' kanal'),
             h('button', {class: 'add', title: 'Hepsini aynı grafiğe ekle', onclick: () => addGroup(list)}, '+')));
           if (bo) for (const c of list) box.append(chRow(c, c.comp || c.rest, true));
-        } else { if (f.binary && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) box.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) box.append(chRow(c, c.rest, false)); }
+        } else { if ((f.binary || f.unv) && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) box.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) box.append(chRow(c, c.rest, false)); }
       }
     }
   }
@@ -103,7 +103,8 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 
 /* ---------- dosya işlemleri ---------- */
 async function openFiles(files) {
-  files = [...files]; const other = files.filter(f => !/\.mat$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  files = [...files]; const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)), other = files.filter(f => !/\.(mat|unv|uff)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  for (const u of unvs) await unvOpen(u);
   if (other.length) await binFilesIn(other);
   for (const file of files) {
     await busy('Dosya taranıyor: ' + file.name, async () => {
@@ -130,6 +131,7 @@ function nextColor() { return PAL[S.colorIdx++ % PAL.length]; }
 function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), width: 1, visible: true}; }
 function axisLabelFor(ax) { const ks = new Set(ax.traces.map(t => t.ch.kind)), us = new Set(ax.traces.map(t => t.ch.unit || '')); ax.ylabel = us.size === 1 && [...us][0] ? [...us][0] : ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; }
 async function addToNewAxes(chs, one) {
+  { const sp = chs.filter(c => c.spec); if (sp.length) { await addSpec(sp); chs = chs.filter(c => !c.spec); if (!chs.length) return; } }
   const first = !S.plot.axes.length;
   if (one) { const ax = S.plot.addAxes(); for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }
   else for (const c of chs) { const ax = S.plot.addAxes(); ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }
@@ -137,6 +139,7 @@ async function addToNewAxes(chs, one) {
   await loadForPlot(chs, first);
 }
 async function addToAxes(ax, chs) {
+  { const sp = chs.filter(c => c.spec); if (sp.length) { await addSpec(sp); chs = chs.filter(c => !c.spec); if (!chs.length) return; } }
   if (!ax) return addToNewAxes(chs, true);
   const first = !S.plot.axes.length; for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax);
   switchView('time'); refreshAll(); await loadForPlot(chs, first);

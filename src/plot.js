@@ -82,11 +82,12 @@ class Plot {
   }
   // Titreşim izleri için lejant ekini hesapla: " — 1.234 Grms" (DC çıkarılabilir; ölü noktalar ve NaN hariç)
   legendExtra(t, ax) {
+    if (t.fixedExtra) return t.fixedExtra;
     const m = this.grms; if (!m || m.mode === 'off') return '';
     if (t.kind === 'xy') {   // spektrum izi: PSD/RMS/tepe genlik -> Grms (alan integrali)
       if (!t.raw || t.srcKind !== 'vib') return '';
       const f = t.x, y = t.raw, lo = m.mode === 'vis' ? ax.xlim[0] : -Infinity, hi = m.mode === 'vis' ? ax.xlim[1] : Infinity; let s = 0;
-      for (let i = m.dc ? 1 : 0; i < f.length; i++) { if (f[i] < lo || f[i] > hi) continue; const v = y[i]; if (!isFinite(v)) continue; s += t.scale === 'psd' ? v * t.df : t.scale === 'amp' ? v * v / 2 : v * v; }
+      for (let i = 0; i < f.length; i++) { if (m.dc && f[i] === 0) continue; if (f[i] < lo || f[i] > hi) continue; const v = y[i]; if (!isFinite(v)) continue; s += t.scale === 'psd' ? v * t.df : t.scale === 'amp' ? v * v / 2 : v * v; }
       return ' — ' + Math.sqrt(s).toPrecision(4) + ' Grms';
     }
     if (t.kind !== 'ts' || t.ch.kind !== 'vib' || !t.ch.data) return '';
@@ -463,7 +464,8 @@ function drawTrace(ctx, tr, ax, P, T) {
       let lastY = null;
       for (let c = 0; c < cols; c++) { if (mn[c] === Infinity) { lastY = null; continue; } const px = r.x + c + .5, ya = P.yPx(ax, mn[c]), yb = P.yPx(ax, mx[c]); if (lastY === null) { ctx.moveTo(px, ya); lastY = ya; } if (Math.abs(lastY - ya) <= Math.abs(lastY - yb)) { ctx.lineTo(px, ya); ctx.lineTo(px, yb); lastY = yb; } else { ctx.lineTo(px, yb); ctx.lineTo(px, ya); lastY = ya; } }
     }
-    ctx.stroke();
+    if (tr.dash) ctx.setLineDash(tr.dash);
+    ctx.stroke(); ctx.setLineDash([]);
     if (tr.peaks) { ctx.fillStyle = T.fg; ctx.font = '11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; for (const p of tr.peaks) { const px = P.xPx(ax, p.x), py = P.yPx(ax, p.y); if (px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h) continue; ctx.beginPath(); ctx.arc(px, py, 3, 0, 6.283); ctx.stroke(); const txt = fmtNum(p.x, 5) + ' Hz', w = ctx.measureText(txt).width; let ly = py - 7; const box = () => [px - w / 2, ly - 12, px + w / 2, ly + 2]; let b = box(), tries = 0; while (ax._lab.some(o => !(b[2] < o[0] || b[0] > o[2] || b[3] < o[1] || b[1] > o[3])) && tries++ < 6) { ly -= 13; b = box(); } if (b[1] < r.y) continue; ax._lab.push(b); ctx.fillStyle = tr.color; ctx.fillText(txt, px, ly); } }
   }
 }

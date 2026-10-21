@@ -7,10 +7,10 @@ const num = id => parseFloat($('#' + id).value), sv = id => $('#' + id).value, c
 const card = (title, ...c) => h('div', {class: 'card'}, h('h4', null, title), ...c);
 const btn = (t, fn, cls, id) => h('button', {class: cls || '', onclick: fn, id}, t);
 
-const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'İfade'], ['acoustic', 'Akustik'], ['output', 'Çıktı']];
+const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'İfade'], ['acoustic', 'Akustik'], ['unv', 'UNV / Profil'], ['output', 'Çıktı']];
 function buildRight() {
   const tabs = $('#rtabs'), body = $('#rbody'); tabs.replaceChildren(); body.replaceChildren(); S.panels = {};
-  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, output: buildOutput};
+  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, output: buildOutput};
   for (const [k, t] of TABS) {
     tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, onclick: () => setTab(k)}, t));
     const p = builders[k](); p.id = 'p-' + k; if (k !== S.tab) p.classList.add('hidden'); body.append(p); S.panels[k] = p;
@@ -466,7 +466,7 @@ async function loadSession(file) {
 function timeDialog() {
   const body = h('div'); if (!S.files.length) body.append(h('div', {class: 'note'}, 'Önce bir dosya açın.'));
   const rows = [];
-  for (const f of S.files.filter(x => !x.binary)) {
+  for (const f of S.files.filter(x => !x.binary && !x.unv)) {
     const ndev = Object.keys(f.gcache || {}).length, lost = Object.values(f.gcache || {}).reduce((a, g) => a + g.lost, 0), nocnt = f.channels.some(c => !(c.devKey && f.gcache[c.devKey]));
     const t = h('input', {type: 'number', step: 'any', value: f.Tpkt * 1000}), b = h('input', {type: 'number', step: 'any', value: f.baseFs}); rows.push({f, t, b});
     body.append(h('div', {class: 'card'}, h('h4', null, f.name), h('div', {class: 'note'}, `${ndev} cihazda cnt sayacı bulundu · toplam kayıp paket: ${lost}`),
@@ -480,6 +480,7 @@ function helpDialog() {
   const body = h('div', {style: 'line-height:1.7'}, h('b', null, 'Fare'), h('br'), 'Tekerlek: X yakınlaştır · Shift+tekerlek: Y · Ctrl+tekerlek: ikisi', h('br'), 'Eksen kenarında sürükle/tekerlek: yalnız o eksen · Çift tık: tümünü sığdır', h('br'), 'Soldan kanal sürükleyip grafiğe bırakın (alt grafiğin üstüne = üst üste, boşluğa = yeni alt grafik)', h('br'), h('br'),
     h('b', null, 'Klavye'), h('br'), h('kbd', null, 'P'), ' gez  ', h('kbd', null, 'Z'), ' yakınlaştır  ', h('kbd', null, 'C'), ' veri imleci  ', h('kbd', null, 'B'), ' kutu seç  ', h('kbd', null, 'L'), ' kement', h('br'), h('kbd', null, 'Delete'), ' seçileni sil  ', h('kbd', null, 'Ctrl+Z'), '/', h('kbd', null, 'Ctrl+Y'), ' geri al/yinele  ', h('kbd', null, 'Home'), ' sığdır  ', h('kbd', null, 'Esc'), ' seçimi kaldır', h('br'), h('br'),
     h('b', null, 'Binary'), h('br'), '"Binary aç…": çerçeve matrisini Excel (.xlsx) ile tanımlayın; her hücre 1 bayt, hücredeki ad kanal adıdır (aynı ad tekrar ederse AD_1, AD_2…). Senaryo sayfası: okuma sırası, senkron kelimesi, kare hızı, sayaç alanı. Alanlar sayfası: birleşik değer (u8/i8/u16/i16/u32/i32/f32/f64, BE/LE), bit aralığı ve x ile dönüşüm formülü. Çözülmüş alanlar sol listede dosya başlığındaki .mat düğmesiyle dışa aktarılır.', h('br'), h('br'),
+    h('b', null, 'UNV ve profil'), h('br'), 'UNV (dataset 58, ASCII) dosyaları "Dosya aç…" ile açılır; kanal sayısı dosyadan okunur, kompleks kanallar Genlik/Faz/Re/Im gelir. Kanallar Spektrum görünümüne çizilir. "UNV / Profil" sekmesinde profil girilir (frekans–seviye çiftleri, ± tolerans), profille karşılaştırma tablosu alınır.', h('br'), h('br'),
     h('b', null, 'Veri'), h('br'), 'as = akustik · ts = titreşim · ss/hs = sıcaklık · bs = basınç · gs = gerinim. Zaman ekseni cnt paket sayacından üretilir (varsayılan 10 ms/paket; "Zaman ayarları"ndan değiştirilebilir).', h('br'), 'Silinen noktalar orijinal dosyayı değiştirmez; dışa aktarırken çıkarılır veya NaN yapılır.');
   modal('Yardım', body);
 }
@@ -506,7 +507,7 @@ function init() {
   for (const b of $('#viewtabs').children) b.onclick = () => { switchView(b.dataset.v); };
   $('#btnBin').onclick = () => binDialog();
   $('#btnOpen').onclick = async () => {
-    if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
+    if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat', '.unv', '.uff']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
     $('#fileIn').click();
   };
   $('#fileIn').onchange = e => { openFiles(e.target.files); e.target.value = ''; };
