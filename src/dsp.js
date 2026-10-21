@@ -168,7 +168,7 @@ const DSP = (() => {
   }
 
   // ---- Hampel / medyan ----
-  function hampelFlags(x, k, nsig, del) {
+  function hampelFlags(x, k, nsig, del, gmin) {
     const n = x.length, w = 2 * k + 1, buf = new Float64Array(w), dev = new Float64Array(w);
     const flags = [];
     for (let i = 0; i < n; i++) {
@@ -181,7 +181,7 @@ const DSP = (() => {
       const dsub = dev.subarray(0, m); dsub.sort();
       const mad = 1.4826 * dsub[m >> 1];
       const d = Math.abs(x[i] - med);
-      if (mad > 0 && d > nsig * mad) flags.push(i);
+      if (mad > 0 && d > nsig * mad && d > (gmin || 0)) flags.push(i);
     }
     return Uint32Array.from(flags);
   }
@@ -194,8 +194,13 @@ const DSP = (() => {
     const o = new Float64Array(n); for (let i = 0; i < n; i++) o[i] = x[i] - (a + b * i); return o;
   }
   // tık/pop: Hampel ile işaretle, genişlet, doğrusal ara değerle
+  // Genel gürültü düzeyi (birinci farkın sağlam σ'sı): küçük pencerede MAD'in rastlantısal küçülmesinden doğan yanlış alarmları önler
+  function clickMin(x) {
+    const n = x.length, d = new Float64Array(Math.max(0, n - 1)); for (let i = 1; i < n; i++) d[i - 1] = Math.abs(x[i] - x[i - 1]);
+    if (!d.length) return 0; const s = d.slice().sort(); return 6 * 1.4826 * s[s.length >> 1] / Math.SQRT2;
+  }
   function declick(x, k, nsig, grow) {
-    const flags = hampelFlags(x, k, nsig, null);
+    const flags = hampelFlags(x, k, nsig, null, clickMin(x));
     const n = x.length, bad = new Uint8Array(n);
     for (const i of flags) for (let j = Math.max(0, i - grow); j <= Math.min(n - 1, i + grow); j++) bad[j] = 1;
     const o = Float64Array.from(x); let cnt = 0;
@@ -272,6 +277,63 @@ const DSP = (() => {
     for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, y[i])) * 32767, true);
     return new Blob([buf], {type: 'audio/wav'});
   }
-  return {fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob};
+  // Otomatik parazit analizi: DC/eğilim, şebeke uğultusu (50/60 Hz + harmonikler), düşük frekans gürültüsü,
+  // tık/pop, sessiz bölümden gürültü profili. Çıktı: {plan, log, noise:[a,b)|null}
+  function autoClean(x, fs) {
+    const n = x.length, log = [], plan = {dc: 'mean', hp: 0, lp: 0, notch: 0, nq: 30, nh: 1, click: false, ck: 5, cs: 8, dn: false, dnDb: 12, dnA: 2}, res = {plan, log, noise: null};
+    let mean = 0; for (let i = 0; i < n; i++) mean += x[i]; mean /= n;
+    let sd = 0; for (let i = 0; i < n; i++) sd += (x[i] - mean) ** 2; sd = Math.sqrt(sd / n);
+    if (!(sd > 1e-12)) { log.push('Sinyal sabit; temizlenecek bir şey yok.'); plan.dc = 'none'; return res; }
+    const dl = detrendLinear(x); let sr = 0; for (let i = 0; i < n; i++) sr += (dl[i]) ** 2; sr = Math.sqrt(sr / n);
+    if (sr < 0.9 * sd) { plan.dc = 'lin'; log.push(`Eğilim: doğrusal kayma bulundu (σ ${sd.toPrecision(3)} → ${sr.toPrecision(3)}), çıkarılacak`); } else log.push('DC: ortalama çıkarılacak');
+    // kırpılma bilgisi
+    let mx = 0; for (let i = 0; i < n; i++) { const a = Math.abs(x[i]); if (a > mx) mx = a; }
+    let clip = 0; for (let i = 0; i < n; i++) if (Math.abs(x[i]) >= mx * 0.999) clip++;
+    if (clip / n > 0.001) log.push(`UYARI: örneklerin %${(100 * clip / n).toFixed(2)}'i en büyük genlikte (doygunluk/kırpılma); bu bozulma filtreyle düzeltilemez.`);
+    // PSD
+    const nfft = Math.min(8192, nextPow2(n) >> (n < 16384 ? 1 : 0)); if (nfft < 256) return res;
+    const P = welch(plan.dc === 'lin' ? dl : x, fs, {nfft, win: 'hann', overlap: 0.5, scale: 'psd', maxSeg: 600}), f = P.f, y = P.y, df = P.df, nyq = fs / 2;
+    const med = (a, b) => { const c = Array.from(y.slice(Math.max(0, a), Math.min(y.length, b))).sort((p, q) => p - q); return c.length ? c[c.length >> 1] : 0; };
+    // şebeke uğultusu
+    let best = null;
+    for (const f0 of [50, 60]) {
+      let nh = 0, hits = [];
+      for (let h = 1; h <= 10 && h * f0 < nyq * 0.95; h++) {
+        const c = Math.round(h * f0 / df); let pk = 0; for (let i = c - 2; i <= c + 2; i++) if (y[i] > pk) pk = y[i];
+        const base = (med(c - 40, c - 6) + med(c + 6, c + 40)) / 2 + 1e-300, db = 10 * Math.log10(pk / base);
+        if (db >= 10) { hits.push(h); nh = h; }
+      }
+      if (hits.length && hits.includes(1) || hits.length >= 2) if (!best || hits.length > best.hits.length) best = {f0, hits, nh};
+    }
+    if (best) { let c = 0; while (best.hits.includes(c + 1)) c++; best.nh = Math.max(1, c); plan.notch = best.f0; plan.nh = best.nh; log.push(`Şebeke uğultusu: ${best.f0} Hz ve harmonikleri (${best.hits.join(', ')}. harmonik) → notch`); } else log.push('Şebeke uğultusu bulunmadı');
+    // düşük frekans gürültüsü
+    const fc = Math.min(20, nyq / 20), ref = med(Math.round(Math.min(200, nyq / 4) / df), Math.round(Math.min(2000, nyq / 2) / df));
+    let lowPow = 0, lc = 0; for (let i = 1; i < y.length && f[i] < fc; i++) { lowPow += y[i]; lc++; }
+    if (lc && ref > 0 && 10 * Math.log10(lowPow / lc / ref) > 20) { plan.hp = fc; log.push(`Düşük frekans gürültüsü (<${fc} Hz) baskın → yüksek geçiren ${fc} Hz`); } else log.push('Düşük frekans gürültüsü belirgin değil');
+    if (fs > 44100) { plan.lp = 20000; log.push('Örnekleme >44,1 kHz: 20 kHz üstü alçak geçiren ile kesilecek'); }
+    // ön temizleme kopyası (tık ve sessiz bölüm analizi için)
+    let z = plan.dc === 'lin' ? dl : Float64Array.from(x, v => v - mean);
+    if (plan.hp) z = filtfilt(design('hp', {order: 4, f1: plan.hp}, fs), z);
+    if (plan.notch) z = filtfilt(design('notch', {f1: plan.notch, Q: plan.nq, harmonics: plan.nh}, fs), z);
+    // tık / pop
+    for (const sg of [8, 12]) {
+      const fl = hampelFlags(z, 5, sg, null, clickMin(z)), frac = fl.length / n;
+      if (frac < 0.005) { if (fl.length) { plan.click = true; plan.cs = sg; log.push(`Tık/pop: ${fl.length} olay (σ>${sg}) → temizlenecek`); } else log.push('Tık/pop bulunmadı'); break; }
+      if (sg === 12) log.push(`Tık/pop: aykırı örnek oranı yüksek (%${(100 * frac).toFixed(2)}), sinyalin doğal yapısı olabilir; otomatik temizleme atlandı`);
+    }
+    // sessiz bölüm -> gürültü profili
+    const W = Math.max(16384, Math.round(fs * 0.5)), nw = Math.floor(n / W);
+    if (nw >= 4) {
+      const rms = [], clipW = []; for (let w = 0; w < nw; w++) { let s = 0, c = 0; for (let i = w * W; i < (w + 1) * W; i++) { s += z[i] * z[i]; if (Math.abs(x[i]) >= mx * 0.999) c++; } rms.push(Math.sqrt(s / W)); clipW.push(c > 0); }
+      const ok = rms.map((r, i) => i).filter(i => !clipW[i]); const sorted = ok.map(i => rms[i]).sort((a, b) => a - b);
+      if (sorted.length >= 4) {
+        const q = sorted[0], top = sorted[Math.floor(sorted.length * 0.9)], range = 20 * Math.log10(top / (q + 1e-300));
+        if (range >= 3 && q > 0) { const wi = ok.find(i => rms[i] === q); res.noise = [wi * W, (wi + 1) * W]; plan.dn = true; plan.dnDb = Math.min(18, Math.max(8, Math.round(range))); log.push(`Sessiz bölüm bulundu (${(wi * W / fs).toFixed(3)}–${((wi + 1) * W / fs).toFixed(3)} s, dinamik fark ${range.toFixed(1)} dB) → spektral gürültü azaltma ${plan.dnDb} dB`); }
+        else log.push(`Belirgin sessiz bölüm yok (dinamik fark ${range.toFixed(1)} dB < 3 dB); spektral gürültü azaltma atlandı`);
+      } else log.push('Sessiz bölüm analizi için yeterli temiz pencere yok');
+    } else log.push('Kayıt, gürültü profili çıkarmak için çok kısa; spektral gürültü azaltma atlandı');
+    return res;
+  }
+  return {autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob};
 })();
 if (typeof module !== 'undefined') module.exports = DSP;

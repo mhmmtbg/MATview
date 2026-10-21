@@ -31,7 +31,7 @@ function buildTraces() {
   setTimeout(() => {
     $('#linkX').onchange = e => { S.plot.linkX = e.target.checked; if (S.plot.linkX && S.plot.axes.length) { const x = S.plot.axes[0].xlim; for (const a of S.plot.axes) a.xlim = x.slice(); } S.plot.invalidate(); };
     $('#gridOn').onchange = e => { S.plot.grid = e.target.checked; S.plot.invalidate(); };
-    $('#grmsMode').onchange = e => { S.plot.grms.mode = e.target.value; S.plot.invalidate(); }; $('#grmsDc').onchange = e => { S.plot.grms.dc = e.target.checked; S.plot.invalidate(); };
+    $('#grmsMode').onchange = e => { S.plot.grms.mode = e.target.value; S.plot.invalidate(); S.specPlot.invalidate(); }; $('#grmsDc').onchange = e => { S.plot.grms.dc = e.target.checked; S.plot.invalidate(); S.specPlot.invalidate(); };
     $('#legendOn').onchange = e => { S.plot.legend = e.target.checked; S.plot.invalidate(); };
   });
   return r;
@@ -179,7 +179,7 @@ async function computeSpectrum() {
       const seg = DSP.segment(ch.data, ch.del, a, b); const res = DSP.welch(seg, ch.fs, o);
       let y = res.y; if (ys === 'db') { const kf = o.scale === 'psd' ? 10 : 20; y = res.y.map(v => kf * Math.log10(v + 1e-300)); let pk = -Infinity; for (const v of y) if (v > pk) pk = v; y = y.map(v => Math.max(v, pk - 180)); }
       const sd = DSP.stats(seg, null, 0, seg.length); if (!(sd.std > 1e-9 * (Math.abs(sd.mean) + 1e-12))) toast('Uyarı: ' + tr.label + ' seçili aralıkta sabit (değişmiyor), spektrum anlamsız.', 6000);
-      const t = {kind: 'xy', x: res.f, y, label: tr.label, color: tr.color, width: 1, visible: true};
+      const t = {kind: 'xy', x: res.f, y, label: tr.label, color: tr.color, width: 1, visible: true, raw: res.y, scale: o.scale, df: res.df, srcKind: ch.kind};
       if (ck('spPeak')) t.peaks = findPeaks(res.f, y, 3);
       sa.traces.push(t); info.push(`${tr.label}: Δf=${fmtNum(res.df, 4)} Hz, ${res.nseg} bölüt`); prog(++k / ax.traces.length);
     }
@@ -271,6 +271,9 @@ function buildAcoustic() {
     fr('Hız çarpanı', numIn('acSpeed', 1, {min: 0.05, step: 'any'})), fr('Ses düzeyi', h('input', {type: 'range', id: 'acVol', min: 0, max: 1, step: 0.01, value: 0.5, oninput: e => { if (S.audio && S.audio.gain) S.audio.gain.gain.value = +e.target.value; }})),
     chkIn('acLoop', 'Döngü', false),
     h('div', {class: 'note'}, 'Örnekleme 8 kHz altına inerse hız otomatik artırılır. Dinlemeden önce ses düzeyini düşük tutun.')));
+  r.append(card('Otomatik temizleme',
+    h('div', {class: 'note'}, 'Kaynak izi inceler: DC/eğilim, 50/60 Hz uğultusu ve harmonikleri, düşük frekans gürültüsü, tık/pop ve sessiz bölümden gürültü profilini kendisi bulup aşağıdaki ayarları doldurur. Sonra dinleyip ayarları değiştirebilirsiniz.'),
+    h('div', {class: 'btns'}, btn('Otomatik tespit et ve ayarla', () => acAuto(false), 'primary'), btn('Tespit et + temiz kanalı ekle', () => acAuto(true)))));
   r.append(card('Parazit temizleme',
     fr('DC / eğilim', selIn('acDc', [['none', 'Yok'], ['mean', 'Ortalamayı çıkar'], ['lin', 'Doğrusal eğilimi çıkar']], 'mean')),
     h('div', {class: 'fr chk'}, h('label', {for: 'acHpOn'}, 'Yüksek geçiren (Hz)'), numIn('acHp', 20), h('input', {type: 'checkbox', id: 'acHpOn'})),
@@ -290,6 +293,19 @@ function buildAcoustic() {
     h('div', {class: 'btns'}, btn('WAV kaydet (orijinal)', () => acWav(false)), btn('WAV kaydet (temiz)', () => acWav(true))),
     h('div', {id: 'acLog', class: 'note', style: 'white-space:pre-line'})));
   return r;
+}
+async function acAuto(add) {
+  await busy('Parazitler analiz ediliyor…', async () => {
+    const {tr, ax} = acGetSeg(), ch = tr.ch; await ensureLoaded(ch); const [a, b] = specRange(tr, ax, sv('acScope'));
+    if (b - a < 1024) throw new Error('Aralık çok kısa');
+    const x = DSP.segment(ch.data, ch.del, a, b), r = DSP.autoClean(x, ch.fs), p = r.plan;
+    $('#acDc').value = p.dc; $('#acHpOn').checked = !!p.hp; if (p.hp) $('#acHp').value = p.hp; $('#acLpOn').checked = !!p.lp; if (p.lp) $('#acLp').value = p.lp;
+    $('#acNOn').checked = !!p.notch; if (p.notch) { $('#acNf').value = p.notch; $('#acNq').value = p.nq; $('#acNh').value = p.nh; }
+    $('#acClOn').checked = p.click; $('#acClK').value = p.ck; $('#acClS').value = p.cs; $('#acDnOn').checked = p.dn; $('#acDnDb').value = p.dnDb; $('#acDnA').value = p.dnA;
+    if (r.noise) { const t0 = ch.t(a + r.noise[0]), t1 = ch.t(a + r.noise[1]); $('#acN0').value = +t0.toPrecision(8); $('#acN1').value = +t1.toPrecision(8); S.plot.bands = [{x0: t0, x1: t1, color: '#2aa198'}]; S.plot.invalidate(); }
+    $('#acLog').textContent = 'OTOMATİK ANALİZ\n' + r.log.join('\n');
+    if (add) await acAddClean();
+  });
 }
 function setNoiseFromView() { const ax = activeAxes(); if (!ax) return; $('#acN0').value = +ax.xlim[0].toPrecision(8); $('#acN1').value = +ax.xlim[1].toPrecision(8); S.plot.bands = [{x0: ax.xlim[0], x1: ax.xlim[1], color: '#2aa198'}]; S.plot.invalidate(); toast('Gürültü aralığı atandı'); }
 function acGetSeg() {
@@ -517,7 +533,7 @@ function init() {
     else if (k === 'delete' || k === 'backspace') { if (selCount()) { e.preventDefault(); deleteSelection(); } }
     else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
-  S.plot.onChangeOrig = S.plot.onChange;
+  S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
   setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshExprPick(); }, 1500);
   startupFiles();
 }

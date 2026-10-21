@@ -82,7 +82,14 @@ class Plot {
   }
   // Titreşim izleri için lejant ekini hesapla: " — 1.234 Grms" (DC çıkarılabilir; ölü noktalar ve NaN hariç)
   legendExtra(t, ax) {
-    const m = this.grms; if (!m || m.mode === 'off' || t.kind !== 'ts' || t.ch.kind !== 'vib' || !t.ch.data) return '';
+    const m = this.grms; if (!m || m.mode === 'off') return '';
+    if (t.kind === 'xy') {   // spektrum izi: PSD/RMS/tepe genlik -> Grms (alan integrali)
+      if (!t.raw || t.srcKind !== 'vib') return '';
+      const f = t.x, y = t.raw, lo = m.mode === 'vis' ? ax.xlim[0] : -Infinity, hi = m.mode === 'vis' ? ax.xlim[1] : Infinity; let s = 0;
+      for (let i = m.dc ? 1 : 0; i < f.length; i++) { if (f[i] < lo || f[i] > hi) continue; const v = y[i]; if (!isFinite(v)) continue; s += t.scale === 'psd' ? v * t.df : t.scale === 'amp' ? v * v / 2 : v * v; }
+      return ' — ' + Math.sqrt(s).toPrecision(4) + ' Grms';
+    }
+    if (t.kind !== 'ts' || t.ch.kind !== 'vib' || !t.ch.data) return '';
     const ch = t.ch; let a = 0, b = ch.n;
     if (m.mode === 'vis') { a = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))); b = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1); }
     const key = m.mode + ':' + a + ':' + b + ':' + ch.delCount + ':' + m.dc, c = t._grms;

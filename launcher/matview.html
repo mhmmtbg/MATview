@@ -845,7 +845,7 @@ const DSP = (() => {
   }
 
   // ---- Hampel / medyan ----
-  function hampelFlags(x, k, nsig, del) {
+  function hampelFlags(x, k, nsig, del, gmin) {
     const n = x.length, w = 2 * k + 1, buf = new Float64Array(w), dev = new Float64Array(w);
     const flags = [];
     for (let i = 0; i < n; i++) {
@@ -858,7 +858,7 @@ const DSP = (() => {
       const dsub = dev.subarray(0, m); dsub.sort();
       const mad = 1.4826 * dsub[m >> 1];
       const d = Math.abs(x[i] - med);
-      if (mad > 0 && d > nsig * mad) flags.push(i);
+      if (mad > 0 && d > nsig * mad && d > (gmin || 0)) flags.push(i);
     }
     return Uint32Array.from(flags);
   }
@@ -871,8 +871,13 @@ const DSP = (() => {
     const o = new Float64Array(n); for (let i = 0; i < n; i++) o[i] = x[i] - (a + b * i); return o;
   }
   // tık/pop: Hampel ile işaretle, genişlet, doğrusal ara değerle
+  // Genel gürültü düzeyi (birinci farkın sağlam σ'sı): küçük pencerede MAD'in rastlantısal küçülmesinden doğan yanlış alarmları önler
+  function clickMin(x) {
+    const n = x.length, d = new Float64Array(Math.max(0, n - 1)); for (let i = 1; i < n; i++) d[i - 1] = Math.abs(x[i] - x[i - 1]);
+    if (!d.length) return 0; const s = d.slice().sort(); return 6 * 1.4826 * s[s.length >> 1] / Math.SQRT2;
+  }
   function declick(x, k, nsig, grow) {
-    const flags = hampelFlags(x, k, nsig, null);
+    const flags = hampelFlags(x, k, nsig, null, clickMin(x));
     const n = x.length, bad = new Uint8Array(n);
     for (const i of flags) for (let j = Math.max(0, i - grow); j <= Math.min(n - 1, i + grow); j++) bad[j] = 1;
     const o = Float64Array.from(x); let cnt = 0;
@@ -949,7 +954,64 @@ const DSP = (() => {
     for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, y[i])) * 32767, true);
     return new Blob([buf], {type: 'audio/wav'});
   }
-  return {fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob};
+  // Otomatik parazit analizi: DC/eğilim, şebeke uğultusu (50/60 Hz + harmonikler), düşük frekans gürültüsü,
+  // tık/pop, sessiz bölümden gürültü profili. Çıktı: {plan, log, noise:[a,b)|null}
+  function autoClean(x, fs) {
+    const n = x.length, log = [], plan = {dc: 'mean', hp: 0, lp: 0, notch: 0, nq: 30, nh: 1, click: false, ck: 5, cs: 8, dn: false, dnDb: 12, dnA: 2}, res = {plan, log, noise: null};
+    let mean = 0; for (let i = 0; i < n; i++) mean += x[i]; mean /= n;
+    let sd = 0; for (let i = 0; i < n; i++) sd += (x[i] - mean) ** 2; sd = Math.sqrt(sd / n);
+    if (!(sd > 1e-12)) { log.push('Sinyal sabit; temizlenecek bir şey yok.'); plan.dc = 'none'; return res; }
+    const dl = detrendLinear(x); let sr = 0; for (let i = 0; i < n; i++) sr += (dl[i]) ** 2; sr = Math.sqrt(sr / n);
+    if (sr < 0.9 * sd) { plan.dc = 'lin'; log.push(`Eğilim: doğrusal kayma bulundu (σ ${sd.toPrecision(3)} → ${sr.toPrecision(3)}), çıkarılacak`); } else log.push('DC: ortalama çıkarılacak');
+    // kırpılma bilgisi
+    let mx = 0; for (let i = 0; i < n; i++) { const a = Math.abs(x[i]); if (a > mx) mx = a; }
+    let clip = 0; for (let i = 0; i < n; i++) if (Math.abs(x[i]) >= mx * 0.999) clip++;
+    if (clip / n > 0.001) log.push(`UYARI: örneklerin %${(100 * clip / n).toFixed(2)}'i en büyük genlikte (doygunluk/kırpılma); bu bozulma filtreyle düzeltilemez.`);
+    // PSD
+    const nfft = Math.min(8192, nextPow2(n) >> (n < 16384 ? 1 : 0)); if (nfft < 256) return res;
+    const P = welch(plan.dc === 'lin' ? dl : x, fs, {nfft, win: 'hann', overlap: 0.5, scale: 'psd', maxSeg: 600}), f = P.f, y = P.y, df = P.df, nyq = fs / 2;
+    const med = (a, b) => { const c = Array.from(y.slice(Math.max(0, a), Math.min(y.length, b))).sort((p, q) => p - q); return c.length ? c[c.length >> 1] : 0; };
+    // şebeke uğultusu
+    let best = null;
+    for (const f0 of [50, 60]) {
+      let nh = 0, hits = [];
+      for (let h = 1; h <= 10 && h * f0 < nyq * 0.95; h++) {
+        const c = Math.round(h * f0 / df); let pk = 0; for (let i = c - 2; i <= c + 2; i++) if (y[i] > pk) pk = y[i];
+        const base = (med(c - 40, c - 6) + med(c + 6, c + 40)) / 2 + 1e-300, db = 10 * Math.log10(pk / base);
+        if (db >= 10) { hits.push(h); nh = h; }
+      }
+      if (hits.length && hits.includes(1) || hits.length >= 2) if (!best || hits.length > best.hits.length) best = {f0, hits, nh};
+    }
+    if (best) { let c = 0; while (best.hits.includes(c + 1)) c++; best.nh = Math.max(1, c); plan.notch = best.f0; plan.nh = best.nh; log.push(`Şebeke uğultusu: ${best.f0} Hz ve harmonikleri (${best.hits.join(', ')}. harmonik) → notch`); } else log.push('Şebeke uğultusu bulunmadı');
+    // düşük frekans gürültüsü
+    const fc = Math.min(20, nyq / 20), ref = med(Math.round(Math.min(200, nyq / 4) / df), Math.round(Math.min(2000, nyq / 2) / df));
+    let lowPow = 0, lc = 0; for (let i = 1; i < y.length && f[i] < fc; i++) { lowPow += y[i]; lc++; }
+    if (lc && ref > 0 && 10 * Math.log10(lowPow / lc / ref) > 20) { plan.hp = fc; log.push(`Düşük frekans gürültüsü (<${fc} Hz) baskın → yüksek geçiren ${fc} Hz`); } else log.push('Düşük frekans gürültüsü belirgin değil');
+    if (fs > 44100) { plan.lp = 20000; log.push('Örnekleme >44,1 kHz: 20 kHz üstü alçak geçiren ile kesilecek'); }
+    // ön temizleme kopyası (tık ve sessiz bölüm analizi için)
+    let z = plan.dc === 'lin' ? dl : Float64Array.from(x, v => v - mean);
+    if (plan.hp) z = filtfilt(design('hp', {order: 4, f1: plan.hp}, fs), z);
+    if (plan.notch) z = filtfilt(design('notch', {f1: plan.notch, Q: plan.nq, harmonics: plan.nh}, fs), z);
+    // tık / pop
+    for (const sg of [8, 12]) {
+      const fl = hampelFlags(z, 5, sg, null, clickMin(z)), frac = fl.length / n;
+      if (frac < 0.005) { if (fl.length) { plan.click = true; plan.cs = sg; log.push(`Tık/pop: ${fl.length} olay (σ>${sg}) → temizlenecek`); } else log.push('Tık/pop bulunmadı'); break; }
+      if (sg === 12) log.push(`Tık/pop: aykırı örnek oranı yüksek (%${(100 * frac).toFixed(2)}), sinyalin doğal yapısı olabilir; otomatik temizleme atlandı`);
+    }
+    // sessiz bölüm -> gürültü profili
+    const W = Math.max(16384, Math.round(fs * 0.5)), nw = Math.floor(n / W);
+    if (nw >= 4) {
+      const rms = [], clipW = []; for (let w = 0; w < nw; w++) { let s = 0, c = 0; for (let i = w * W; i < (w + 1) * W; i++) { s += z[i] * z[i]; if (Math.abs(x[i]) >= mx * 0.999) c++; } rms.push(Math.sqrt(s / W)); clipW.push(c > 0); }
+      const ok = rms.map((r, i) => i).filter(i => !clipW[i]); const sorted = ok.map(i => rms[i]).sort((a, b) => a - b);
+      if (sorted.length >= 4) {
+        const q = sorted[0], top = sorted[Math.floor(sorted.length * 0.9)], range = 20 * Math.log10(top / (q + 1e-300));
+        if (range >= 3 && q > 0) { const wi = ok.find(i => rms[i] === q); res.noise = [wi * W, (wi + 1) * W]; plan.dn = true; plan.dnDb = Math.min(18, Math.max(8, Math.round(range))); log.push(`Sessiz bölüm bulundu (${(wi * W / fs).toFixed(3)}–${((wi + 1) * W / fs).toFixed(3)} s, dinamik fark ${range.toFixed(1)} dB) → spektral gürültü azaltma ${plan.dnDb} dB`); }
+        else log.push(`Belirgin sessiz bölüm yok (dinamik fark ${range.toFixed(1)} dB < 3 dB); spektral gürültü azaltma atlandı`);
+      } else log.push('Sessiz bölüm analizi için yeterli temiz pencere yok');
+    } else log.push('Kayıt, gürültü profili çıkarmak için çok kısa; spektral gürültü azaltma atlandı');
+    return res;
+  }
+  return {autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob};
 })();
 
 /* MATLAB tarzı ifade ayrıştırıcı: kanal adları, + - * / ^, fonksiyonlar */
@@ -1133,7 +1195,14 @@ class Plot {
   }
   // Titreşim izleri için lejant ekini hesapla: " — 1.234 Grms" (DC çıkarılabilir; ölü noktalar ve NaN hariç)
   legendExtra(t, ax) {
-    const m = this.grms; if (!m || m.mode === 'off' || t.kind !== 'ts' || t.ch.kind !== 'vib' || !t.ch.data) return '';
+    const m = this.grms; if (!m || m.mode === 'off') return '';
+    if (t.kind === 'xy') {   // spektrum izi: PSD/RMS/tepe genlik -> Grms (alan integrali)
+      if (!t.raw || t.srcKind !== 'vib') return '';
+      const f = t.x, y = t.raw, lo = m.mode === 'vis' ? ax.xlim[0] : -Infinity, hi = m.mode === 'vis' ? ax.xlim[1] : Infinity; let s = 0;
+      for (let i = m.dc ? 1 : 0; i < f.length; i++) { if (f[i] < lo || f[i] > hi) continue; const v = y[i]; if (!isFinite(v)) continue; s += t.scale === 'psd' ? v * t.df : t.scale === 'amp' ? v * v / 2 : v * v; }
+      return ' — ' + Math.sqrt(s).toPrecision(4) + ' Grms';
+    }
+    if (t.kind !== 'ts' || t.ch.kind !== 'vib' || !t.ch.data) return '';
     const ch = t.ch; let a = 0, b = ch.n;
     if (m.mode === 'vis') { a = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))); b = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1); }
     const key = m.mode + ':' + a + ':' + b + ':' + ch.delCount + ':' + m.dc, c = t._grms;
@@ -2035,7 +2104,7 @@ function buildTraces() {
   setTimeout(() => {
     $('#linkX').onchange = e => { S.plot.linkX = e.target.checked; if (S.plot.linkX && S.plot.axes.length) { const x = S.plot.axes[0].xlim; for (const a of S.plot.axes) a.xlim = x.slice(); } S.plot.invalidate(); };
     $('#gridOn').onchange = e => { S.plot.grid = e.target.checked; S.plot.invalidate(); };
-    $('#grmsMode').onchange = e => { S.plot.grms.mode = e.target.value; S.plot.invalidate(); }; $('#grmsDc').onchange = e => { S.plot.grms.dc = e.target.checked; S.plot.invalidate(); };
+    $('#grmsMode').onchange = e => { S.plot.grms.mode = e.target.value; S.plot.invalidate(); S.specPlot.invalidate(); }; $('#grmsDc').onchange = e => { S.plot.grms.dc = e.target.checked; S.plot.invalidate(); S.specPlot.invalidate(); };
     $('#legendOn').onchange = e => { S.plot.legend = e.target.checked; S.plot.invalidate(); };
   });
   return r;
@@ -2183,7 +2252,7 @@ async function computeSpectrum() {
       const seg = DSP.segment(ch.data, ch.del, a, b); const res = DSP.welch(seg, ch.fs, o);
       let y = res.y; if (ys === 'db') { const kf = o.scale === 'psd' ? 10 : 20; y = res.y.map(v => kf * Math.log10(v + 1e-300)); let pk = -Infinity; for (const v of y) if (v > pk) pk = v; y = y.map(v => Math.max(v, pk - 180)); }
       const sd = DSP.stats(seg, null, 0, seg.length); if (!(sd.std > 1e-9 * (Math.abs(sd.mean) + 1e-12))) toast('Uyarı: ' + tr.label + ' seçili aralıkta sabit (değişmiyor), spektrum anlamsız.', 6000);
-      const t = {kind: 'xy', x: res.f, y, label: tr.label, color: tr.color, width: 1, visible: true};
+      const t = {kind: 'xy', x: res.f, y, label: tr.label, color: tr.color, width: 1, visible: true, raw: res.y, scale: o.scale, df: res.df, srcKind: ch.kind};
       if (ck('spPeak')) t.peaks = findPeaks(res.f, y, 3);
       sa.traces.push(t); info.push(`${tr.label}: Δf=${fmtNum(res.df, 4)} Hz, ${res.nseg} bölüt`); prog(++k / ax.traces.length);
     }
@@ -2275,6 +2344,9 @@ function buildAcoustic() {
     fr('Hız çarpanı', numIn('acSpeed', 1, {min: 0.05, step: 'any'})), fr('Ses düzeyi', h('input', {type: 'range', id: 'acVol', min: 0, max: 1, step: 0.01, value: 0.5, oninput: e => { if (S.audio && S.audio.gain) S.audio.gain.gain.value = +e.target.value; }})),
     chkIn('acLoop', 'Döngü', false),
     h('div', {class: 'note'}, 'Örnekleme 8 kHz altına inerse hız otomatik artırılır. Dinlemeden önce ses düzeyini düşük tutun.')));
+  r.append(card('Otomatik temizleme',
+    h('div', {class: 'note'}, 'Kaynak izi inceler: DC/eğilim, 50/60 Hz uğultusu ve harmonikleri, düşük frekans gürültüsü, tık/pop ve sessiz bölümden gürültü profilini kendisi bulup aşağıdaki ayarları doldurur. Sonra dinleyip ayarları değiştirebilirsiniz.'),
+    h('div', {class: 'btns'}, btn('Otomatik tespit et ve ayarla', () => acAuto(false), 'primary'), btn('Tespit et + temiz kanalı ekle', () => acAuto(true)))));
   r.append(card('Parazit temizleme',
     fr('DC / eğilim', selIn('acDc', [['none', 'Yok'], ['mean', 'Ortalamayı çıkar'], ['lin', 'Doğrusal eğilimi çıkar']], 'mean')),
     h('div', {class: 'fr chk'}, h('label', {for: 'acHpOn'}, 'Yüksek geçiren (Hz)'), numIn('acHp', 20), h('input', {type: 'checkbox', id: 'acHpOn'})),
@@ -2294,6 +2366,19 @@ function buildAcoustic() {
     h('div', {class: 'btns'}, btn('WAV kaydet (orijinal)', () => acWav(false)), btn('WAV kaydet (temiz)', () => acWav(true))),
     h('div', {id: 'acLog', class: 'note', style: 'white-space:pre-line'})));
   return r;
+}
+async function acAuto(add) {
+  await busy('Parazitler analiz ediliyor…', async () => {
+    const {tr, ax} = acGetSeg(), ch = tr.ch; await ensureLoaded(ch); const [a, b] = specRange(tr, ax, sv('acScope'));
+    if (b - a < 1024) throw new Error('Aralık çok kısa');
+    const x = DSP.segment(ch.data, ch.del, a, b), r = DSP.autoClean(x, ch.fs), p = r.plan;
+    $('#acDc').value = p.dc; $('#acHpOn').checked = !!p.hp; if (p.hp) $('#acHp').value = p.hp; $('#acLpOn').checked = !!p.lp; if (p.lp) $('#acLp').value = p.lp;
+    $('#acNOn').checked = !!p.notch; if (p.notch) { $('#acNf').value = p.notch; $('#acNq').value = p.nq; $('#acNh').value = p.nh; }
+    $('#acClOn').checked = p.click; $('#acClK').value = p.ck; $('#acClS').value = p.cs; $('#acDnOn').checked = p.dn; $('#acDnDb').value = p.dnDb; $('#acDnA').value = p.dnA;
+    if (r.noise) { const t0 = ch.t(a + r.noise[0]), t1 = ch.t(a + r.noise[1]); $('#acN0').value = +t0.toPrecision(8); $('#acN1').value = +t1.toPrecision(8); S.plot.bands = [{x0: t0, x1: t1, color: '#2aa198'}]; S.plot.invalidate(); }
+    $('#acLog').textContent = 'OTOMATİK ANALİZ\n' + r.log.join('\n');
+    if (add) await acAddClean();
+  });
 }
 function setNoiseFromView() { const ax = activeAxes(); if (!ax) return; $('#acN0').value = +ax.xlim[0].toPrecision(8); $('#acN1').value = +ax.xlim[1].toPrecision(8); S.plot.bands = [{x0: ax.xlim[0], x1: ax.xlim[1], color: '#2aa198'}]; S.plot.invalidate(); toast('Gürültü aralığı atandı'); }
 function acGetSeg() {
@@ -2521,7 +2606,7 @@ function init() {
     else if (k === 'delete' || k === 'backspace') { if (selCount()) { e.preventDefault(); deleteSelection(); } }
     else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
-  S.plot.onChangeOrig = S.plot.onChange;
+  S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
   setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshExprPick(); }, 1500);
   startupFiles();
 }
