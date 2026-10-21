@@ -7,12 +7,12 @@ const num = id => parseFloat($('#' + id).value), sv = id => $('#' + id).value, c
 const card = (title, ...c) => h('div', {class: 'card'}, h('h4', null, title), ...c);
 const btn = (t, fn, cls, id) => h('button', {class: cls || '', onclick: fn, id}, t);
 
-const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'İfade'], ['acoustic', 'Akustik'], ['unv', 'UNV / Profil'], ['output', 'Çıktı']];
+const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'İfade'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['output', 'Çıktı']];
 function buildRight() {
   const tabs = $('#rtabs'), body = $('#rbody'); tabs.replaceChildren(); body.replaceChildren(); S.panels = {};
   const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, output: buildOutput};
   for (const [k, t] of TABS) {
-    tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, onclick: () => setTab(k)}, t));
+    tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => setTab(k)}, h('span', {class: 'tl'}, t)));
     const p = builders[k](); p.id = 'p-' + k; if (k !== S.tab) p.classList.add('hidden'); body.append(p); S.panels[k] = p;
   }
 }
@@ -517,7 +517,7 @@ function helpDialog() {
 }
 
 /* ---------- başlatma ---------- */
-function onHover1(p) { $('#hoverinfo').textContent = p ? `t = ${fmtNum(p.x, 7)} s    y = ${fmtNum(p.y, 6)}` : ''; }
+function onHover1(p) { const P = S.plot, hx = p ? p.x : null; if (P.axes.length > 1 && P.linkX && P.hoverX !== hx) { P.hoverX = hx; P.invalidate(); } else P.hoverX = hx; $('#hoverinfo').textContent = p ? `t = ${fmtNum(p.x, 7)} s    y = ${fmtNum(p.y, 6)}` : ''; }
 function onPlotChange(kind) {
   if (kind === 'view') { syncLimits(); updateStats(); }
   else if (kind === 'active') { refreshAxesUI(); refreshTraceInfo(); updateStats(); }
@@ -567,7 +567,7 @@ function init() {
   });
   S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
   setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshExprPick(); }, 1500);
-  startupFiles();
+  initUX(); startupFiles();
 }
 async function startupFiles() {
   try {

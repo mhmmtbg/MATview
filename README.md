@@ -51,3 +51,10 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 
 - **Test seviyesi (Analiz sekmesi):** titreşim izinde −9/−6/−3/0 dB gibi seviye platolarını otomatik bulur (pencere RMS'i, adıma yuvarlama), zaman grafiğini boyar, "Seviye başına spektrum" her plato için PSD çizer. Referans (0 dB) en yüksek seviye ya da seçilen profilin Grms'idir. Profille karşılaştırmada seviye otomatik tespit edilip profil o seviyeye kaydırılır.
 - **Akustik → Otomatik temizle:** DC/eğilim, 50/60 Hz uğultusu, düşük frekans gürültüsü, tık/pop ve gürültü profilini kendisi bulur; sessiz bölüm yoksa gürültü tabanını minimum istatistikle tahmin eder; temiz kanalı ekler, önce/sonra spektrumunu çizer ve ölçülen etkiyi (RMS, gürültü tabanı, uğultu tepesi) yazar.
+
+
+## Arayüz (UX) güncellemesi
+- **Grafik üstü kontroller:** her alt grafikte üzerine gelince çıkan düğmeler (kaldır, boşalt, yukarı/aşağı, yüksekliği büyüt, üsttekiyle birleştir); alt grafik ayırıcısını sürükleyerek yükseklik ayarı (çift tık: eşitle).
+- **Etkileşimli lejant:** tık = göster/gizle, ✕ = kaldır, sağ tık = renk/kalınlık/taşı, sürükle = başka alt grafiğe taşı. Her kaldırma/taşıma sonrası “Geri al” düğmeli bildirim.
+- **Aynı grafiğe ekleme:** ağaçta her satırda iki düğme (yeni alt grafik / aktif grafiğe), sürüklerken “Bu grafiğe ekle” ve “Yeni alt grafik” bölgeleri, Shift+çift tık, Ayarlar’dan çift tık tercihi.
+- Ikon seti, Aç/Ayarlar menüleri, karşılama ekranı, tek satır sekmeler, katlanabilir kartlar, klavye gezinme, `?` kısayol listesi.

@@ -1,8 +1,8 @@
 /* Grafik motoru: Canvas, MATLAB benzeri etkileşim, büyük veri için min/max inceltme */
 const PAL = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E', '#77AC30', '#4DBEEE', '#A2142F'];
 const THEMES = {
-  light: {bg: '#ffffff', fg: '#1b1f24', axis: '#3a3f45', grid: '#e3e6ea', minor: '#f0f2f4', muted: '#6b7280', box: '#ffffff', sel: '#d62728'},
-  dark: {bg: '#16191d', fg: '#e6e8eb', axis: '#aab0b8', grid: '#2c3137', minor: '#22262b', muted: '#8b929b', box: '#1e2227', sel: '#ff6b6b'}
+  light: {bg: '#ffffff', fg: '#1b1f24', axis: '#3a3f45', grid: '#e3e6ea', minor: '#f0f2f4', muted: '#6b7280', box: '#ffffff', sel: '#d62728', acc: '#0072BD'},
+  dark: {bg: '#16191d', fg: '#e6e8eb', axis: '#aab0b8', grid: '#2c3137', minor: '#22262b', muted: '#8b929b', box: '#1e2227', sel: '#ff6b6b', acc: '#3b9ae1'}
 };
 function curTheme() { return document.documentElement.dataset.theme === 'dark' ? THEMES.dark : THEMES.light; }
 
@@ -67,11 +67,11 @@ class Plot {
   // ---------- yerleşim ----------
   layout(W, H) {
     const n = this.axes.length; if (!n) return;
-    const L = 74, R = 18, T = 10, B = 36, gap = 34;
-    const titleH = 0;
-    const avail = H - T - B - gap * (n - 1) - titleH * n;
-    const h = Math.max(60, avail / n);
-    this.axes.forEach((ax, i) => { ax.rect = {x: L, y: T + i * (h + gap), w: Math.max(50, W - L - R), h}; });
+    const L = 74, R = 18, T = 10, B = 40, gap = 26;
+    const avail = Math.max(60 * n, H - T - B - gap * (n - 1));
+    let tw = 0; for (const a of this.axes) tw += a.hw || 1;
+    let y = T;
+    this.axes.forEach(ax => { const h = Math.max(50, avail * (ax.hw || 1) / tw); ax.rect = {x: L, y, w: Math.max(50, W - L - R), h}; y += h + gap; });
   }
   bounds() {
     let lo = Infinity, hi = -Infinity;
@@ -141,6 +141,7 @@ class Plot {
     if (!this.axes.length) { ctx.fillStyle = T.muted; ctx.font = '14px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.fillText(this.opts.emptyText || 'Soldaki listeden bir kanalı çift tıklayın veya buraya sürükleyin', W / 2, H / 2); return; }
     this.layout(W, H);
     for (const ax of this.axes) { this.autoY(ax); this.drawAxes(ctx, ax, T, forExport); }
+    if (!forExport && this.hoverX != null && this.axes.length > 1 && this.linkX) { ctx.save(); ctx.strokeStyle = T.muted; ctx.setLineDash([2, 3]); for (const ax of this.axes) { const x = this.xPx(ax, this.hoverX), r = ax.rect; if (x >= r.x && x <= r.x + r.w) { ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, r.y); ctx.lineTo(Math.round(x) + .5, r.y + r.h); ctx.stroke(); } } ctx.restore(); }
     if (!forExport) { this.drawOverlay(ctx, T); }
   }
   autoY(ax) {
@@ -179,7 +180,7 @@ class Plot {
     ctx.restore(); ctx.save();
     // çerçeve ve tikler
     ctx.strokeStyle = T.axis; ctx.strokeRect(r.x + .5, r.y + .5, r.w, r.h);
-    if (this.active === ax && this.axes.length > 1) { ctx.fillStyle = '#0072BD'; ctx.fillRect(r.x - 3, r.y, 3, r.h); }
+    if (this.active === ax && this.axes.length > 1 && !forExport) { ctx.strokeStyle = T.acc; ctx.lineWidth = 2; ctx.strokeRect(r.x + 1, r.y + 1.5, r.w - 1, r.h - 1); ctx.lineWidth = 1; }
     ctx.fillStyle = T.fg; ctx.strokeStyle = T.axis;
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.beginPath();
@@ -196,10 +197,10 @@ class Plot {
     if (ax.title) { ctx.font = '600 12px system-ui,sans-serif'; ctx.fillText(ax.title, r.x + r.w / 2, r.y - 1); ctx.font = '11px system-ui,sans-serif'; }
     ctx.fillStyle = T.muted; ctx.textBaseline = 'top';
     const xl = ax.xlabel || this.opts.xlabel || 'Zaman (s)';
-    ctx.fillText(xl, r.x + r.w / 2, r.y + r.h + 19);
+    if (ax === this.axes[this.axes.length - 1] || forExport) ctx.fillText(xl, r.x + r.w / 2, r.y + r.h + 21);
     if (ax.ylabel) { ctx.save(); ctx.translate(13, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ax.ylabel, 0, 0); ctx.restore(); }
     // gösterge
-    if (this.legend) {
+    if (this.legend && (forExport || !this.domLegend)) {
       const vis = ax.traces.filter(t => t.visible); if (vis.length) {
         ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const lbl = new Map(vis.map(t => [t, t.label + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);

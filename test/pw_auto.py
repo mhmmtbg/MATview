@@ -10,10 +10,10 @@ async def main():
           for(let i=0;i<n;i++){const t=i/fs;let v=0.02*Math.sqrt(-2*Math.log(r()+1e-12))*Math.cos(6.283*r())+0.3+0.05*Math.sin(2*Math.PI*50*t)+0.03*Math.sin(2*Math.PI*100*t);if(t>4&&t<9)v+=0.5*Math.sin(2*Math.PI*440*t);x[i]=v}
           x[20000]+=3;x[60000]+=3;
           const c=addDerived('as_test',x,null,0,true); c.kind='vib'; c.dtS=1/fs; await addDerivedToPlot(c);}""")
-        await pg.click('#rtabs >> text=Akustik'); await pg.select_option('#acScope','all'); await pg.click('button:has-text("Otomatik tespit et ve ayarla")'); await pg.wait_for_timeout(2500)
+        await pg.click('#rtabs >> text=Akustik'); await pg.select_option('#acScope','all'); await pg.click('button:has-text("Yalnız ayarla")'); await pg.wait_for_timeout(2500)
         print(await pg.inner_text('#acLog'))
         print(await pg.evaluate("[document.querySelector('#acNOn').checked, document.querySelector('#acNf').value, document.querySelector('#acNh').value, document.querySelector('#acClOn').checked, document.querySelector('#acDnOn').checked, document.querySelector('#acN0').value, document.querySelector('#acN1').value]"))
-        await pg.click('button:has-text("Tespit et + temiz kanalı ekle")'); await pg.wait_for_timeout(5000)
+        await pg.click('button:has-text("Otomatik temizle (tespit")'); await pg.wait_for_timeout(5000)
         print(await pg.evaluate("S.derived.channels.map(c=>c.name+':'+c.n)"))
         # spektrum Grms
         await pg.click('#rtabs >> text=İzler'); await pg.select_option('#grmsMode','all'); await pg.click('#rtabs >> text=Analiz'); await pg.click('button:has-text("Spektrumu hesapla")'); await pg.wait_for_timeout(2500)
