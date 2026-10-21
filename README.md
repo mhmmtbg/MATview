@@ -1,1 +1,27 @@
-# MATview
+# MATView
+
+MATLAB `.mat` dosyalarını okuyan, MATLAB benzeri grafik çizen; yakınlaştırma/uzaklaştırma, bozucu veriyi silme, FFT/PSD/spektrogram, süzgeç ve akustik temizleme sunan kurulumsuz masaüstü uygulaması. İnternet ve kurulum gerektirmez.
+
+## Kullanım
+- `dist/MATView.exe` (Windows 10+, Edge veya Chrome gerekir): çift tıklayın ya da `.mat` dosyasını exe'nin üzerine sürükleyin.
+- `dist/matview.html`: aynı arayüz, tek dosya; tarayıcıda açılır.
+
+## Özellikler
+- MATLAB v5 (sıkıştırılmış) ve v7.3 (HDF5, klasik yapı) okuma; yalnızca seçilen değişken yüklenir.
+- Zaman ekseni `cnt` paket sayacından türetilir (varsayılan 10 ms/paket, "Zaman ayarları"ndan değiştirilebilir); kayıp paketler boşluk olarak görünür.
+- Büyük veri (14 M+ örnek) için min/max inceltme; kutu/tekerlek zoom, pan, veri imleci.
+- Kutu/kement ile nokta silme, eşik ve Hampel sıçrama tespiti, geri al/yinele (orijinal dosya değişmez).
+- Spektrum, spektrogram, Butterworth süzgeçler, MATLAB tarzı ifade satırı.
+- Akustik: dinleme, tık/notch/HP/LP/spektral gürültü azaltma, WAV kaydı.
+- Dışa aktarma: PNG, CSV, MAT (v5), oturum.
+
+## Derleme
+```
+python3 build.py                      # src/* -> dist/matview.html (+ launcher/matview.html)
+cd launcher
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H=windowsgui -s -w" -o ../dist/MATView.exe .
+```
+Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwright testleri bulunur (gerçek veri dosyaları depoda yoktur).
+
+## Yapı
+`src/mat.js` (v5 okuyucu), `src/h5.js` (HDF5), `src/dsp.js`, `src/expr.js`, `src/plot.js` (grafik motoru), `src/store.js` (veri modeli), `src/app1.js`/`app2.js` (arayüz), `launcher/main.go` (yerel sunucu + tarayıcı başlatıcı).

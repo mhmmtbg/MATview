@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MATView – .mat Veri Gözlemci</title>
+<style>/*CSS*/</style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div class="brand"><svg width="20" height="20" viewBox="0 0 20 20"><rect x="1" y="1" width="18" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 13 L7 7 L10 12 L13 5 L17 11" fill="none" stroke="#0072BD" stroke-width="1.6"/></svg><b>MATView</b><span class="sub">.mat veri gözlemci</span></div>
+    <div class="spacer"></div>
+    <button id="btnOpen" class="primary">Dosya aç…</button>
+    <button id="btnTime">Zaman ayarları</button>
+    <button id="btnFree" title="Grafikte kullanılmayan kanalları bellekten at">Belleği boşalt</button>
+    <button id="btnHelp">Yardım</button>
+    <button id="btnTheme" title="Açık/koyu tema">Tema</button>
+    <input type="file" id="fileIn" accept=".mat" multiple hidden>
+  </header>
+  <aside id="left">
+    <div class="pane-h">Dosyalar ve değişkenler</div>
+    <div class="search"><input id="q" type="search" placeholder="Ara (ör. ts41, as, gs21)…"></div>
+    <div id="chips" class="chips"></div>
+    <div id="tree" class="tree"></div>
+    <div id="selbar" class="selbar">
+      <span id="selinfo">Seçili: 0</span>
+      <button id="btnStack" title="Seçili kanalları ayrı alt grafiklere ekler">Alt alta</button>
+      <button id="btnOverlay" title="Seçili kanalları aktif grafiğe üst üste ekler">Üst üste</button>
+    </div>
+  </aside>
+  <main id="center">
+    <div id="viewbar">
+      <div class="seg" id="viewtabs"><button data-v="time" class="on">Zaman</button><button data-v="spec">Spektrum</button><button data-v="sgram">Spektrogram</button></div>
+      <div class="spacer"></div>
+      <span id="hoverinfo" class="muted"></span>
+    </div>
+    <div id="toolbar"></div>
+    <div id="stage">
+      <div class="view" id="v-time"><canvas id="cv-time"></canvas></div>
+      <div class="view hidden" id="v-spec"><canvas id="cv-spec"></canvas></div>
+      <div class="view hidden" id="v-sgram"><canvas id="cv-sgram"></canvas></div>
+      <div id="dropmsg" class="hidden">.mat dosyalarını buraya bırakın</div>
+    </div>
+    <div id="statsbar"></div>
+    <div id="status"><span id="st1"></span><span id="st2"></span><span id="st3"></span></div>
+  </main>
+  <aside id="right">
+    <div id="rtabs" class="rtabs"></div>
+    <div id="rbody" class="rbody"></div>
+  </aside>
+</div>
+<div id="busy" class="hidden"><div class="busybox"><div id="busytxt">Çalışıyor…</div><div class="bar"><div id="busybar"></div></div></div></div>
+<div id="modal" class="hidden"><div class="mbox"><div class="mh"><b id="mtitle"></b><button id="mclose">×</button></div><div id="mbody"></div><div id="mfoot"></div></div></div>
+<div id="toast" class="hidden"></div>
+<script>/*JS*/</script>
+</body>
+</html>

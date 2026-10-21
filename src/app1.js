@@ -1,0 +1,204 @@
+/* ===== Uygulama: çekirdek (durum, ağaç, grafik yönetimi, araç çubuğu) ===== */
+const $ = (s, el = document) => el.querySelector(s);
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) { const v = attrs[k]; if (v == null || v === false) continue; if (k === 'class') e.className = v; else if (k === 'text') e.textContent = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (k === 'value') e.value = v; else if (k === 'checked') e.checked = !!v; else e.setAttribute(k, v === true ? '' : v); }
+  for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(c));
+  return e;
+}
+const S = {
+  files: [], derived: null, plot: null, specPlot: null, specView: null, view: 'time',
+  undo: [], redo: [], kinds: new Set(), q: '', selCh: new Set(), open: new Set(), tab: 'traces',
+  colorIdx: 0, noise: null, audio: null
+};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function toast(msg, ms = 3500) { const t = $('#toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), ms); }
+async function busy(txt, fn) {
+  const b = $('#busy'); $('#busytxt').textContent = txt; $('#busybar').style.width = '0%'; b.classList.remove('hidden'); await sleep(30);
+  try { return await fn(p => { $('#busybar').style.width = Math.round(p * 100) + '%'; }); }
+  catch (e) { console.error(e); toast('Hata: ' + (e.message || e), 7000); }
+  finally { b.classList.add('hidden'); }
+}
+function modal(title, body, buttons) {
+  $('#mtitle').textContent = title; const mb = $('#mbody'); mb.replaceChildren(body); const f = $('#mfoot'); f.replaceChildren();
+  const close = () => $('#modal').classList.add('hidden');
+  for (const b of buttons || [{t: 'Kapat'}]) f.append(h('button', {class: b.primary ? 'primary' : '', onclick: () => { if (!b.fn || b.fn() !== false) close(); }}, b.t));
+  $('#mclose').onclick = close; $('#modal').classList.remove('hidden');
+}
+async function saveBlob(blob, name) {
+  try {
+    if (window.showSaveFilePicker) { const hd = await showSaveFilePicker({suggestedName: name}); const w = await hd.createWritable(); await w.write(blob); await w.close(); return true; }
+  } catch (e) { if (e && e.name === 'AbortError') return false; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000); return true;
+}
+const fmtDur = s => s >= 3600 ? (s / 3600).toFixed(2) + ' sa' : s >= 60 ? (s / 60).toFixed(2) + ' dk' : s.toFixed(3) + ' s';
+const fmtCnt = n => n.toLocaleString('tr-TR');
+
+/* ---------- veri yükleme ---------- */
+async function ensureLoaded(ch) {
+  if (ch.data) return;
+  if (ch.loading) return ch.loading;
+  ch.loading = (async () => {
+    const f = ch.file, v = f.vars[ch.varIdx];
+    if (ch.row != null) {
+      let m = f.mcache.get(ch.varIdx); if (!m) { m = await MAT.load(f.mat, v); f.mcache.set(ch.varIdx, m); }
+      const out = new Float64Array(ch.n);
+      if (ch.rowMode === 'row') for (let j = 0; j < ch.n; j++) out[j] = m[ch.row + ch.R * j]; else out.set(m.subarray(ch.row * ch.R, (ch.row + 1) * ch.R));
+      ch.data = out;
+    } else ch.data = await MAT.load(f.mat, v);
+    ch.n = ch.data.length;
+  })();
+  try { await ch.loading; } finally { ch.loading = null; }
+}
+
+/* ---------- ağaç ---------- */
+function renderChips() {
+  const kinds = new Set(); for (const f of allFiles()) for (const c of f.channels) kinds.add(c.kind);
+  const box = $('#chips'); box.replaceChildren();
+  for (const k of Object.keys(KIND)) if (kinds.has(k)) box.append(h('span', {class: 'chip' + (S.kinds.has(k) ? ' on' : ''), onclick: () => { S.kinds.has(k) ? S.kinds.delete(k) : S.kinds.add(k); renderChips(); renderTree(); }}, h('i', {class: 'dot', style: 'background:' + KIND[k].color}), KIND[k].name));
+}
+const allFiles = () => S.derived && S.derived.channels.length ? [...S.files, S.derived] : S.files;
+function chMatches(c) { if (S.kinds.size && !S.kinds.has(c.kind)) return false; if (S.q && !c.name.toLowerCase().includes(S.q)) return false; return true; }
+function renderTree() {
+  const box = $('#tree'); const st = box.scrollTop; box.replaceChildren();
+  const filtering = S.q || S.kinds.size;
+  for (const f of allFiles()) {
+    const chs = f.channels.filter(chMatches);
+    box.append(h('div', {class: 'tfile'}, h('span', {class: 'nm', title: f.name}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
+      f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
+    const devs = new Map();
+    for (const c of chs) { if (!devs.has(c.dev)) devs.set(c.dev, new Map()); const bm = devs.get(c.dev); if (!bm.has(c.base)) bm.set(c.base, []); bm.get(c.base).push(c); }
+    for (const [dev, bm] of devs) {
+      const dk = f.id + '/' + dev, open = filtering || S.open.has(dk);
+      const total = [...bm.values()].reduce((a, b) => a + b.length, 0);
+      box.append(h('div', {class: 'tdev', onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
+      if (!open) continue;
+      for (const [base, list] of bm) {
+        if (list.length > 1 && list.every(c => c.base === base)) {
+          const bk = dk + '/' + base, bo = filtering || S.open.has(bk);
+          box.append(h('div', {class: 'trow', ondblclick: () => addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
+            h('span', {class: 'twisty'}, bo ? '▼' : '▶'), h('i', {class: 'dot', style: 'background:' + KIND[list[0].kind].color}), h('span', {class: 'nm'}, base), h('span', {class: 'meta'}, list.length + ' kanal'),
+            h('button', {class: 'add', title: 'Hepsini aynı grafiğe ekle', onclick: () => addGroup(list)}, '+')));
+          if (bo) for (const c of list) box.append(chRow(c, c.comp || c.rest, true));
+        } else for (const c of list) box.append(chRow(c, c.rest, false));
+      }
+    }
+  }
+  if (!S.files.length) box.append(h('div', {class: 'note', style: 'padding:14px'}, 'Henüz dosya yok. "Dosya aç…" düğmesini kullanın veya .mat dosyalarını pencereye sürükleyin.'));
+  box.scrollTop = st; updateSelInfo();
+}
+function chRow(c, label, sub) {
+  return h('div', {class: 'trow' + (sub ? ' sub' : '') + (S.selCh.has(c.uid) ? ' sel' : ''), draggable: 'true',
+    onclick: e => { if (e.ctrlKey || e.metaKey) { S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); } else { S.selCh = new Set([c.uid]); } renderTree(); },
+    ondblclick: () => addToNewAxes([c]), ondragstart: e => dragStart(e, S.selCh.has(c.uid) ? chsFromSel() : [c]), title: c.name + '\n' + fmtCnt(c.n) + ' örnek · ' + fmtNum(c.fs, 6) + ' Hz'},
+    h('i', {class: 'dot', style: 'background:' + KIND[c.kind].color}), h('span', {class: 'nm'}, label), h('span', {class: 'meta'}, c.n >= 1e6 ? (c.n / 1e6).toFixed(1) + 'M' : c.n >= 1e3 ? (c.n / 1e3).toFixed(0) + 'k' : c.n),
+    h('button', {class: 'add', title: 'Grafiğe ekle', onclick: e => { e.stopPropagation(); addToNewAxes([c]); }}, '+'));
+}
+function chsFromSel() { const out = []; for (const f of allFiles()) for (const c of f.channels) if (S.selCh.has(c.uid)) out.push(c); return out; }
+function updateSelInfo() { $('#selinfo').textContent = 'Seçili: ' + S.selCh.size; }
+function dragStart(e, list) { e.dataTransfer.setData('text/matview', JSON.stringify(list.map(c => c.uid))); e.dataTransfer.effectAllowed = 'copy'; }
+function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if (c.uid === u) return c; return null; }
+
+/* ---------- dosya işlemleri ---------- */
+async function openFiles(files) {
+  files = [...files].filter(f => /\.mat$/i.test(f.name) || true);
+  for (const file of files) {
+    await busy('Dosya taranıyor: ' + file.name, async () => {
+      const f = await importFile(file);
+      S.files.push(f); for (const d of new Set(f.channels.map(c => f.id + '/' + c.dev))) { if (S.files.length === 1 && f.channels.length < 400) S.open.add(d); }
+      toast(file.name + ': ' + f.channels.length + ' kanal');
+    });
+  }
+  renderChips(); renderTree();
+}
+function closeFile(f) {
+  for (const ax of [...S.plot.axes]) { ax.traces = ax.traces.filter(t => t.ch.file !== f); if (!ax.traces.length) S.plot.removeAxes(ax); }
+  S.undo = S.undo.filter(g => g.every(e => e.ch.file !== f)); S.redo = [];
+  S.files = S.files.filter(x => x !== f); renderChips(); renderTree(); refreshAll();
+}
+function freeMemory() {
+  const used = new Set(); for (const p of [S.plot]) for (const ax of p.axes) for (const t of ax.traces) used.add(t.ch);
+  let n = 0; for (const f of allFiles()) { f.mcache.clear(); for (const c of f.channels) if (c.data && !used.has(c) && !c.derived && !c.delCount) { c.data = null; c.pyr = null; n++; } }
+  toast(n + ' kanal bellekten atıldı');
+}
+
+/* ---------- grafik yönetimi ---------- */
+function nextColor() { return PAL[S.colorIdx++ % PAL.length]; }
+function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), width: 1, visible: true}; }
+function axisLabelFor(ax) { const ks = new Set(ax.traces.map(t => t.ch.kind)); ax.ylabel = ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; }
+async function addToNewAxes(chs, one) {
+  const first = !S.plot.axes.length;
+  if (one) { const ax = S.plot.addAxes(); for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }
+  else for (const c of chs) { const ax = S.plot.addAxes(); ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }
+  switchView('time'); refreshAll();
+  await loadForPlot(chs, first);
+}
+async function addToAxes(ax, chs) {
+  if (!ax) return addToNewAxes(chs, true);
+  const first = !S.plot.axes.length; for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax);
+  switchView('time'); refreshAll(); await loadForPlot(chs, first);
+}
+const addGroup = list => addToNewAxes(list, true);
+async function loadForPlot(chs, fit) {
+  await busy('Veri yükleniyor…', async prog => {
+    let k = 0; for (const c of chs) { await ensureLoaded(c); prog(++k / chs.length); }
+  });
+  if (fit || S.plot.axes.length) { if (fit || S.plot.axes.every(a => a.xlim[0] === 0 && a.xlim[1] === 1)) S.plot.fitAll(); }
+  refreshAll();
+}
+function activeAxes() { const p = S.plot; return p.active && p.axes.includes(p.active) ? p.active : p.axes[p.axes.length - 1] || null; }
+function activeTrace() { const ax = activeAxes(); if (!ax || !ax.traces.length) return null; return ax.traces[Math.min(ax.active || 0, ax.traces.length - 1)]; }
+function visRange(tr, ax) { const ch = tr.ch; const a = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))), b = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1); return [a, Math.max(a, b)]; }
+
+/* ---------- silme / geri al ---------- */
+function selectionHits() { return S.plot.sel && S.plot.sel.hits ? S.plot.sel.hits : []; }
+function selCount() { return selectionHits().reduce((a, h) => a + h.idx.length, 0); }
+function deleteSelection() {
+  const hits = selectionHits(); if (!hits.length) { toast('Silinecek seçim yok'); return; }
+  const group = [];
+  for (const hh of hits) { const done = hh.tr.ch.applyDelete(hh.idx); if (done.length) group.push({ch: hh.tr.ch, idx: done}); }
+  S.plot.clearSelection(); if (group.length) { S.undo.push(group); S.redo = []; }
+  toast(fmtCnt(group.reduce((a, g) => a + g.idx.length, 0)) + ' nokta silindi (Ctrl+Z ile geri alınır)'); afterEdit();
+}
+function undo() { const g = S.undo.pop(); if (!g) return toast('Geri alınacak işlem yok'); for (const e of g) e.inverse ? e.ch.applyDelete(e.idx) : e.ch.restore(e.idx); S.redo.push(g); afterEdit(); }
+function redo() { const g = S.redo.pop(); if (!g) return toast('Yinelenecek işlem yok'); for (const e of g) e.inverse ? e.ch.restore(e.idx) : e.ch.applyDelete(e.idx); S.undo.push(g); afterEdit(); }
+function restoreChannel(ch) {
+  if (!ch.delCount) return; const idx = []; for (let i = 0; i < ch.n; i++) if (ch.del[i]) idx.push(i);
+  const u = Uint32Array.from(idx); ch.restore(u); S.undo.push([{ch, idx: u, inverse: true}]); afterEdit();
+}
+function afterEdit() { S.plot.invalidate(); updateStats(); refreshCleanInfo(); }
+
+/* ---------- araç çubuğu ---------- */
+const ICON = {
+  pan: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v14M1 8h14M8 1l-2 2M8 1l2 2M8 15l-2-2M8 15l2-2M1 8l2-2M1 8l2 2M15 8l-2-2M15 8l-2 2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  zoom: '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 10.5L14 14M5 7h4M7 5v4" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>',
+  cursor: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
+  box: '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 2"/></svg>',
+  lasso: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 9C1 5 6 2 10 3s5 4 2 6-6 1-5 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 2"/></svg>',
+  fit: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  undo: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M5 3L2 6l3 3M2 6h7a4 4 0 010 8H6" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  redo: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M11 3l3 3-3 3M14 6H7a4 4 0 000 8h3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  del: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4h10M6 4V2h4v2M5 4l.5 10h5L11 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>'
+};
+const TOOLS = [['pan', 'Gez', 'Sürükleyerek kaydır. Tekerlek: X yakınlaştır, Shift+tekerlek: Y, Ctrl+tekerlek: ikisi (P)'], ['zoom', 'Yakınlaştır', 'Kutu çiz = yakınlaştır, tıkla = 2×, Shift+tıkla = uzaklaştır (Z)'], ['cursor', 'İmleç', 'Tıkla: en yakın örnek. Shift+tıkla: ikinci imleç ve ΔX/ΔY (C)'], ['box', 'Kutu seç', 'Silinecek noktaları kutuyla seç (B)'], ['lasso', 'Kement', 'Silinecek noktaları serbest çizimle seç (L)']];
+function buildToolbar() {
+  const tb = $('#toolbar'); tb.replaceChildren();
+  for (const [m, name, tip] of TOOLS) tb.append(h('button', {id: 'tool-' + m, title: tip, class: S.plot.mode === m ? 'on' : '', onclick: () => setMode(m), html: 0}, ...[(() => { const s = document.createElement('span'); s.innerHTML = ICON[m]; s.style.display = 'flex'; return s; })(), name]));
+  const ib = (id, ico, name, tip, fn) => { const b = h('button', {id, title: tip, onclick: fn}); const s = document.createElement('span'); s.innerHTML = ICON[ico]; s.style.display = 'flex'; b.append(s, name); return b; };
+  tb.append(h('span', {class: 'sep'}), ib('tb-fit', 'fit', 'Sığdır', 'Tümünü sığdır: tüm veriyi göster (Home / çift tık)', () => curPlot().fitAll()),
+    h('span', {class: 'sep'}), ib('tb-undo', 'undo', 'Geri al', 'Ctrl+Z', undo), ib('tb-redo', 'redo', 'Yinele', 'Ctrl+Y', redo),
+    h('span', {class: 'sep'}), ib('tb-del', 'del', 'Sil', 'Seçili noktaları sil (Delete)', deleteSelection));
+  $('#tb-del').disabled = true;
+}
+function curPlot() { return S.view === 'spec' ? S.specPlot : S.plot; }
+function setMode(m) {
+  S.plot.mode = m; S.specPlot.mode = ['box', 'lasso'].includes(m) ? 'pan' : m;
+  for (const [k] of TOOLS) { const b = $('#tool-' + k); if (b) b.classList.toggle('on', k === m); }
+  if (m !== 'box' && m !== 'lasso') { /* seçim kalsın */ }
+}
+function switchView(v) {
+  S.view = v; for (const b of $('#viewtabs').children) b.classList.toggle('on', b.dataset.v === v);
+  for (const id of ['time', 'spec', 'sgram']) $('#v-' + id).classList.toggle('hidden', id !== v);
+  $('#toolbar').style.display = v === 'sgram' ? 'none' : '';
+  S.plot.resize(); S.specPlot.resize(); S.specView.resize(); updateStats();
+}
