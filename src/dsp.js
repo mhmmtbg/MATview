@@ -213,17 +213,57 @@ const DSP = (() => {
     }
     return {y: o, count: cnt, events: flags.length};
   }
+  // Sessiz bölüm yokken gürültü tabanı: her frekans için en düşük %pct çerçeve gücü (minimum istatistik).
+  // Gauss gürültüde güç üstel dağılımlıdır: pct. yüzdelik = -ln(1-pct)·ortalama → ortalamaya çevrilir.
+  function noiseFloorMinStat(x, N, pct) {
+    pct = pct || 0.1; const nb = N / 2 + 1, w = window('hann', N), re = new Float64Array(N), im = new Float64Array(N);
+    const nfr = Math.floor((x.length - N) / (N / 2)) + 1; if (nfr < 8) throw new Error('Gürültü tabanı tahmini için kayıt çok kısa');
+    const use = Math.min(nfr, 600), P = []; for (let k = 0; k < nb; k++) P.push(new Float64Array(use));
+    for (let f = 0; f < use; f++) {
+      const st = Math.round(f * (nfr - 1) / Math.max(1, use - 1)) * (N / 2);
+      for (let i = 0; i < N; i++) { re[i] = x[st + i] * w[i]; im[i] = 0; } fft(re, im, false);
+      for (let k = 0; k < nb; k++) P[k][f] = re[k] * re[k] + im[k] * im[k];
+    }
+    const out = new Float64Array(nb), q = Math.max(0, Math.floor(pct * (use - 1))), c = -Math.log(1 - pct) ;
+    for (let k = 0; k < nb; k++) { P[k].sort(); out[k] = P[k][q] / c; }
+    // Sabit tonlarda yüzdelik tahmini gürültüyü şişirir (tonlar üstel dağılımlı değil): komşu medyanına göre sınırla
+    const cap = new Float64Array(nb), R = 10;
+    for (let k = 0; k < nb; k++) { const a = Math.max(0, k - R), b = Math.min(nb, k + R + 1), v = Array.from(out.subarray(a, b)).sort((p, r) => p - r); cap[k] = 2 * v[v.length >> 1]; }
+    for (let k = 0; k < nb; k++) if (out[k] > cap[k]) out[k] = cap[k];
+    return out;
+  }
+  // Test seviyesi plato tespiti (ör. -9/-6/-3/0 dB): pencere RMS'i dB'ye çevrilir, adım katlarına yuvarlanır, ardışık aynı seviyeler birleştirilir.
+  // opt: step (dB), minDur (s), win (s), ref (Grms; verilmezse en yüksek seviye = 0 dB)
+  function levelSegments(x, fs, opt) {
+    const step = opt.step || 3, W = Math.max(64, Math.round((opt.win || 0.5) * fs)), nw = Math.floor(x.length / W), rms = new Float64Array(nw);
+    for (let k = 0; k < nw; k++) { let s = 0, s2 = 0; for (let i = k * W; i < (k + 1) * W; i++) { s += x[i]; s2 += x[i] * x[i]; } const m = s / W; rms[k] = Math.sqrt(Math.max(0, s2 / W - m * m)); }
+    const so = Array.from(rms).sort((a, b) => a - b); let ref = opt.ref || so[Math.min(nw - 1, Math.floor(nw * 0.95))] || 1;
+    const lab = new Array(nw).fill(null), dbv = new Float64Array(nw), minLvl = -(step * 7 + step / 2);
+    for (let k = 0; k < nw; k++) { const d = 20 * Math.log10(Math.max(rms[k], 1e-300) / ref); dbv[k] = d; if (d < minLvl) { lab[k] = 'idle'; continue; } const q = (Math.min(opt.ref ? 99 : 0, Math.round(d / step) * step)) || 0; if (Math.abs(d - q) <= 0.35 * step) lab[k] = q; }
+    for (let k = 1; k + 1 < nw; k++) if (lab[k] === null && lab[k - 1] !== null && lab[k - 1] === lab[k + 1]) lab[k] = lab[k - 1];
+    const segs = [], minW = Math.max(1, Math.ceil((opt.minDur || 1) * fs / W));
+    for (let k = 0; k < nw;) {
+      if (lab[k] === null || lab[k] === 'idle') { k++; continue; }
+      let e = k; while (e < nw && lab[e] === lab[k]) e++;
+      if (e - k >= minW) { let s = 0, s2 = 0; const i0 = k * W, i1 = e * W; for (let i = i0; i < i1; i++) { s += x[i]; s2 += x[i] * x[i]; } const m = s / (i1 - i0), g = Math.sqrt(Math.max(0, s2 / (i1 - i0) - m * m)); segs.push({level: lab[k], i0, i1, grms: g, db: 20 * Math.log10(g / ref)}); }
+      k = e;
+    }
+    return {segs, ref, rms, win: W};
+  }
   // Spektral gürültü azaltma: noiseSeg gürültü profili çıkarmak için
   function spectralDenoise(x, noiseSeg, opt) {
     const N = opt.nfft || 2048, hop = N / 4, w = window('hann', N);
     const nb = N / 2 + 1, re = new Float64Array(N), im = new Float64Array(N);
-    const Pn = new Float64Array(nb); let cnt = 0;
-    for (let st = 0; st + N <= noiseSeg.length; st += hop) {
-      for (let i = 0; i < N; i++) { re[i] = noiseSeg[st + i] * w[i]; im[i] = 0; }
-      fft(re, im, false); for (let k = 0; k < nb; k++) Pn[k] += re[k] * re[k] + im[k] * im[k]; cnt++;
+    let Pn = new Float64Array(nb), cnt = 0;
+    if (opt.noisePower) Pn = Float64Array.from(opt.noisePower);
+    else {
+      for (let st = 0; st + N <= noiseSeg.length; st += hop) {
+        for (let i = 0; i < N; i++) { re[i] = noiseSeg[st + i] * w[i]; im[i] = 0; }
+        fft(re, im, false); for (let k = 0; k < nb; k++) Pn[k] += re[k] * re[k] + im[k] * im[k]; cnt++;
+      }
+      if (!cnt) throw new Error('Gürültü aralığı en az ' + N + ' örnek olmalı.');
+      for (let k = 0; k < nb; k++) Pn[k] /= cnt;
     }
-    if (!cnt) throw new Error('Gürültü aralığı en az ' + N + ' örnek olmalı.');
-    for (let k = 0; k < nb; k++) Pn[k] /= cnt;
     const alpha = opt.alpha ?? 2, floor = Math.pow(10, -(opt.reduceDb ?? 15) / 20);
     const n = x.length, out = new Float64Array(n + N), norm = new Float64Array(n + N);
     const pad = new Float64Array(n + 2 * N); pad.set(x, N);
@@ -321,6 +361,13 @@ const DSP = (() => {
       if (frac < 0.005) { if (fl.length) { plan.click = true; plan.cs = sg; log.push(`Tık/pop: ${fl.length} olay (σ>${sg}) → temizlenecek`); } else log.push('Tık/pop bulunmadı'); break; }
       if (sg === 12) log.push(`Tık/pop: aykırı örnek oranı yüksek (%${(100 * frac).toFixed(2)}), sinyalin doğal yapısı olabilir; otomatik temizleme atlandı`);
     }
+    // sessiz bölüm yoksa: durağan gürültü tabanını minimum istatistikle tahmin et (yalnızca sinyal/gürültü ayrımı mümkünse)
+    let pkr = 0; { let mxp = 0; for (let i = 1; i < y.length; i++) if (y[i] > mxp) mxp = y[i]; pkr = 10 * Math.log10(mxp / (med(1, y.length) + 1e-300)); }
+    const minStat = (why, range) => {
+      if (n < 16384) { log.push(why + '; kayıt gürültü tabanı tahmini için çok kısa, spektral azaltma atlandı'); return; }
+      if (range < 1.5 && pkr < 30) { log.push(why + '; kayıt durağan ve belirgin bir bileşen yok (sinyal/gürültü ayrılamaz), spektral azaltma atlandı'); return; }
+      plan.dn = true; plan.dnMode = 'min'; plan.dnDb = 10; log.push(why + ' → durağan gürültü tabanı sinyalden otomatik tahmin edilecek (frekans başına en düşük %10 çerçeve), spektral azaltma 10 dB');
+    };
     // sessiz bölüm -> gürültü profili
     const W = Math.max(16384, Math.round(fs * 0.5)), nw = Math.floor(n / W);
     if (nw >= 4) {
@@ -329,11 +376,11 @@ const DSP = (() => {
       if (sorted.length >= 4) {
         const q = sorted[0], top = sorted[Math.floor(sorted.length * 0.9)], range = 20 * Math.log10(top / (q + 1e-300));
         if (range >= 3 && q > 0) { const wi = ok.find(i => rms[i] === q); res.noise = [wi * W, (wi + 1) * W]; plan.dn = true; plan.dnDb = Math.min(18, Math.max(8, Math.round(range))); log.push(`Sessiz bölüm bulundu (${(wi * W / fs).toFixed(3)}–${((wi + 1) * W / fs).toFixed(3)} s, dinamik fark ${range.toFixed(1)} dB) → spektral gürültü azaltma ${plan.dnDb} dB`); }
-        else log.push(`Belirgin sessiz bölüm yok (dinamik fark ${range.toFixed(1)} dB < 3 dB); spektral gürültü azaltma atlandı`);
-      } else log.push('Sessiz bölüm analizi için yeterli temiz pencere yok');
-    } else log.push('Kayıt, gürültü profili çıkarmak için çok kısa; spektral gürültü azaltma atlandı');
+        else minStat(`Belirgin sessiz bölüm yok (dinamik fark ${range.toFixed(1)} dB)`, range);
+      } else minStat('Sessiz bölüm analizi için yeterli temiz pencere yok', 0);
+    } else minStat('Kayıt kısa', 0);
     return res;
   }
-  return {autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob};
+  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob};
 })();
 if (typeof module !== 'undefined') module.exports = DSP;

@@ -147,6 +147,7 @@ function buildAnalyze() {
     chkIn('spPeak', 'En yüksek 3 tepeyi işaretle', true),
     h('div', {class: 'btns'}, btn('Spektrumu hesapla', computeSpectrum, 'primary')),
     h('div', {id: 'spInfo', class: 'note'}, 'Aktif alt grafikteki görünür tüm izler için hesaplanır.')));
+  r.append(lvCard());
   r.append(card('Spektrogram (STFT)',
     fr('NFFT', selIn('sgN', [256, 512, 1024, 2048, 4096, 8192].map(v => [v, v]), 1024)),
     fr('Pencere', selIn('sgWin', [['hann', 'Hann'], ['hamming', 'Hamming'], ['blackman', 'Blackman']], 'hann')),
@@ -275,7 +276,7 @@ function buildAcoustic() {
     h('div', {class: 'note'}, 'Örnekleme 8 kHz altına inerse hız otomatik artırılır. Dinlemeden önce ses düzeyini düşük tutun.')));
   r.append(card('Otomatik temizleme',
     h('div', {class: 'note'}, 'Kaynak izi inceler: DC/eğilim, 50/60 Hz uğultusu ve harmonikleri, düşük frekans gürültüsü, tık/pop ve sessiz bölümden gürültü profilini kendisi bulup aşağıdaki ayarları doldurur. Sonra dinleyip ayarları değiştirebilirsiniz.'),
-    h('div', {class: 'btns'}, btn('Otomatik tespit et ve ayarla', () => acAuto(false), 'primary'), btn('Tespit et + temiz kanalı ekle', () => acAuto(true)))));
+    h('div', {class: 'btns'}, btn('Otomatik temizle (tespit + uygula)', acAutoRun, 'primary'), btn('Yalnız ayarla', () => acAuto(false)))));
   r.append(card('Parazit temizleme',
     fr('DC / eğilim', selIn('acDc', [['none', 'Yok'], ['mean', 'Ortalamayı çıkar'], ['lin', 'Doğrusal eğilimi çıkar']], 'mean')),
     h('div', {class: 'fr chk'}, h('label', {for: 'acHpOn'}, 'Yüksek geçiren (Hz)'), numIn('acHp', 20), h('input', {type: 'checkbox', id: 'acHpOn'})),
@@ -303,6 +304,7 @@ async function acAuto(add) {
     const x = DSP.segment(ch.data, ch.del, a, b), r = DSP.autoClean(x, ch.fs), p = r.plan;
     $('#acDc').value = p.dc; $('#acHpOn').checked = !!p.hp; if (p.hp) $('#acHp').value = p.hp; $('#acLpOn').checked = !!p.lp; if (p.lp) $('#acLp').value = p.lp;
     $('#acNOn').checked = !!p.notch; if (p.notch) { $('#acNf').value = p.notch; $('#acNq').value = p.nq; $('#acNh').value = p.nh; }
+    if (p.dnMode === 'min') { $('#acN0').value = ''; $('#acN1').value = ''; S.plot.bands = []; S.plot.invalidate(); }
     $('#acClOn').checked = p.click; $('#acClK').value = p.ck; $('#acClS').value = p.cs; $('#acDnOn').checked = p.dn; $('#acDnDb').value = p.dnDb; $('#acDnA').value = p.dnA;
     if (r.noise) { const t0 = ch.t(a + r.noise[0]), t1 = ch.t(a + r.noise[1]); $('#acN0').value = +t0.toPrecision(8); $('#acN1').value = +t1.toPrecision(8); S.plot.bands = [{x0: t0, x1: t1, color: '#2aa198'}]; S.plot.invalidate(); }
     $('#acLog').textContent = 'OTOMATİK ANALİZ\n' + r.log.join('\n');
@@ -331,9 +333,13 @@ async function acPrepare(clean) {
   const o = opts(); let y = preChain(x, fs, o);
   if (o.click) { const r = DSP.declick(y, o.ck, o.cs, 2); y = r.y; log.push(`Tık temizleme: ${r.events} olay, ${fmtCnt(r.count)} örnek düzeltildi`); }
   if (o.dn) {
-    const n0 = num('acN0'), n1 = num('acN1'); if (!(n1 > n0)) throw new Error('Spektral azaltma için gürültü aralığını belirleyin');
-    const na = Math.max(0, Math.floor(ch.timeIdx(n0))), nb = Math.min(ch.n, Math.ceil(ch.timeIdx(n1)));
-    let nz = preChain(DSP.segment(ch.data, ch.del, na, nb), fs, o); y = DSP.spectralDenoise(y, nz, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA}); log.push(`Gürültü profili: ${fmtCnt(nb - na)} örnek`);
+    const n0 = num('acN0'), n1 = num('acN1');
+    if (n1 > n0) {
+      const na = Math.max(0, Math.floor(ch.timeIdx(n0))), nb = Math.min(ch.n, Math.ceil(ch.timeIdx(n1)));
+      let nz = preChain(DSP.segment(ch.data, ch.del, na, nb), fs, o); y = DSP.spectralDenoise(y, nz, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA}); log.push(`Gürültü profili: ${fmtCnt(nb - na)} örnek (seçilen sessiz bölüm)`);
+    } else {   // sessiz bölüm verilmedi: durağan gürültü tabanı sinyalden tahmin edilir
+      const Pn = DSP.noiseFloorMinStat(y, 2048, 0.1); y = DSP.spectralDenoise(y, null, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA, noisePower: Pn}); log.push('Gürültü profili: sinyalden otomatik tahmin (frekans başına en düşük %10 çerçeve)');
+    }
   }
   return {y, fs, a, b, ch, log, raw: x};
 }
@@ -366,10 +372,33 @@ async function acAddClean() {
 }
 async function acCompare() {
   await busy('Spektrum karşılaştırılıyor…', async () => {
-    const o = await acPrepare(false), c = await acPrepare(true); const P = S.specPlot; P.axes.slice().forEach(a => P.removeAxes(a));
+    const o = await acPrepare(false), c = await acPrepare(true); acDrawCompare(o, c); $('#acLog').textContent = c.log.join('\n');
+  });
+}
+// Önce/sonra spektrumunu çizer; ölçüm özetini döndürür
+function acDrawCompare(o, c) {
+  { const P = S.specPlot; P.axes.slice().forEach(a => P.removeAxes(a));
     const sa = P.addAxes({title: 'Önce / sonra (PSD)', ylabel: 'PSD (dB re birim²/Hz)', xlabel: 'Frekans (Hz)'});
-    for (const [p, nm, col] of [[o, 'Orijinal', '#8b929b'], [c, 'Temizlenmiş', '#0072BD']]) { const r = DSP.welch(p.y, p.fs, {nfft: 4096, overlap: .5, scale: 'psd', maxSeg: 3000}); sa.traces.push({kind: 'xy', x: r.f, y: r.y.map(v => 10 * Math.log10(v + 1e-300)), label: nm, color: col, width: 1, visible: true}); }
-    P.fitAll(); switchView('spec'); $('#acLog').textContent = c.log.join('\n');
+    for (const [p, nm, col] of [[o, 'Orijinal', '#8b929b'], [c, 'Temizlenmiş', '#0072BD']]) { const r = DSP.welch(p.y, p.fs, {nfft: 4096, overlap: .5, scale: 'psd', maxSeg: 3000}); sa.traces.push({kind: 'xy', x: r.f, y: r.y.map(v => 10 * Math.log10(v + 1e-300)), label: nm, color: col, width: 1, visible: true, raw: r.y}); }
+    P.fitAll(); switchView('spec');
+  }
+  const W = o2 => DSP.welch(o2.y, o2.fs, {nfft: 4096, overlap: .5, scale: 'psd', maxSeg: 3000}), wo = W(o), wc = W(c), fs = o.fs, med = a => { const v = Array.from(a).sort((p, q) => p - q); return v[v.length >> 1]; };
+  const lo = Math.max(wo.f.findIndex(f => f > fs * 0.02), 1), hi = wo.f.findIndex(f => f > fs * 0.45), idx = []; for (let i = lo; i < (hi < 0 ? wo.f.length : hi); i++) idx.push(i);
+  const rms = a => { let s = 0, s2 = 0; for (const v of a) { s += v; s2 += v * v; } const m = s / a.length; return Math.sqrt(Math.max(0, s2 / a.length - m * m)); };
+  const floorDb = 10 * Math.log10(med(idx.map(i => wc.y[i])) / med(idx.map(i => wo.y[i])));
+  return {rmsO: rms(o.y), rmsC: rms(c.y), floorDb, wo, wc};
+}
+// Tek tık: tespit et + uygula + temiz kanalı ekle + önce/sonra spektrum + ölçülen etki
+async function acAutoRun() {
+  await acAuto(false);
+  await busy('Temizleniyor…', async () => {
+    const o = await acPrepare(false), c = await acPrepare(true), m = acDrawCompare(o, c), p = opts();
+    const ch = c.ch, d = addDerived(ch.name + '_temiz', c.y, ch, c.a, c.a === 0 && c.b === ch.n); await addDerivedToPlot(d, activeAxes()); switchView('spec');
+    const lines = [$('#acLog').textContent, '', 'UYGULANAN: ' + [p.dc !== 'none' ? 'DC' : '', p.hp ? 'HP ' + p.hp + ' Hz' : '', p.lp ? 'LP ' + p.lp + ' Hz' : '', p.notch ? 'Notch ' + p.notch + ' Hz×' + p.nh : '', p.click ? 'tık temizleme' : '', p.dn ? 'spektral azaltma ' + p.dnDb + ' dB' : ''].filter(Boolean).join(', '),
+      ...c.log, 'ETKİ (ölçülen):', `  Toplam RMS: ${m.rmsO.toPrecision(4)} → ${m.rmsC.toPrecision(4)} (${(100 * (m.rmsC / m.rmsO - 1)).toFixed(1)} %)`, `  Gürültü tabanı (medyan PSD): ${m.floorDb.toFixed(1)} dB`];
+    if (p.notch) { let mx = -Infinity; for (let i = 0; i < m.wo.f.length; i++) if (Math.abs(m.wo.f[i] - p.notch) < 1.5) mx = Math.max(mx, 10 * Math.log10(m.wc.y[i] / m.wo.y[i])); if (isFinite(mx)) lines.push(`  ${p.notch} Hz tepesi: ${mx.toFixed(1)} dB`); }
+    if (Math.abs(m.floorDb) < 0.5 && !p.notch && !p.click) lines.push('  Belirgin bir etki yok: kayıtta giderilebilecek parazit bulunamadı (kırpılma varsa filtreyle düzeltilemez).');
+    $('#acLog').textContent = lines.join('\n');
   });
 }
 async function acWav(clean) {

@@ -46,3 +46,8 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 - `Kanal tablosu…` meta veriyi listeler; `Excel'e aktar` eski dönüştürücü betiklerdeki gibi `Kanal Bilgileri` + `Veri` sayfalarını yazar.
 - `UNV / Profil` sekmesinde profil (frekans–seviye noktaları, log-log doğrusal, ± dB tolerans) girilir, spektrum grafiğine eklenir ve ölçümlerle karşılaştırılır (Grms farkı, en büyük sapma, tolerans dışı yüzde). Profiller tarayıcı deposunda saklanır.
 - Örnek (sentetik): `ornek/ornek.unv`.
+
+## Test seviyesi ve akustik otomatik temizleme
+
+- **Test seviyesi (Analiz sekmesi):** titreşim izinde −9/−6/−3/0 dB gibi seviye platolarını otomatik bulur (pencere RMS'i, adıma yuvarlama), zaman grafiğini boyar, "Seviye başına spektrum" her plato için PSD çizer. Referans (0 dB) en yüksek seviye ya da seçilen profilin Grms'idir. Profille karşılaştırmada seviye otomatik tespit edilip profil o seviyeye kaydırılır.
+- **Akustik → Otomatik temizle:** DC/eğilim, 50/60 Hz uğultusu, düşük frekans gürültüsü, tık/pop ve gürültü profilini kendisi bulur; sessiz bölüm yoksa gürültü tabanını minimum istatistikle tahmin eder; temiz kanalı ekler, önce/sonra spektrumunu çizer ve ölçülen etkiyi (RMS, gürültü tabanı, uğultu tepesi) yazar.

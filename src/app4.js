@@ -133,27 +133,75 @@ function profDialog(p) {
     if (isNew) S.profiles.push(p); saveProfiles(); refreshUnvPanel(); profShow(p);
   }}, {t: 'Vazgeç'}]);
 }
-function profCompare(p) {
-  const P = S.specPlot, rows = []; const lo = p.pts[0][0], hi = p.pts[p.pts.length - 1][0], tol = p.tol;
-  for (const ax of P.axes) for (const t of ax.traces) {
+function cmpRows(p, mode, step) {
+  const rows = [], lo = p.pts[0][0], hi = p.pts[p.pts.length - 1][0], tol = p.tol;
+  for (const ax of S.specPlot.axes) for (const t of ax.traces) {
     if (t.profileId || !t.visible) continue; if (t.scale !== 'psd') { rows.push({name: t.label, skip: 'PSD değil (atlandı)'}); continue; }
-    const x = t.x, y = t.raw || t.y; let mx = -Infinity, mn = Infinity, fmx = 0, fmn = 0, out = 0, n = 0, s = 0, px = -1, py = 0;
-    for (let i = 0; i < x.length; i++) {
-      if (x[i] < lo || x[i] > hi || !(y[i] > 0)) continue; const db = 10 * Math.log10(y[i] / profAt(p.pts, x[i])); n++;
-      if (db > mx) { mx = db; fmx = x[i]; } if (db < mn) { mn = db; fmn = x[i]; } if (Math.abs(db) > tol) out++;
-      if (px >= 0) s += (y[i] + py) / 2 * (x[i] - px); px = x[i]; py = y[i];
-    }
-    if (!n) { rows.push({name: t.label, skip: 'profil aralığında nokta yok'}); continue; }
-    rows.push({name: t.label, n, grms: Math.sqrt(s), pg: profGrms(p.pts, x.find(v => v >= lo) ?? lo, Math.min(hi, x[x.length - 1])), mx, fmx, mn, fmn, out: 100 * out / n});
+    const x = t.x, y = t.raw || t.y, d0 = [], xs = [], ys = [];
+    for (let i = 0; i < x.length; i++) { if (x[i] < lo || x[i] > hi || !(y[i] > 0)) continue; d0.push(10 * Math.log10(y[i] / profAt(p.pts, x[i]))); xs.push(x[i]); ys.push(y[i]); }
+    if (!d0.length) { rows.push({name: t.label, skip: 'profil aralığında nokta yok'}); continue; }
+    const sd = d0.slice().sort((a, b) => a - b), m0 = sd[sd.length >> 1]; let shift = 0, how = '';
+    if (t.level != null) { shift = t.level; how = 'tespit'; }
+    else if (mode === 'auto') { const lv = Math.round(m0 / step) * step; if (Math.abs(m0 - lv) <= 1.5) { shift = lv; how = 'oto'; } else { shift = m0; how = '≈'; } }
+    let mx = -Infinity, mn = Infinity, fmx = 0, fmn = 0, out = 0, s = 0;
+    for (let i = 0; i < d0.length; i++) { const d = d0[i] - shift; if (d > mx) { mx = d; fmx = xs[i]; } if (d < mn) { mn = d; fmn = xs[i]; } if (Math.abs(d) > tol) out++; if (i) s += (ys[i] + ys[i - 1]) / 2 * (xs[i] - xs[i - 1]); }
+    const pg = profGrms(p.pts, xs[0], xs[xs.length - 1]) * Math.pow(10, shift / 20), g = Math.sqrt(s);
+    rows.push({name: t.label, shift, how, grms: g, pg, diff: 20 * Math.log10(g / pg), mx, fmx, mn, fmn, out: 100 * out / d0.length});
   }
-  if (!rows.length) return toast('Spektrum grafiğinde karşılaştırılacak iz yok');
+  return rows;
+}
+function profCompare(p, mode) {
+  mode = mode || 'auto'; const tol = p.tol, box = h('div'), step = h('input', {type: 'number', value: 3, min: 0.5, step: 0.5, style: 'width:60px'}),
+    ms = h('select', null, [['auto', 'Seviyeyi otomatik tespit et (−9/−6/−3/0 dB…)'], ['zero', 'Seviye 0 dB (profil olduğu gibi)']].map(([v, t]) => h('option', {value: v, selected: v === mode}, t)));
   const f = (v, d = 2) => Number.isFinite(v) ? v.toFixed(d) : '-';
-  const tb = h('tbody', null, rows.map(r => r.skip ? h('tr', null, h('td', null, r.name), h('td', {colspan: 7, class: 'muted'}, r.skip)) :
-    h('tr', null, h('td', null, r.name), h('td', null, f(r.grms, 3)), h('td', null, f(r.pg, 3)), h('td', null, f(20 * Math.log10(r.grms / r.pg), 2)), h('td', null, f(r.mx) + ' @ ' + fmtNum(r.fmx, 5)), h('td', null, f(r.mn) + ' @ ' + fmtNum(r.fmn, 5)), h('td', null, f(r.out, 1)),
-      h('td', null, r.mx <= tol && r.mn >= -tol ? 'Tolerans içinde' : r.mx > tol ? 'ÜST AŞIM' : 'Alt sapma'))));
-  const body = h('div', null, h('div', {class: 'note'}, `${p.name}: ±${tol} dB tolerans, ${fmtNum(lo, 5)}–${fmtNum(hi, 5)} Hz. Fark = 10·log10(ölçüm/profil) her frekans noktasında.`),
-    h('div', {style: 'overflow:auto'}, h('table', {class: 'ftab'}, h('thead', null, h('tr', null, ['İz', 'Grms (ölçüm)', 'Grms (profil)', 'Fark (dB)', 'En büyük fark (dB)', 'En küçük fark (dB)', 'Tolerans dışı %', 'Sonuç'].map(x => h('th', null, x)))), tb)));
-  modal('Profil karşılaştırması', body, [{t: 'Kapat'}]);
+  const draw = () => {
+    const rows = cmpRows(p, ms.value, +step.value || 3); if (!rows.length) { box.replaceChildren(h('div', {class: 'note'}, 'Spektrum grafiğinde karşılaştırılacak iz yok')); return; }
+    box.replaceChildren(h('div', {style: 'overflow:auto'}, h('table', {class: 'ftab'}, h('thead', null, h('tr', null, ['İz', 'Seviye (dB)', 'Grms (ölçüm)', 'Grms (profil, seviyede)', 'Fark (dB)', 'En büyük fark (dB)', 'En küçük fark (dB)', 'Tolerans dışı %', 'Sonuç'].map(x => h('th', null, x)))),
+      h('tbody', null, rows.map(r => r.skip ? h('tr', null, h('td', null, r.name), h('td', {colspan: 8, class: 'muted'}, r.skip)) :
+        h('tr', null, h('td', null, r.name), h('td', null, (r.shift > 0 ? '+' : '') + f(r.shift, r.how === '≈' ? 1 : 0) + ' ' + r.how), h('td', null, f(r.grms, 3)), h('td', null, f(r.pg, 3)), h('td', null, f(r.diff)), h('td', null, f(r.mx) + ' @ ' + fmtNum(r.fmx, 5)), h('td', null, f(r.mn) + ' @ ' + fmtNum(r.fmn, 5)), h('td', null, f(r.out, 1)),
+          h('td', null, r.mx <= tol && r.mn >= -tol ? 'Tolerans içinde' : r.mx > tol ? 'ÜST AŞIM' : 'Alt sapma')))))));
+  };
+  ms.onchange = draw; step.oninput = draw;
+  const body = h('div', null, h('div', {class: 'note'}, `${p.name}: ±${tol} dB tolerans, ${fmtNum(p.pts[0][0], 5)}–${fmtNum(p.pts[p.pts.length - 1][0], 5)} Hz. Seviye = ölçümün profile göre medyan farkı (dB), seçilen adıma yuvarlanır; fark seviye düşüldükten sonra hesaplanır.`), fr('Seviye', ms), fr('Seviye adımı (dB)', step), box);
+  draw(); modal('Profil karşılaştırması', body, [{t: 'Kapat'}]);
+}
+/* ---------- test seviyesi (−9/−6/−3/0 dB) ---------- */
+const lvTxt = L => (L > 0 ? '+' : L < 0 ? '−' : '') + Math.abs(L) + ' dB';
+function lvCard() {
+  const refSel = h('select', {id: 'lvRef'}); fillLvRef(refSel);
+  return card('Test seviyesi (otomatik)', h('div', {class: 'note'}, 'Aktif izdeki seviye platolarını (ör. −9, −6, −3, 0 dB) bulur, zaman grafiğinde boyar; "Seviye başına spektrum" her plato için ayrı PSD çizer.'),
+    fr('Aralık', selIn('lvScope', [['all', 'Tüm kanal'], ['vis', 'Görünen aralık']], 'all')), fr('Seviye adımı (dB)', numIn('lvStep', 3, {min: 0.5, step: 0.5})), fr('Plato en az (s)', numIn('lvDur', 1, {min: 0.1, step: 'any'})), fr('Pencere (s)', numIn('lvWin', 0.5, {min: 0.05, step: 'any'})), fr('Referans (0 dB)', refSel),
+    h('div', {class: 'btns'}, btn('Seviyeleri tespit et', lvDetect, 'primary'), btn('Seviye başına spektrum', lvSpectra), btn('Boyamayı kaldır', () => { S.plot.bands = []; S.plot.invalidate(); })), h('div', {id: 'lvInfo', class: 'note', style: 'white-space:pre-line'}));
+}
+function fillLvRef(sel) { const cur = sel.value; sel.replaceChildren(h('option', {value: 'max'}, 'En yüksek seviye = 0 dB'), ...S.profiles.map(p => h('option', {value: p.id}, 'Profil Grms: ' + p.name + ' (' + profGrms(p.pts).toFixed(2) + ' g)'))); if ([...sel.options].some(o => o.value === cur)) sel.value = cur; }
+async function lvDetect() {
+  const tr = activeTrace(), ax = activeAxes(); if (!tr) return toast('Önce bir iz seçin (titreşim kanalı)');
+  await busy('Seviyeler aranıyor…', async () => {
+    const ch = tr.ch; await ensureLoaded(ch); const [a, b] = specRange(tr, ax, sv('lvScope')); if (b - a < 1024) throw new Error('Aralık çok kısa');
+    const rp = S.profiles.find(p => p.id === sv('lvRef')), x = DSP.segment(ch.data, ch.del, a, b);
+    const res = DSP.levelSegments(x, ch.fs, {step: num('lvStep') || 3, minDur: num('lvDur') || 1, win: num('lvWin') || 0.5, ref: rp ? profGrms(rp.pts) : 0});
+    S.levels = {ch, a, segs: res.segs.map(s => Object.assign(s, {t0: ch.t(a + s.i0), t1: ch.t(a + s.i1)})), ref: res.ref, prof: rp};
+    const lv = [...new Set(res.segs.map(s => s.level))].sort((p, q) => p - q), col = L => SUBPAL[lv.indexOf(L) % SUBPAL.length];
+    S.plot.bands = res.segs.map(s => ({x0: s.t0, x1: s.t1, color: col(s.level)})); S.plot.invalidate();
+    $('#lvInfo').textContent = !res.segs.length ? 'Plato bulunamadı (kısa plato süresini veya pencereyi küçültün, adımı kontrol edin).' :
+      `Referans (0 dB): ${res.ref.toPrecision(4)} Grms${rp ? ' (profil)' : ' (en yüksek seviye)'}\n` + res.segs.map(s => `${lvTxt(s.level).padStart(7)}  ${s.t0.toFixed(2)}–${s.t1.toFixed(2)} s  (${(s.t1 - s.t0).toFixed(1)} s)  ${s.grms.toPrecision(4)} Grms  [ölçülen ${s.db.toFixed(1)} dB]`).join('\n');
+  });
+}
+async function lvSpectra() {
+  if (!S.levels || !S.levels.segs.length) { await lvDetect(); if (!S.levels || !S.levels.segs.length) return; }
+  await busy('Seviye başına spektrum…', async () => {
+    const {ch, a, segs, prof} = S.levels, o = {nfft: +sv('spN'), win: sv('spWin'), overlap: +sv('spOv'), scale: 'psd', maxSeg: 4000}, ys = sv('spY'), P = S.specPlot; P.axes.slice().forEach(x => P.removeAxes(x));
+    const sa = P.addAxes({xlog: sv('spX') === 'log', ylog: ys === 'log', title: ch.name + ' — seviye başına PSD'}); sa.isDb = ys === 'db'; const ku = ch.unit || (ch.kind === 'vib' ? 'g' : 'birim');
+    sa.ylabel = ys === 'db' ? `PSD (dB re 1 ${ku}²/Hz)` : `PSD (${ku}²/Hz)`; sa.xlabel = 'Frekans (Hz)';
+    const lv = [...new Set(segs.map(s => s.level))].sort((p, q) => p - q), col = L => SUBPAL[lv.indexOf(L) % SUBPAL.length];
+    for (const s of segs) {
+      const seg = DSP.segment(ch.data, ch.del, a + s.i0, a + s.i1); if (seg.length < 256) continue; const r = DSP.welch(seg, ch.fs, o);
+      const y = ys === 'db' ? r.y.map(v => 10 * Math.log10(v + 1e-300)) : r.y;
+      sa.traces.push({kind: 'xy', x: r.f, y, label: `${lvTxt(s.level)}  (${s.t0.toFixed(1)}–${s.t1.toFixed(1)} s)`, color: col(s.level), width: 1, visible: true, raw: r.y, scale: 'psd', df: r.df, srcKind: ch.kind, level: s.level});
+    }
+    if (prof) for (const L of lv) { const t = profTrace(prof, Math.pow(10, L / 10), `${prof.name} @ ${lvTxt(L)}`, col(L), [6, 4]); t.fixedExtra = ' — ' + (profGrms(prof.pts) * Math.pow(10, L / 20)).toPrecision(4) + ' Grms'; if (sa.isDb) t.y = t.y.map(v => 10 * Math.log10(v)); sa.traces.push(t); }
+    specFit(); if (prof) profCompare(prof, 'auto');
+  });
 }
 function profList() {
   if (!S.profiles.length) return h('div', {class: 'note'}, 'Kayıtlı profil yok.');
@@ -161,7 +209,7 @@ function profList() {
     h('button', {title: 'Grafiğe ekle', onclick: () => profShow(p)}, '+'), h('button', {title: 'Karşılaştır', onclick: () => profCompare(p)}, '≈'), h('button', {title: 'Düzenle', onclick: () => profDialog(p)}, '✎'),
     h('button', {title: 'Sil', onclick: () => { S.profiles = S.profiles.filter(x => x !== p); saveProfiles(); for (const ax of S.specPlot.axes) ax.traces = ax.traces.filter(t => t.profileId !== p.id); S.specPlot.invalidate(); refreshUnvPanel(); }}, '×'))));
 }
-function refreshUnvPanel() { const b = $('#profBox'); if (b) b.replaceChildren(profList()); }
+function refreshUnvPanel() { const b = $('#profBox'); if (b) b.replaceChildren(profList()); const r = $('#lvRef'); if (r) fillLvRef(r); }
 function buildUnv() {
   const r = h('div');
   r.append(card('UNV dosyaları', h('div', {class: 'note'}, 'UNV (dataset 58) dosyasını "Dosya aç…" ile veya pencereye sürükleyerek açın. Kanal sayısı dosyadan okunur; kompleks kanallar Genlik/Faz/Re/Im olarak gelir. Kanalları soldan çift tıklayarak spektrum grafiğine ekleyin.'),
