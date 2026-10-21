@@ -115,6 +115,7 @@ function profShow(p) {
   const tol = Math.pow(10, p.tol / 10), g = profGrms(p.pts);
   const main = profTrace(p, 1, p.name + ' (profil)', p.color); main.fixedExtra = ' — ' + g.toPrecision(4) + ' Grms';
   ax.traces.push(main); if (p.tol > 0) { ax.traces.push(profTrace(p, tol, p.name + ' +' + p.tol + ' dB', p.color, [6, 4]), profTrace(p, 1 / tol, p.name + ' −' + p.tol + ' dB', p.color, [6, 4])); }
+  if (ax.isDb) for (const t of ax.traces) if (t.profileId === p.id) t.y = t.y.map(v => 10 * Math.log10(v));
   if (!ax.ylabel) ax.ylabel = 'PSD (g²/Hz)'; specFit();
 }
 function profDialog(p) {

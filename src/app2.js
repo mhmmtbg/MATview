@@ -142,8 +142,8 @@ function buildAnalyze() {
     fr('Pencere', selIn('spWin', [['hann', 'Hann'], ['hamming', 'Hamming'], ['blackman', 'Blackman'], ['flattop', 'Flat-top'], ['rect', 'Dikdörtgen']], 'hann')),
     fr('Örtüşme', selIn('spOv', [['0', '%0'], ['0.5', '%50'], ['0.75', '%75']], '0.5')),
     fr('Kapsam', selIn('spScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
-    fr('Y ekseni', selIn('spY', [['lin', 'Lineer'], ['log', 'Logaritmik'], ['db', 'dB']], 'db')),
-    fr('X ekseni', selIn('spX', [['lin', 'Lineer'], ['log', 'Logaritmik']], 'lin')),
+    fr('Y ekseni', selIn('spY', [['log', 'Logaritmik (g²/Hz)'], ['lin', 'Lineer'], ['db', 'dB']], 'log')),
+    fr('X ekseni', selIn('spX', [['log', 'Logaritmik'], ['lin', 'Lineer']], 'log')),
     chkIn('spPeak', 'En yüksek 3 tepeyi işaretle', true),
     h('div', {class: 'btns'}, btn('Spektrumu hesapla', computeSpectrum, 'primary')),
     h('div', {id: 'spInfo', class: 'note'}, 'Aktif alt grafikteki görünür tüm izler için hesaplanır.')));
@@ -171,7 +171,9 @@ async function computeSpectrum() {
     const o = {nfft: +sv('spN'), win: sv('spWin'), overlap: +sv('spOv'), scale: sv('spScale'), maxSeg: 4000};
     const ys = sv('spY'), P = S.specPlot; P.axes.slice().forEach(a => P.removeAxes(a));
     const sa = P.addAxes({xlog: sv('spX') === 'log', ylog: ys === 'log', title: ax.title || ''});
-    sa.ylabel = o.scale === 'psd' ? (ys === 'db' ? 'PSD (dB re birim²/Hz)' : 'PSD (birim²/Hz)') : (ys === 'db' ? 'Genlik (dB)' : (o.scale === 'amp' ? 'Tepe genlik (birim)' : 'RMS genlik (birim)')); sa.xlabel = 'Frekans (Hz)';
+    const k0 = ax.traces.find(t => t.visible && t.ch), ku = k0 ? (k0.ch.unit || (k0.ch.kind === 'vib' ? 'g' : 'birim')) : 'birim', u2 = ku.length > 1 ? '(' + ku + ')' : ku;
+    sa.isDb = ys === 'db';
+    sa.ylabel = o.scale === 'psd' ? (ys === 'db' ? `PSD (dB re 1 ${u2}²/Hz)` : `PSD (${u2}²/Hz)`) : (ys === 'db' ? `Genlik (dB re 1 ${u2})` : (o.scale === 'amp' ? `Tepe genlik (${ku})` : `RMS genlik (${ku})`)); sa.xlabel = 'Frekans (Hz)';
     let k = 0, info = [];
     for (const tr of ax.traces) {
       if (!tr.visible) continue; await ensureLoaded(tr.ch); const ch = tr.ch; const [a, b] = specRange(tr, ax, sv('spScope'));
