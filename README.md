@@ -28,3 +28,14 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 
 ## Testler hakkında
 `test/` altındaki betikler gerçek ölçüm dosyalarına ihtiyaç duyar; bu dosyalar depoda yoktur. Dosyaları (`veri_A.mat`, `veri_B.mat`, `veri_C.mat`) bir klasöre koyup `MATVIEW_TEST_DATA` ortam değişkeniyle klasörü gösterin. Kanal adları kendi verinize göre uyarlanmalıdır.
+
+
+## Binary dosya çözme
+
+`Binary aç…` düğmesi (veya .bin dosyasını pencereye sürükleme) ile ham binary dosya, Excel'de tanımlanan çerçeve matrisiyle çözülür.
+
+- **Çerçeve** sayfası: her hücre 1 bayttır, hücreye alt sistem adı yazılır. Çerçeve uzunluğu = hücre sayısıdır (ör. 125 × 100 = 12500 bayt). Aynı ad birden çok hücrede geçerse kanallar `AD_1`, `AD_2`… olur.
+- **Senaryo** sayfası: okuma sırası (satır/sütun), senkron kelimesi (hex), kare hızı, atlanacak bayt, sayaç alanı (kayıp kareleri zaman boşluğu olarak gösterir).
+- **Alanlar** sayfası: birleşik değer tanımı (başlangıç hücresi, tür, bayt sırası, bit aralığı, `x` ile dönüşüm formülü, birim). Formüller uygulamada da düzenlenir.
+- Çözülmüş alanlar `.mat` olarak dışa aktarılabilir (isteğe bağlı olarak alt sistem başına ham bayt matrisleri).
+- Örnek: `ornek/ornek_cerceve.xlsx` + `ornek/ornek_veri.bin` (sentetik; `python3 test/make_sample.py ornek` ile yeniden üretilir).

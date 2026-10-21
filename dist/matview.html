@@ -87,13 +87,17 @@ input[type=color]{width:24px;height:20px;padding:0;border:1px solid var(--border
 .busybox{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:16px 22px;min-width:300px}
 .bar{height:6px;background:var(--hover);border-radius:3px;margin-top:10px;overflow:hidden}.bar div{height:100%;width:0;background:var(--accent)}
 #modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:60}
-.mbox{background:var(--panel);border:1px solid var(--border);border-radius:6px;width:min(640px,92vw);max-height:88vh;display:flex;flex-direction:column}
+.mbox{background:var(--panel);border:1px solid var(--border);border-radius:6px;width:min(860px,94vw);max-height:88vh;display:flex;flex-direction:column}
 .mh{display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)}.mh b{flex:1}.mh button{border:none;background:none;font-size:18px;line-height:1}
 #mbody{padding:12px 14px;overflow:auto}#mfoot{padding:10px 14px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
 #toast{position:fixed;left:50%;bottom:44px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:5px;z-index:70;max-width:80vw}
 table.kv{border-collapse:collapse;width:100%}table.kv td,table.kv th{border-bottom:1px solid var(--border);padding:4px 6px;text-align:left}
 kbd{border:1px solid var(--border);border-radius:3px;padding:0 4px;font-size:12px;background:var(--bg)}
 @media (max-width:1100px){#app{grid-template-columns:240px 1fr 290px}}
+
+.ftab{border-collapse:collapse;font-size:12px}.ftab th{text-align:left;color:var(--muted);font-weight:600;padding:2px 4px;position:sticky;top:0;background:var(--panel)}.ftab td{padding:1px 2px}
+.ftab input,.ftab select{padding:1px 3px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:12px}.lg{display:inline-flex;align-items:center;gap:4px}
 </style>
 </head>
 <body>
@@ -102,6 +106,7 @@ kbd{border:1px solid var(--border);border-radius:3px;padding:0 4px;font-size:12p
     <div class="brand"><svg width="20" height="20" viewBox="0 0 20 20"><rect x="1" y="1" width="18" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 13 L7 7 L10 12 L13 5 L17 11" fill="none" stroke="#0072BD" stroke-width="1.6"/></svg><b>MATView</b><span class="sub">.mat veri gözlemci</span></div>
     <div class="spacer"></div>
     <button id="btnOpen" class="primary">Dosya aç…</button>
+    <button id="btnBin" title="Binary dosyayı Excel çerçeve tanımıyla çöz">Binary aç…</button>
     <button id="btnTime">Zaman ayarları</button>
     <button id="btnFree" title="Grafikte kullanılmayan kanalları bellekten at">Belleği boşalt</button>
     <button id="btnHelp">Yardım</button>
@@ -495,6 +500,179 @@ const H5 = (() => {
     return MATreadNumeric(dv, 0, MI[dt.k], count, true);
   }
   return {open, load, SIG};
+})();
+
+/* Kurulumsuz minimal XLSX okuyucu: zip + DecompressionStream; sayfalar -> {name, rows:[[...]]} */
+const XLSX = (() => {
+  async function inflateRaw(u8) {
+    const ds = new DecompressionStream('deflate-raw');
+    const w = ds.writable.getWriter(); w.write(u8); w.close();
+    return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+  }
+  async function unzip(buf) {
+    const u8 = new Uint8Array(buf), dv = new DataView(buf); let e = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
+    if (e < 0) throw new Error('Geçerli bir .xlsx (zip) dosyası değil');
+    const n = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true); const files = new Map();
+    for (let k = 0; k < n; k++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('Zip dizini bozuk');
+      const meth = dv.getUint16(p + 10, true), csz = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+      const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nl)); p += 46 + nl + el + cl;
+      files.set(name, {meth, csz, off});
+    }
+    return async name => {
+      const f = files.get(name); if (!f) return null;
+      const lo = f.off, ln = dv.getUint16(lo + 26, true), le = dv.getUint16(lo + 28, true), s = lo + 30 + ln + le, raw = u8.subarray(s, s + f.csz);
+      return f.meth === 0 ? raw : f.meth === 8 ? inflateRaw(raw) : (() => { throw new Error('Desteklenmeyen zip yöntemi'); })();
+    };
+  }
+  const dec = u => new TextDecoder('utf-8').decode(u);
+  const parse = s => new DOMParser().parseFromString(s, 'application/xml');
+  const colNum = s => { let n = 0; for (const ch of s) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+  const tx = el => { let s = ''; for (const t of el.getElementsByTagName('t')) s += t.textContent; return s; };
+  async function read(file) {
+    const get = await unzip(await file.arrayBuffer());
+    const wbx = await get('xl/workbook.xml'); if (!wbx) throw new Error('xl/workbook.xml yok');
+    const wb = parse(dec(wbx)), rels = parse(dec(await get('xl/_rels/workbook.xml.rels')));
+    const rt = {}; for (const r of rels.getElementsByTagName('Relationship')) rt[r.getAttribute('Id')] = r.getAttribute('Target');
+    let sst = []; const sx = await get('xl/sharedStrings.xml');
+    if (sx) sst = [...parse(dec(sx)).getElementsByTagName('si')].map(tx);
+    const sheets = [];
+    for (const s of wb.getElementsByTagName('sheet')) {
+      const name = s.getAttribute('name'); let id = s.getAttribute('r:id') || s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+      let tg = rt[id]; if (!tg) continue; tg = tg.replace(/^\//, ''); const path = tg.startsWith('xl/') ? tg : 'xl/' + tg;
+      const data = await get(path); if (!data) continue;
+      const doc = parse(dec(data)), rows = []; let maxc = 0;
+      for (const c of doc.getElementsByTagName('c')) {
+        const ref = c.getAttribute('r'); const m = /^([A-Z]+)(\d+)$/.exec(ref || ''); if (!m) continue;
+        const ci = colNum(m[1]), ri = +m[2] - 1, t = c.getAttribute('t'); let v = '';
+        if (t === 'inlineStr') v = tx(c); else { const ve = c.getElementsByTagName('v')[0]; if (ve) { v = ve.textContent; if (t === 's') v = sst[+v] ?? ''; else if (t === 'b') v = v === '1' ? 'DOĞRU' : 'YANLIŞ'; } }
+        if (v === '') continue;
+        (rows[ri] || (rows[ri] = []))[ci] = v; if (ci + 1 > maxc) maxc = ci + 1;
+      }
+      for (let r = 0; r < rows.length; r++) { if (!rows[r]) rows[r] = []; }
+      // birleştirilmiş hücreler: sol-üst değeri aralığa yay
+      for (const mc of doc.getElementsByTagName('mergeCell')) {
+        const mm = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(mc.getAttribute('ref') || ''); if (!mm) continue;
+        const c0 = colNum(mm[1]), r0 = +mm[2] - 1, c1 = colNum(mm[3]), r1 = +mm[4] - 1, v = rows[r0] && rows[r0][c0]; if (v == null) continue;
+        for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) (rows[r] || (rows[r] = []))[c] = v;
+      }
+      sheets.push({name, rows, ncols: maxc});
+    }
+    return sheets;
+  }
+  // Basit .xlsx yazıcı (şablon indirme): sheets=[{name, rows:[[...]]}], zip "stored" (sıkıştırmasız)
+  function crc32(u8) { let c, crc = 0xFFFFFFFF; if (!crc32.t) { crc32.t = new Uint32Array(256); for (let n = 0; n < 256; n++) { c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; crc32.t[n] = c >>> 0; } } for (let i = 0; i < u8.length; i++) crc = crc32.t[(crc ^ u8[i]) & 255] ^ (crc >>> 8); return (crc ^ 0xFFFFFFFF) >>> 0; }
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const colName = i => { let s = ''; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s; return s; };
+  function write(sheets) {
+    const enc = new TextEncoder(), files = [];
+    files.push(['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' + sheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') + '</Types>']);
+    files.push(['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>']);
+    files.push(['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' + sheets.map((s, i) => `<sheet name="${esc(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') + '</sheets></workbook>']);
+    files.push(['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('') + '</Relationships>']);
+    sheets.forEach((s, i) => {
+      let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+      s.rows.forEach((row, r) => { x += `<row r="${r + 1}">`; row.forEach((v, c) => { if (v == null || v === '') return; const ref = colName(c) + (r + 1); x += typeof v === 'number' ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t>${esc(v)}</t></is></c>`; }); x += '</row>'; });
+      files.push([`xl/worksheets/sheet${i + 1}.xml`, x + '</sheetData></worksheet>']);
+    });
+    const parts = [], cen = []; let off = 0;
+    for (const [name, txt] of files) {
+      const nb = enc.encode(name), data = enc.encode(txt), crc = crc32(data);
+      const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, nb.length, true);
+      parts.push(new Uint8Array(lh.buffer), nb, data);
+      const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
+      cen.push(new Uint8Array(ch.buffer), nb); off += 30 + nb.length + data.length;
+    }
+    let cs = 0; for (const c of cen) cs += c.length;
+    const ed = new DataView(new ArrayBuffer(22)); ed.setUint32(0, 0x06054b50, true); ed.setUint16(8, files.length, true); ed.setUint16(10, files.length, true); ed.setUint32(12, cs, true); ed.setUint32(16, off, true);
+    return new Blob([...parts, ...cen, new Uint8Array(ed.buffer)], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  }
+  return {read, write};
+})();
+
+/* Binary dosya çözücü (DOM'suz çekirdek): matris çerçeve tanımı -> kanallar */
+const BIN = (() => {
+  const TYPES = {u8: [1, 'getUint8', false], i8: [1, 'getInt8', true], u16: [2, 'getUint16'], i16: [2, 'getInt16'], u32: [4, 'getUint32'], i32: [4, 'getInt32'], f32: [4, 'getFloat32'], f64: [8, 'getFloat64']};
+  const clean = s => String(s).trim().replace(/[^A-Za-z0-9_À-ɏ]/g, '_');
+  function parseSync(s) {
+    s = String(s || '').replace(/0x/gi, '').replace(/[^0-9a-fA-F]/g, ''); if (s.length % 2) throw new Error('Senkron kelimesi çift sayıda hex hane olmalı');
+    const o = []; for (let i = 0; i < s.length; i += 2) o.push(parseInt(s.slice(i, i + 2), 16)); return o;
+  }
+  // grid: dizi dizi metin; order: 'row' | 'col'. Çıktı: cells[okumaSırası] = ad ('' = adsız bayt)
+  function layout(grid, order) {
+    const R = grid.length, C = Math.max(0, ...grid.map(r => r ? r.length : 0)), L = R * C, raw = new Array(L).fill('');
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) { const v = grid[r] && grid[r][c]; if (v != null && String(v).trim() !== '') raw[order === 'col' ? c * R + r : r * C + c] = clean(v); }
+    const cnt = new Map(); for (const n of raw) if (n) cnt.set(n, (cnt.get(n) || 0) + 1);
+    const seen = new Map(), keys = new Array(L).fill(''), pos = new Map(), subs = [];
+    for (let i = 0; i < L; i++) {
+      const n = raw[i]; if (!n) continue; const k = (seen.get(n) || 0) + 1; seen.set(n, k);
+      const key = cnt.get(n) > 1 ? n + '_' + k : n; keys[i] = key; pos.set(key, i);
+    }
+    for (const [n, c] of cnt) subs.push({name: n, count: c});
+    return {R, C, L, order, raw, keys, pos, subs, cnt};
+  }
+  // Çerçeveleri bul. Senkron varsa kayma/bozulma durumunda yeniden senkronlanır; kayıp kare sayısı g'ye yansır.
+  function scan(u8, L, sync, skip) {
+    const n = u8.length, pos = []; let p = skip | 0, lost = 0, junk = 0, extra = 0; const gl = [];
+    const match = q => { for (let i = 0; i < sync.length; i++) if (u8[q + i] !== sync[i]) return false; return true; };
+    while (p + L <= n) {
+      if (sync.length && !match(p)) {
+        let q = p + 1; for (;;) { q = u8.indexOf(sync[0], q); if (q < 0 || q + L > n) { q = -1; break; } if (match(q)) break; q++; }
+        if (q < 0) { junk += n - p; break; }
+        const d = q - p; junk += d; const miss = Math.round(d / L); if (miss > 0) { extra += miss; lost += miss; } p = q;
+      }
+      gl.push(pos.length + extra); pos.push(p); p += L;
+    }
+    return {pos: Float64Array.from(pos), g: lost ? Float64Array.from(gl) : null, lost, junk, frames: pos.length};
+  }
+  function parseBits(s) {
+    s = String(s ?? '').trim(); if (!s) return null; const m = /^(\d+)\s*(?:[-:]\s*(\d+))?$/.exec(s); if (!m) throw new Error('Bit biçimi hatalı: ' + s);
+    const lo = +m[1], hi = m[2] != null ? +m[2] : lo; if (hi < lo || hi > 31) throw new Error('Bit aralığı hatalı: ' + s); return [lo, hi];
+  }
+  function spec(lay, f) {
+    const t = TYPES[(f.type || 'u8').toLowerCase()]; if (!t) throw new Error('Bilinmeyen tür: ' + f.type);
+    let off; const s = String(f.src ?? '').trim();
+    if (lay.pos.has(s)) off = lay.pos.get(s); else if (/^#?\d+$/.test(s)) off = +s.replace('#', ''); else throw new Error('Başlangıç hücresi bulunamadı: "' + s + '"');
+    if (off + t[0] > lay.L) throw new Error(f.name + ': alan çerçeve sınırını aşıyor');
+    return {off, size: t[0], getter: t[1], le: /^(le|k)/i.test(f.endian || '') , float: /^f/.test(f.type), bits: parseBits(f.bit)};
+  }
+  function extract(u8, pos, sp) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), n = pos.length, out = new Float64Array(n), g = sp.getter, le = sp.le, sz = sp.size, off = sp.off;
+    for (let k = 0; k < n; k++) out[k] = sz === 1 ? dv[g](pos[k] + off) : dv[g](pos[k] + off, le);
+    if (sp.bits && !sp.float) { const [lo, hi] = sp.bits, w = hi - lo + 1, mask = w >= 32 ? 0xFFFFFFFF : (2 ** w - 1); for (let k = 0; k < n; k++) out[k] = ((out[k] >>> 0) >>> lo) & mask; }
+    return out;
+  }
+  // Sayaç alanından kare konumları: eksik sayaç değerleri kayıp kare sayılır, zaman ekseninde boşluk bırakır
+  function counterG(raw, size) {
+    const W = 2 ** (size * 8), n = raw.length, g = new Float64Array(n); let acc = 0, lost = 0;
+    for (let k = 1; k < n; k++) { let d = ((raw[k] - raw[k - 1]) % W + W) % W; if (d === 0 || d > 5000) d = 1; acc += d; lost += d - 1; g[k] = acc; }
+    return {g, lost};
+  }
+  const FIELD_HDR = ['Ad', 'Başlangıç', 'Tür', 'Bayt sırası', 'Bit', 'İfade', 'Birim'];
+  function fieldsFromRows(rows) {
+    const out = []; for (let r = 1; r < rows.length; r++) { const x = rows[r] || []; if (!x[0] && !x[1]) continue; out.push({name: x[0] || '', src: x[1] || '', type: (x[2] || 'u8').toLowerCase(), endian: /^(le|k)/i.test(x[3] || '') ? 'LE' : 'BE', bit: x[4] || '', expr: x[5] || '', unit: x[6] || ''}); }
+    return out;
+  }
+  function scenarioFromRows(rows) {
+    const o = {}; for (const r of rows || []) { if (!r) continue; const k = String(r[0] || '').toLowerCase(); const v = r[1]; if (v == null) continue;
+      if (k.startsWith('okuma')) o.order = /^(s[uü]tun|col)/i.test(v) ? 'col' : 'row'; else if (k.startsWith('senkron')) o.sync = v; else if (k.startsWith('kare')) o.fps = parseFloat(v); else if (k.startsWith('atlan')) o.skip = parseInt(v) || 0; else if (k.startsWith('say')) o.counter = String(v); }
+    return o;
+  }
+  function pick(sheets, names) { for (const s of sheets) for (const n of names) if (s.name.toLowerCase().replace(/[çÇ]/g, 'c').startsWith(n)) return s; return null; }
+  function defFromSheets(sheets) {
+    const fr = pick(sheets, ['cerceve', 'frame']) || sheets[0]; if (!fr) throw new Error('Excel dosyasında sayfa yok');
+    const sc = pick(sheets, ['senaryo']), al = pick(sheets, ['alanlar', 'fields']);
+    const d = Object.assign({order: 'row', sync: '', fps: 1, skip: 0}, sc ? scenarioFromRows(sc.rows) : {});
+    d.grid = fr.rows.map(r => (r || []).map(v => v == null ? '' : String(v))); d.fields = al ? fieldsFromRows(al.rows) : []; return d;
+  }
+  function defToSheets(d) {
+    const C = Math.max(0, ...d.grid.map(r => r.length));
+    return [{name: 'Çerçeve', rows: d.grid.map(r => Array.from({length: C}, (_, i) => r[i] ?? ''))},
+      {name: 'Senaryo', rows: [['Anahtar', 'Değer'], ['Okuma sırası', d.order === 'col' ? 'sütun' : 'satır'], ['Senkron (hex)', d.sync || ''], ['Kare hızı (Hz)', d.fps], ['Atlanacak bayt', d.skip | 0], ['Sayaç alanı', d.counter || '']]},
+      {name: 'Alanlar', rows: [FIELD_HDR, ...d.fields.map(f => [f.name, f.src, f.type, f.endian, f.bit, f.expr, f.unit])]}];
+  }
+  return {counterG, TYPES, clean, parseSync, layout, scan, spec, extract, defFromSheets, defToSheets, FIELD_HDR, parseBits};
 })();
 
 /* Sinyal işleme: FFT, PSD, STFT, Butterworth, filtfilt, Hampel, gürültü azaltma */
@@ -1579,7 +1757,7 @@ function devKeyOf(full) { const m = DEV_RE.exec(full); return m ? m[1] + '|' + m
 
 function applyTiming(f) {
   for (const ch of f.channels) {
-    if (ch.derived) continue;
+    if (ch.derived || ch.bin) continue;
     const gc = ch.devKey && f.gcache ? f.gcache[ch.devKey] : null;
     if (gc) { ch.g = gc.g; ch.spp = ch.n / gc.np; ch.Tpkt = f.Tpkt; ch.dtS = ch.Tpkt / ch.spp; }
     else { ch.g = null; ch.dtS = 1 / (f.baseFs * ch.n / (f.baseN || ch.n)); ch.spp = 1; ch.Tpkt = ch.dtS; }
@@ -1627,6 +1805,7 @@ async function ensureLoaded(ch) {
   if (ch.data) return;
   if (ch.loading) return ch.loading;
   ch.loading = (async () => {
+    if (ch.binLoad) { ch.data = await ch.binLoad(); ch.n = ch.data.length; return; }
     const f = ch.file, v = f.vars[ch.varIdx];
     if (ch.row != null) {
       let m = f.mcache.get(ch.varIdx); if (!m) { m = await MAT.load(f.mat, v); f.mcache.set(ch.varIdx, m); }
@@ -1653,6 +1832,7 @@ function renderTree() {
   for (const f of allFiles()) {
     const chs = f.channels.filter(chMatches);
     box.append(h('div', {class: 'tfile'}, h('span', {class: 'nm', title: f.name}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
+      f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => binExportDialog(f)}, '.mat') : null,
       f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
     const devs = new Map();
     for (const c of chs) { if (!devs.has(c.dev)) devs.set(c.dev, new Map()); const bm = devs.get(c.dev); if (!bm.has(c.base)) bm.set(c.base, []); bm.get(c.base).push(c); }
@@ -1668,7 +1848,7 @@ function renderTree() {
             h('span', {class: 'twisty'}, bo ? '▼' : '▶'), h('i', {class: 'dot', style: 'background:' + KIND[list[0].kind].color}), h('span', {class: 'nm'}, base), h('span', {class: 'meta'}, list.length + ' kanal'),
             h('button', {class: 'add', title: 'Hepsini aynı grafiğe ekle', onclick: () => addGroup(list)}, '+')));
           if (bo) for (const c of list) box.append(chRow(c, c.comp || c.rest, true));
-        } else for (const c of list) box.append(chRow(c, c.rest, false));
+        } else { if (f.binary && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) box.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) box.append(chRow(c, c.rest, false)); }
       }
     }
   }
@@ -1689,7 +1869,8 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 
 /* ---------- dosya işlemleri ---------- */
 async function openFiles(files) {
-  files = [...files].filter(f => /\.mat$/i.test(f.name) || true);
+  files = [...files]; const other = files.filter(f => !/\.mat$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  if (other.length) await binFilesIn(other);
   for (const file of files) {
     await busy('Dosya taranıyor: ' + file.name, async () => {
       const f = await importFile(file);
@@ -1713,7 +1894,7 @@ function freeMemory() {
 /* ---------- grafik yönetimi ---------- */
 function nextColor() { return PAL[S.colorIdx++ % PAL.length]; }
 function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), width: 1, visible: true}; }
-function axisLabelFor(ax) { const ks = new Set(ax.traces.map(t => t.ch.kind)); ax.ylabel = ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; }
+function axisLabelFor(ax) { const ks = new Set(ax.traces.map(t => t.ch.kind)), us = new Set(ax.traces.map(t => t.ch.unit || '')); ax.ylabel = us.size === 1 && [...us][0] ? [...us][0] : ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; }
 async function addToNewAxes(chs, one) {
   const first = !S.plot.axes.length;
   if (one) { const ax = S.plot.addAxes(); for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }
@@ -2199,7 +2380,7 @@ function matWrite(vars) {
     const total = 16 + 16 + nameBytes + 8 + dataBytes, head = new ArrayBuffer(8 + 16 + 16 + nameBytes + 8), dv = new DataView(head); let o = 0;
     dv.setUint32(o, 14, true); dv.setUint32(o + 4, total, true); o += 8;
     dv.setUint32(o, 6, true); dv.setUint32(o + 4, 8, true); dv.setUint32(o + 8, 6, true); dv.setUint32(o + 12, 0, true); o += 16;
-    dv.setUint32(o, 5, true); dv.setUint32(o + 4, 8, true); dv.setInt32(o + 8, v.data.length, true); dv.setInt32(o + 12, 1, true); o += 16;
+    dv.setUint32(o, 5, true); dv.setUint32(o + 4, 8, true); dv.setInt32(o + 8, v.rows || v.data.length, true); dv.setInt32(o + 12, v.cols || 1, true); o += 16;
     if (small) { dv.setUint32(o, (nm.length << 16) | 1, true); for (let i = 0; i < nm.length; i++) dv.setUint8(o + 4 + i, nm.charCodeAt(i)); o += 8; }
     else { dv.setUint32(o, 1, true); dv.setUint32(o + 4, nm.length, true); for (let i = 0; i < nm.length; i++) dv.setUint8(o + 8 + i, nm.charCodeAt(i)); o += 8 + nmPad; }
     dv.setUint32(o, 9, true); dv.setUint32(o + 4, dataBytes, true);
@@ -2232,7 +2413,7 @@ async function loadSession(file) {
 function timeDialog() {
   const body = h('div'); if (!S.files.length) body.append(h('div', {class: 'note'}, 'Önce bir dosya açın.'));
   const rows = [];
-  for (const f of S.files) {
+  for (const f of S.files.filter(x => !x.binary)) {
     const ndev = Object.keys(f.gcache || {}).length, lost = Object.values(f.gcache || {}).reduce((a, g) => a + g.lost, 0), nocnt = f.channels.some(c => !(c.devKey && f.gcache[c.devKey]));
     const t = h('input', {type: 'number', step: 'any', value: f.Tpkt * 1000}), b = h('input', {type: 'number', step: 'any', value: f.baseFs}); rows.push({f, t, b});
     body.append(h('div', {class: 'card'}, h('h4', null, f.name), h('div', {class: 'note'}, `${ndev} cihazda cnt sayacı bulundu · toplam kayıp paket: ${lost}`),
@@ -2245,6 +2426,7 @@ function timeDialog() {
 function helpDialog() {
   const body = h('div', {style: 'line-height:1.7'}, h('b', null, 'Fare'), h('br'), 'Tekerlek: X yakınlaştır · Shift+tekerlek: Y · Ctrl+tekerlek: ikisi', h('br'), 'Eksen kenarında sürükle/tekerlek: yalnız o eksen · Çift tık: tümünü sığdır', h('br'), 'Soldan kanal sürükleyip grafiğe bırakın (alt grafiğin üstüne = üst üste, boşluğa = yeni alt grafik)', h('br'), h('br'),
     h('b', null, 'Klavye'), h('br'), h('kbd', null, 'P'), ' gez  ', h('kbd', null, 'Z'), ' yakınlaştır  ', h('kbd', null, 'C'), ' veri imleci  ', h('kbd', null, 'B'), ' kutu seç  ', h('kbd', null, 'L'), ' kement', h('br'), h('kbd', null, 'Delete'), ' seçileni sil  ', h('kbd', null, 'Ctrl+Z'), '/', h('kbd', null, 'Ctrl+Y'), ' geri al/yinele  ', h('kbd', null, 'Home'), ' sığdır  ', h('kbd', null, 'Esc'), ' seçimi kaldır', h('br'), h('br'),
+    h('b', null, 'Binary'), h('br'), '"Binary aç…": çerçeve matrisini Excel (.xlsx) ile tanımlayın; her hücre 1 bayt, hücredeki ad kanal adıdır (aynı ad tekrar ederse AD_1, AD_2…). Senaryo sayfası: okuma sırası, senkron kelimesi, kare hızı, sayaç alanı. Alanlar sayfası: birleşik değer (u8/i8/u16/i16/u32/i32/f32/f64, BE/LE), bit aralığı ve x ile dönüşüm formülü. Çözülmüş alanlar sol listede dosya başlığındaki .mat düğmesiyle dışa aktarılır.', h('br'), h('br'),
     h('b', null, 'Veri'), h('br'), 'as = akustik · ts = titreşim · ss/hs = sıcaklık · bs = basınç · gs = gerinim. Zaman ekseni cnt paket sayacından üretilir (varsayılan 10 ms/paket; "Zaman ayarları"ndan değiştirilebilir).', h('br'), 'Silinen noktalar orijinal dosyayı değiştirmez; dışa aktarırken çıkarılır veya NaN yapılır.');
   modal('Yardım', body);
 }
@@ -2269,6 +2451,7 @@ function init() {
   S.specView = new SpecView($('#cv-sgram')); S.specView.onHover = p => { $('#hoverinfo').textContent = `t = ${fmtNum(p.t, 6)} s   f = ${fmtNum(p.f, 6)} Hz` + (p.v != null ? `   ${p.v.toFixed(1)} dB` : ''); };
   buildToolbar(); buildRight(); renderChips(); renderTree(); refreshAll(); refreshCleanInfo(); setMode('pan');
   for (const b of $('#viewtabs').children) b.onclick = () => { switchView(b.dataset.v); };
+  $('#btnBin').onclick = () => binDialog();
   $('#btnOpen').onclick = async () => {
     if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
     $('#fileIn').click();
@@ -2311,6 +2494,151 @@ async function startupFiles() {
   } catch (e) { /* sunucu yok: tek dosyalık HTML */ }
 }
 window.addEventListener('DOMContentLoaded', init);
+
+/* ===== Binary dosya çözme: Excel çerçeve tanımı, alanlar, formüller, .mat çıktısı ===== */
+const BS = {def: null, defName: '', bin: null};   // bir sonraki çözme için son tanım
+const SUBPAL = ['#e6b422', '#7fb069', '#5b9bd5', '#e07a5f', '#9c89b8', '#3fb8af', '#d4a373', '#8fb339', '#6c91c2', '#c9697d', '#a3a380', '#6b9080'];
+
+async function binFilesIn(files) {
+  let bin = null, xl = null;
+  for (const f of files) { if (/\.xlsx$/i.test(f.name)) xl = f; else bin = f; }
+  if (xl) await binLoadDef(xl);
+  if (bin) BS.bin = bin;
+  binDialog();
+}
+async function binLoadDef(file) {
+  try { const sheets = await XLSX.read(file); BS.def = BIN.defFromSheets(sheets); BS.defName = file.name; }
+  catch (e) { console.error(e); toast('Excel okunamadı: ' + (e.message || e), 7000); }
+}
+function binTemplate() {
+  const names = ['BASLIK', 'BASLIK', 'DURUM', 'DURUM', 'SAYAC', 'SAYAC', 'VERI_A', 'VERI_A'], grid = [];
+  for (let r = 0; r < 4; r++) grid.push(names.map((n, i) => r === 0 ? n : (r === 1 ? (i < 4 ? 'BASLIK' : 'SAYAC') : 'VERI_A')));
+  return {grid, order: 'row', sync: 'EB 90', fps: 10, skip: 0, fields: [
+    {name: 'SAYAC_DEGER', src: 'SAYAC_1', type: 'u16', endian: 'BE', bit: '', expr: '', unit: ''},
+    {name: 'VERI_A_OLCEK', src: 'VERI_A_1', type: 'i16', endian: 'LE', bit: '', expr: 'x*0.01-5', unit: 'V'}]};
+}
+async function binSaveDef(d) { await saveBlob(XLSX.write(BIN.defToSheets(d)), 'cerceve_tanimi.xlsx'); }
+
+function binDialog() {
+  const body = h('div'), dyn = h('div');
+  const defBox = h('div'), binBox = h('div');
+  const readDef = () => {   // arayüzden senaryoyu oku
+    const d = BS.def; if (!d) throw new Error('Önce bir çerçeve tanımı (.xlsx) seçin');
+    d.order = sv('bnOrder'); d.sync = sv('bnSync'); d.fps = num('bnFps'); d.skip = num('bnSkip') | 0; d.counter = sv('bnCnt').trim();
+    if (!(d.fps > 0)) throw new Error('Kare hızı > 0 olmalı'); BIN.parseSync(d.sync); return d;
+  };
+  const xin = h('input', {type: 'file', accept: '.xlsx', hidden: true, onchange: async e => { if (e.target.files[0]) { await binLoadDef(e.target.files[0]); paint(); } }});
+  const bin = h('input', {type: 'file', hidden: true, onchange: e => { if (e.target.files[0]) { BS.bin = e.target.files[0]; paint(); } }});
+  function paint() {
+    defBox.replaceChildren(); binBox.replaceChildren(); dyn.replaceChildren();
+    defBox.append(h('div', {class: 'btns'}, btn('Excel seç…', () => xin.click()), btn('Şablon Excel indir', () => binSaveDef(binTemplate())), BS.def ? btn('Tanımı kaydet', () => { try { binSaveDef(readDef()); } catch (e) { toast(e.message); } }) : null),
+      h('div', {class: 'note'}, BS.def ? BS.defName + ' okundu.' : 'Çerçeve matrisi: her hücre bir bayt, hücreye alt sistem adı yazılır (ör. 125 satır × 100 sütun = 12500 bayt). Alanlar sayfası ve Senaryo sayfası isteğe bağlıdır.'));
+    binBox.append(h('div', {class: 'btns'}, btn('Binary dosya seç…', () => bin.click())), h('div', {class: 'note'}, BS.bin ? BS.bin.name + ' · ' + fmtCnt(BS.bin.size) + ' bayt' : 'Henüz binary dosya seçilmedi.'));
+    if (!BS.def) return;
+    const d = BS.def, lay = BIN.layout(d.grid, d.order);
+    dyn.append(card('Senaryo',
+      fr('Okuma sırası', selIn('bnOrder', [['row', 'Satır satır (soldan sağa, yukarıdan aşağı)'], ['col', 'Sütun sütun (yukarıdan aşağı, soldan sağa)']], d.order)),
+      fr('Senkron kelimesi (hex)', h('input', {type: 'text', id: 'bnSync', value: d.sync || '', placeholder: 'ör. EB 90 A5 C3 (boş = senkronsuz)'})),
+      fr('Atlanacak ilk bayt', numIn('bnSkip', d.skip || 0, {min: 0})), fr('Kare hızı (Hz)', numIn('bnFps', d.fps || 1, {min: 0})),
+      fr('Sayaç alanı (isteğe bağlı)', h('input', {type: 'text', id: 'bnCnt', value: d.counter || '', placeholder: 'Alanlar tablosundaki ad, ör. SAYAC (kayıp kareleri bulur)'})),
+      h('div', {class: 'note', id: 'bnInfo'}, '')));
+    const info = dyn.querySelector('#bnInfo');
+    const upd = () => { const l = BIN.layout(d.grid, dyn.querySelector('#bnOrder').value); info.textContent = `Matris ${l.R} × ${l.C} = ${fmtCnt(l.L)} bayt/kare · ${l.subs.length} ad · adsız bayt: ${fmtCnt(l.raw.filter(x => !x).length)}` + (BS.bin ? ` · ≈ ${fmtCnt(Math.floor(BS.bin.size / l.L))} kare` : ''); };
+    dyn.querySelector('#bnOrder').onchange = e => { d.order = e.target.value; paint(); }; upd();
+    // matris önizlemesi
+    const cs = Math.max(1, Math.min(6, Math.floor(560 / Math.max(1, lay.C)))), cv = h('canvas', {width: lay.C * cs, height: lay.R * cs, style: 'max-width:100%;border:1px solid var(--border)'}), g = cv.getContext('2d');
+    const col = new Map(lay.subs.map((s, i) => [s.name, SUBPAL[i % SUBPAL.length]]));
+    for (let r = 0; r < lay.R; r++) for (let c = 0; c < lay.C; c++) { const n = lay.raw[d.order === 'col' ? c * lay.R + r : r * lay.C + c]; if (!n) continue; g.fillStyle = col.get(n); g.fillRect(c * cs, r * cs, cs, cs); }
+    dyn.append(card('Çerçeve matrisi', cv, h('div', {class: 'legend'}, lay.subs.map(s => h('span', {class: 'lg'}, h('i', {class: 'dot', style: 'background:' + col.get(s.name)}), s.name + ' (' + fmtCnt(s.count) + ')')))));
+    // alanlar
+    const tb = h('tbody'), mk = f => {
+      const tr = h('tr'), inp = (k, w, v) => h('input', {type: 'text', value: v ?? f[k], style: 'width:' + w + 'px', oninput: e => f[k] = e.target.value});
+      const sel = (k, opts) => h('select', {onchange: e => f[k] = e.target.value}, opts.map(o => h('option', {value: o, selected: f[k] === o}, o)));
+      tr.append(h('td', null, inp('name', 110)), h('td', null, inp('src', 90)), h('td', null, sel('type', Object.keys(BIN.TYPES))), h('td', null, sel('endian', ['BE', 'LE'])), h('td', null, inp('bit', 44)), h('td', null, inp('expr', 150)), h('td', null, inp('unit', 44)),
+        h('td', null, h('button', {onclick: () => { d.fields.splice(d.fields.indexOf(f), 1); tr.remove(); }}, '×'))); return tr;
+    };
+    for (const f of d.fields) tb.append(mk(f));
+    dyn.append(card('Alanlar (birleşik değer, tür, bit, formül)', h('div', {class: 'note'}, 'Başlangıç: hücre adı (ör. GUC_1) · Bit: "3" veya "4-7" · İfade: ham değer x ile (ör. x*0.01-40); başka alanların adlarını da kullanabilirsiniz.'),
+      h('div', {style: 'overflow:auto;max-height:230px'}, h('table', {class: 'ftab'}, h('thead', null, h('tr', null, ['Ad', 'Başlangıç', 'Tür', 'Sıra', 'Bit', 'İfade', 'Birim', ''].map(x => h('th', null, x)))), tb)),
+      h('div', {class: 'btns'}, btn('+ Alan ekle', () => { const f = {name: 'ALAN_' + (d.fields.length + 1), src: lay.keys.find(k => k) || '', type: 'u8', endian: 'BE', bit: '', expr: '', unit: ''}; d.fields.push(f); tb.append(mk(f)); })),
+      fr('Ham bayt kanalları', h('input', {type: 'checkbox', id: 'bnRaw', checked: BS.raw !== false, onchange: e => BS.raw = e.target.checked}))));
+  }
+  body.append(card('1. Çerçeve tanımı (Excel)', defBox), card('2. Binary dosya', binBox), dyn, xin, bin); paint();
+  modal('Binary dosya çözümle', body, [{t: 'Çöz ve aç', primary: true, fn: () => {
+    let d; try { d = readDef(); if (!BS.bin) throw new Error('Binary dosya seçin'); } catch (e) { toast(e.message, 5000); return false; }
+    const raw = $('#bnRaw') ? $('#bnRaw').checked : true; binOpen(BS.bin, d, raw);
+  }}, {t: 'Kapat'}]);
+}
+
+async function binOpen(file, d, withRaw) {
+  await busy('Binary çözümleniyor: ' + file.name, async prog => {
+    if (file.size > 2147000000) throw new Error('Dosya 2 GB sınırını aşıyor');
+    const u8 = new Uint8Array(await file.arrayBuffer()), lay = BIN.layout(d.grid, d.order), sync = BIN.parseSync(d.sync);
+    if (!lay.L) throw new Error('Çerçeve matrisi boş');
+    const sc = BIN.scan(u8, lay.L, sync, d.skip); if (!sc.frames) throw new Error('Hiç çerçeve bulunamadı (senkron kelimesi/çerçeve boyutu uyuşmuyor)');
+    if (d.counter) {
+      const fd = d.fields.find(x => BIN.clean(x.name) === BIN.clean(d.counter)); if (!fd) throw new Error('Sayaç alanı "' + d.counter + '" Alanlar tablosunda yok');
+      const sp = BIN.spec(lay, Object.assign({}, fd, {bit: ''})), cg = BIN.counterG(BIN.extract(u8, sc.pos, sp), sp.size);
+      if (cg.lost) { sc.g = cg.g; sc.lost += cg.lost; }
+    }
+    const Tp = 1 / d.fps, f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: Tp, baseFs: d.fps, cnts: {}, gcache: {}, baseN: sc.frames, binary: true, bin: {lay, sc, def: JSON.parse(JSON.stringify(d)), u8}};
+    const byName = new Map(), active = new Set();
+    const mk = (name, dev, kind, sp, expr, unit) => {
+      const c = new Channel({name, rest: name, base: name, comp: '', dev, kind, n: sc.frames, file: f, label: name, varIdx: -1, bin: true, unit: unit || ''});
+      if (sc.g) { c.g = sc.g; c.spp = 1; c.Tpkt = Tp; c.dtS = Tp; } else { c.g = null; c.spp = 1; c.Tpkt = Tp; c.dtS = Tp; }
+      c.binLoad = async () => {
+        let rawv = BIN.extract(u8, sc.pos, sp); if (!expr) return rawv;
+        if (active.has(c)) throw new Error('Döngüsel formül: ' + name); active.add(c);
+        try {
+          for (const id of new Set(EXPR.identifiers(expr))) { const o = byName.get(id); if (o && o !== c) await ensureLoaded(o); else if (o === c) throw new Error(name + ': formül kendine başvuruyor'); }
+          const r = EXPR.run(expr, {DSP, resolve: n => { if (n === 'x' || n === 'X') return {v: rawv, fs: c.fs, ch: c}; const o = byName.get(n); if (!o) throw new Error(name + ': bilinmeyen ad "' + n + '"'); return {v: o.data, fs: c.fs, ch: o}; }});
+          return typeof r === 'number' ? new Float64Array(sc.frames).fill(r) : r.v;
+        } catch (e) { throw new Error(name + ': ' + (e.message || e)); } finally { active.delete(c); }
+      };
+      f.channels.push(c); byName.set(name, c); return c;
+    };
+    const errs = [];
+    if (withRaw) {
+      const sp0 = {size: 1, getter: 'getUint8', le: false, bits: null};
+      for (let i = 0; i < lay.L; i++) if (lay.keys[i]) mk(lay.keys[i], lay.raw[i], 'other', Object.assign({off: i}, sp0), null, '');
+    }
+    for (const fd of d.fields) {
+      try {
+        const nm = BIN.clean(fd.name || ''); if (!nm) continue; if (byName.has(nm)) throw new Error('"' + nm + '" adı zaten var');
+        const sp = BIN.spec(lay, fd); mk(nm, 'Alanlar', sp.bits ? 'state' : 'other', sp, (fd.expr || '').trim(), fd.unit);
+      } catch (e) { errs.push(e.message || String(e)); }
+    }
+    prog(1); f.sc = sc; S.files.push(f); BS.lastFile = f; S.open.add(f.id + '/Alanlar');
+    renderChips(); renderTree();
+    toast(`${file.name}: ${fmtCnt(sc.frames)} kare, ${fmtCnt(f.channels.length)} kanal` + (sc.lost ? ` · kayıp kare: ${sc.lost}` : '') + (sc.junk ? ` · atlanan bayt: ${fmtCnt(sc.junk)}` : '') + (errs.length ? ' · UYARI: ' + errs.join('; ') : ''), errs.length || sc.lost ? 9000 : 4000);
+  });
+}
+
+/* ---- çözülmüş veriyi .mat olarak dışa aktar ---- */
+function binExportDialog(f) {
+  const fields = f.channels.filter(c => c.dev === 'Alanlar'), subs = f.bin.lay.subs;
+  const body = h('div', null, card('Dışa aktarılacaklar',
+    fr('Alan kanalları (' + fields.length + ')', h('input', {type: 'checkbox', id: 'beF', checked: true})),
+    fr('Ham bayt matrisleri (alt sistem başına kare × bayt, ' + subs.length + ' değişken)', h('input', {type: 'checkbox', id: 'beR'})),
+    fr('Silinen noktalar', selIn('beD', [['nan', 'NaN olarak yaz'], ['keep', 'Olduğu gibi yaz']], 'nan')),
+    h('div', {class: 'note'}, 'Zaman vektörü (zaman_s) ve kare numarası (kare_no) her zaman eklenir. Ham bayt matrisleri büyük olabilir (kare sayısı × 12500 × 8 bayt).')));
+  modal('Çözülmüş veriyi .mat olarak kaydet', body, [{t: 'Kaydet', primary: true, fn: () => { binExport(f, ck('beF'), ck('beR'), sv('beD') === 'nan'); }}, {t: 'Vazgeç'}]);
+}
+async function binExport(f, wf, wr, nan) {
+  await busy('Dışa aktarılıyor…', async prog => {
+    const vars = [], sc = f.bin.sc, lay = f.bin.lay, n = sc.frames, used = new Set();
+    const uniq = nm => { let s = sanitizeName(nm).slice(0, 63), k = 2; while (used.has(s)) s = sanitizeName(nm).slice(0, 58) + '_' + k++; used.add(s); return s; };
+    const ref = f.channels[0]; const t = new Float64Array(n), kn = new Float64Array(n); for (let i = 0; i < n; i++) { t[i] = ref.t(i); kn[i] = sc.g ? sc.g[i] : i; }
+    vars.push({name: uniq('zaman_s'), data: t}, {name: uniq('kare_no'), data: kn});
+    if (wf) { const fl = f.channels.filter(c => c.dev === 'Alanlar'); let k = 0; for (const c of fl) { await ensureLoaded(c); let d = c.data; if (nan && c.del) { d = Float64Array.from(d); for (let i = 0; i < d.length; i++) if (c.del[i]) d[i] = NaN; } vars.push({name: uniq(c.name), data: d}); prog(++k / (fl.length + 1)); } }
+    if (wr) for (const s of lay.subs) {
+      const idx = []; for (let i = 0; i < lay.L; i++) if (lay.raw[i] === s.name) idx.push(i);
+      const m = new Float64Array(n * idx.length); idx.forEach((off, j) => m.set(BIN.extract(f.bin.u8, sc.pos, {off, size: 1, getter: 'getUint8', le: false, bits: null}), j * n));
+      vars.push({name: uniq(s.name), data: m, rows: n, cols: idx.length});
+    }
+    await saveBlob(matWrite(vars), f.name.replace(/\.[^.]*$/, '') + '_cozulmus.mat');
+  });
+}
 
 </script>
 </body>

@@ -39,6 +39,7 @@ async function ensureLoaded(ch) {
   if (ch.data) return;
   if (ch.loading) return ch.loading;
   ch.loading = (async () => {
+    if (ch.binLoad) { ch.data = await ch.binLoad(); ch.n = ch.data.length; return; }
     const f = ch.file, v = f.vars[ch.varIdx];
     if (ch.row != null) {
       let m = f.mcache.get(ch.varIdx); if (!m) { m = await MAT.load(f.mat, v); f.mcache.set(ch.varIdx, m); }
@@ -65,6 +66,7 @@ function renderTree() {
   for (const f of allFiles()) {
     const chs = f.channels.filter(chMatches);
     box.append(h('div', {class: 'tfile'}, h('span', {class: 'nm', title: f.name}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
+      f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => binExportDialog(f)}, '.mat') : null,
       f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
     const devs = new Map();
     for (const c of chs) { if (!devs.has(c.dev)) devs.set(c.dev, new Map()); const bm = devs.get(c.dev); if (!bm.has(c.base)) bm.set(c.base, []); bm.get(c.base).push(c); }
@@ -80,7 +82,7 @@ function renderTree() {
             h('span', {class: 'twisty'}, bo ? '▼' : '▶'), h('i', {class: 'dot', style: 'background:' + KIND[list[0].kind].color}), h('span', {class: 'nm'}, base), h('span', {class: 'meta'}, list.length + ' kanal'),
             h('button', {class: 'add', title: 'Hepsini aynı grafiğe ekle', onclick: () => addGroup(list)}, '+')));
           if (bo) for (const c of list) box.append(chRow(c, c.comp || c.rest, true));
-        } else for (const c of list) box.append(chRow(c, c.rest, false));
+        } else { if (f.binary && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) box.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) box.append(chRow(c, c.rest, false)); }
       }
     }
   }
@@ -101,7 +103,8 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 
 /* ---------- dosya işlemleri ---------- */
 async function openFiles(files) {
-  files = [...files].filter(f => /\.mat$/i.test(f.name) || true);
+  files = [...files]; const other = files.filter(f => !/\.mat$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  if (other.length) await binFilesIn(other);
   for (const file of files) {
     await busy('Dosya taranıyor: ' + file.name, async () => {
       const f = await importFile(file);
@@ -125,7 +128,7 @@ function freeMemory() {
 /* ---------- grafik yönetimi ---------- */
 function nextColor() { return PAL[S.colorIdx++ % PAL.length]; }
 function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), width: 1, visible: true}; }
-function axisLabelFor(ax) { const ks = new Set(ax.traces.map(t => t.ch.kind)); ax.ylabel = ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; }
+function axisLabelFor(ax) { const ks = new Set(ax.traces.map(t => t.ch.kind)), us = new Set(ax.traces.map(t => t.ch.unit || '')); ax.ylabel = us.size === 1 && [...us][0] ? [...us][0] : ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; }
 async function addToNewAxes(chs, one) {
   const first = !S.plot.axes.length;
   if (one) { const ax = S.plot.addAxes(); for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }

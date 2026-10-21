@@ -140,7 +140,7 @@ function devKeyOf(full) { const m = DEV_RE.exec(full); return m ? m[1] + '|' + m
 
 function applyTiming(f) {
   for (const ch of f.channels) {
-    if (ch.derived) continue;
+    if (ch.derived || ch.bin) continue;
     const gc = ch.devKey && f.gcache ? f.gcache[ch.devKey] : null;
     if (gc) { ch.g = gc.g; ch.spp = ch.n / gc.np; ch.Tpkt = f.Tpkt; ch.dtS = ch.Tpkt / ch.spp; }
     else { ch.g = null; ch.dtS = 1 / (f.baseFs * ch.n / (f.baseN || ch.n)); ch.spp = 1; ch.Tpkt = ch.dtS; }
