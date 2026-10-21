@@ -25,3 +25,6 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 
 ## Yapı
 `src/mat.js` (v5 okuyucu), `src/h5.js` (HDF5), `src/dsp.js`, `src/expr.js`, `src/plot.js` (grafik motoru), `src/store.js` (veri modeli), `src/app1.js`/`app2.js` (arayüz), `launcher/main.go` (yerel sunucu + tarayıcı başlatıcı).
+
+## Testler hakkında
+`test/` altındaki betikler gerçek ölçüm dosyalarına ihtiyaç duyar; bu dosyalar depoda yoktur. Dosyaları (`veri_A.mat`, `veri_B.mat`, `veri_C.mat`) bir klasöre koyup `MATVIEW_TEST_DATA` ortam değişkeniyle klasörü gösterin. Kanal adları kendi verinize göre uyarlanmalıdır.

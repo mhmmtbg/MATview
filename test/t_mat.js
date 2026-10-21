@@ -1,5 +1,5 @@
 const MAT=require('../src/mat.js'); const fs=require('fs');
-const dir='/root/.claude/uploads/f9bb0b88-21cf-5346-b390-379830d8a473/';
+const dir=os.environ.get('MATVIEW_TEST_DATA','./testdata/');
 (async()=>{
  for (const f of fs.readdirSync(dir)){
   const b=fs.readFileSync(dir+f); const file={arrayBuffer:async()=>b.buffer.slice(b.byteOffset,b.byteOffset+b.length)};

@@ -1,14 +1,15 @@
+import os
 import asyncio, io, base64
 import scipy.io as sio
 from playwright.async_api import async_playwright
-UP='/root/.claude/uploads/f9bb0b88-21cf-5346-b390-379830d8a473/'
+UP=os.environ.get('MATVIEW_TEST_DATA','./testdata/')
 async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(args=['--no-sandbox'])
         pg=await b.new_page(viewport={'width':1500,'height':900})
         errs=[]; pg.on('pageerror',lambda e: errs.append('PAGEERR '+str(e))); pg.on('console',lambda m: errs.append(m.text) if m.type=='error' and 'api/args' not in m.text else None)
         await pg.goto('file:///home/claude/matview/dist/matview.html')
-        await pg.set_input_files('#fileIn',['/tmp/h5t/v73.mat',UP+'63b16602-TENK_ANAK_data.mat'])
+        await pg.set_input_files('#fileIn',['/tmp/h5t/v73.mat',UP+'veri_A.mat'])
         await pg.wait_for_function("S.files.length===2",timeout=90000)
         print('dosyalar:',await pg.evaluate("S.files.map(f=>f.name+' → '+f.channels.length+' kanal')"))
         await pg.evaluate("""async()=>{const c=S.files[0].channels.find(c=>c.name==='sig1'); await addToNewAxes([c]);}""")

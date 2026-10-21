@@ -234,7 +234,7 @@ function buildExpr() {
     h('div', {class: 'btns'}, btn('Hesapla ve grafiğe ekle', runExpr, 'primary'), btn('Seçili kanal adlarını ekle', () => { const t = $('#exprIn'); t.value += chsFromSel().map(c => c.name).join(' + '); })),
     h('div', {id: 'exprMsg', class: 'note'})));
   r.append(card('Söz dizimi',
-    h('div', {class: 'note', style: 'white-space:pre-line'}, 'Kanallar: tam ad (TENK_anak100_1_ts41_X) veya benzersiz son ek (ts41_X).\nİşleçler: + − * / ^ ve parantez.\nSkaler: abs sqrt sin cos exp log log10 db sign …\nKanal: diff gradient integrate cumsum detrend demean movmean(x,w) movmedian(x,w) env(x)\nSüzgeç: lp(x,fc) hp(x,fc) bp(x,f1,f2) notch(x,f0,Q)\nİstatistik: mean std rms max min median p2p (skaler döner)\nFarklı uzunluktaki kanallar ilk operanda göre yeniden örneklenir.')));
+    h('div', {class: 'note', style: 'white-space:pre-line'}, 'Kanallar: tam kanal adı veya benzersiz son ek (ör. ts41_X).\nİşleçler: + − * / ^ ve parantez.\nSkaler: abs sqrt sin cos exp log log10 db sign …\nKanal: diff gradient integrate cumsum detrend demean movmean(x,w) movmedian(x,w) env(x)\nSüzgeç: lp(x,fc) hp(x,fc) bp(x,f1,f2) notch(x,f0,Q)\nİstatistik: mean std rms max min median p2p (skaler döner)\nFarklı uzunluktaki kanallar ilk operanda göre yeniden örneklenir.')));
   return r;
 }
 function refreshExprPick() { const s = $('#exprPick'); if (!s) return; const keep = s.value; s.replaceChildren(h('option', {value: ''}, '— seç —')); const seen = new Set(); for (const ax of S.plot.axes) for (const t of ax.traces) if (!seen.has(t.ch.uid)) { seen.add(t.ch.uid); s.append(h('option', {value: t.ch.name}, t.ch.name)); } s.value = keep; }

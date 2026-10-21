@@ -11,7 +11,7 @@ async def main():
         print('otomatik açılan:',await pg.evaluate("S.files.map(f=>f.name+' '+f.channels.length)"), 'server:',await pg.evaluate("S.server"))
         # koyu tema + lasso testi
         await pg.evaluate("applyTheme('dark')")
-        await pg.evaluate("""async()=>{const f=S.files[0]; const c=f.channels.find(c=>c.name==='GVDB4_EncPosition_deg_YGYSK1'); await addToNewAxes([c]);}""")
+        await pg.evaluate("""async()=>{const f=S.files[0]; const c=f.channels.find(c=>c.name==='GRUP_EncPosition_deg_YGYSK1'); await addToNewAxes([c]);}""")
         await pg.wait_for_function("S.plot.axes.length===1 && S.plot.axes[0].traces[0].ch.data",timeout=30000)
         await pg.keyboard.press('l'); box=await pg.locator('#cv-time').bounding_box()
         r=await pg.evaluate("S.plot.axes[0].rect")
