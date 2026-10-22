@@ -57,13 +57,13 @@ function binDialog() {
     const tb = h('tbody'), mk = f => {
       const tr = h('tr'), inp = (k, w, v) => h('input', {type: 'text', value: v ?? f[k], style: 'width:' + w + 'px', oninput: e => f[k] = e.target.value});
       const sel = (k, opts) => h('select', {onchange: e => f[k] = e.target.value}, opts.map(o => h('option', {value: o, selected: f[k] === o}, o)));
-      tr.append(h('td', null, inp('name', 110)), h('td', null, inp('src', 90)), h('td', null, sel('type', Object.keys(BIN.TYPES))), h('td', null, sel('endian', ['BE', 'LE'])), h('td', null, inp('bit', 44)), h('td', null, inp('expr', 150)), h('td', null, inp('unit', 44)),
+      tr.append(h('td', null, inp('name', 110)), h('td', null, inp('src', 90)), h('td', null, sel('type', Object.keys(BIN.TYPES))), h('td', null, sel('endian', ['BE', 'LE'])), h('td', null, inp('bit', 44)), h('td', null, inp('expr', 150)), h('td', null, inp('unit', 44)), h('td', null, inp('period', 36)), h('td', null, inp('phase', 30)),
         h('td', null, h('button', {onclick: () => { d.fields.splice(d.fields.indexOf(f), 1); tr.remove(); }}, '×'))); return tr;
     };
     for (const f of d.fields) tb.append(mk(f));
-    dyn.append(card('Alanlar (birleşik değer, tür, bit, formül)', h('div', {class: 'note'}, 'Başlangıç: hücre adı (ör. GUC_1) · Bit: "3" veya "4-7" · İfade: ham değer x ile (ör. x*0.01-40); başka alanların adlarını da kullanabilirsiniz.'),
-      h('div', {style: 'overflow:auto;max-height:230px'}, h('table', {class: 'ftab'}, h('thead', null, h('tr', null, ['Ad', 'Başlangıç', 'Tür', 'Sıra', 'Bit', 'İfade', 'Birim', ''].map(x => h('th', null, x)))), tb)),
-      h('div', {class: 'btns'}, btn('+ Alan ekle', () => { const f = {name: 'ALAN_' + (d.fields.length + 1), src: lay.keys.find(k => k) || '', type: 'u8', endian: 'BE', bit: '', expr: '', unit: ''}; d.fields.push(f); tb.append(mk(f)); })),
+    dyn.append(card('Alanlar (birleşik değer, tür, bit, formül)', h('div', {class: 'note'}, 'Başlangıç: hücre adı (ör. GUC_1) · Bit: "3" veya "4-7" · İfade: ham değer x ile (ör. x*0.01-40); başka alanların adlarını da kullanabilirsiniz · Periyot: alan her kaçıncı karede güncelleniyorsa (5 ms çerçevede 10 ms’lik alan → 2), Faz: hangi karede (0 veya 1…).'),
+      h('div', {style: 'overflow:auto;max-height:230px'}, h('table', {class: 'ftab'}, h('thead', null, h('tr', null, ['Ad', 'Başlangıç', 'Tür', 'Sıra', 'Bit', 'İfade', 'Birim', 'Periyot', 'Faz', ''].map(x => h('th', null, x)))), tb)),
+      h('div', {class: 'btns'}, btn('+ Alan ekle', () => { const f = {name: 'ALAN_' + (d.fields.length + 1), src: lay.keys.find(k => k) || '', type: 'u8', endian: 'BE', bit: '', expr: '', unit: '', period: 1, phase: 0}; d.fields.push(f); tb.append(mk(f)); })),
       fr('Ham bayt kanalları', h('input', {type: 'checkbox', id: 'bnRaw', checked: BS.raw !== false, onchange: e => BS.raw = e.target.checked}))));
   }
   body.append(card('1. Çerçeve tanımı (Excel)', defBox), card('2. Binary dosya', binBox), dyn, xin, bin); paint();
@@ -86,16 +86,17 @@ async function binOpen(file, d, withRaw) {
     }
     const Tp = 1 / d.fps, f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: Tp, baseFs: d.fps, cnts: {}, gcache: {}, baseN: sc.frames, binary: true, bin: {lay, sc, def: JSON.parse(JSON.stringify(d)), u8}};
     const byName = new Map(), active = new Set();
-    const mk = (name, dev, kind, sp, expr, unit) => {
-      const c = new Channel({name, rest: name, base: name, comp: '', dev, kind, n: sc.frames, file: f, label: name, varIdx: -1, bin: true, unit: unit || ''});
-      if (sc.g) { c.g = sc.g; c.spp = 1; c.Tpkt = Tp; c.dtS = Tp; } else { c.g = null; c.spp = 1; c.Tpkt = Tp; c.dtS = Tp; }
+    const mk = (name, dev, kind, sp, expr, unit, per, ph) => {
+      per = Math.max(1, per | 0 || 1); const idx = per > 1 ? BIN.subIdx(sc.frames, sc.g, per, ph | 0) : null, pos = idx ? Float64Array.from(idx, i => sc.pos[i]) : sc.pos, gg = sc.g ? (idx ? Float64Array.from(idx, i => sc.g[i] / per) : sc.g) : null, nn = idx ? idx.length : sc.frames;
+      const c = new Channel({name, rest: name, base: name, comp: '', dev, kind, n: nn, file: f, label: name, varIdx: -1, bin: true, unit: unit || ''});
+      c.g = gg; c.spp = 1; c.Tpkt = Tp * per; c.dtS = Tp * per;
       c.binLoad = async () => {
-        let rawv = BIN.extract(u8, sc.pos, sp); if (!expr) return rawv;
+        let rawv = BIN.extract(u8, pos, sp); if (!expr) return rawv;
         if (active.has(c)) throw new Error('Döngüsel formül: ' + name); active.add(c);
         try {
-          for (const id of new Set(EXPR.identifiers(expr))) { const o = byName.get(id); if (o && o !== c) await ensureLoaded(o); else if (o === c) throw new Error(name + ': formül kendine başvuruyor'); }
+          for (const id of new Set(EXPR.identifiers(expr))) { const o = byName.get(id); if (o && o !== c) { await ensureLoaded(o); if (o.data.length !== rawv.length) throw new Error('"' + id + '" farklı periyotta (kare sayıları uyuşmuyor)'); } else if (o === c) throw new Error(name + ': formül kendine başvuruyor'); }
           const r = EXPR.run(expr, {DSP, resolve: n => { if (n === 'x' || n === 'X') return {v: rawv, fs: c.fs, ch: c}; const o = byName.get(n); if (!o) throw new Error(name + ': bilinmeyen ad "' + n + '"'); return {v: o.data, fs: c.fs, ch: o}; }});
-          return typeof r === 'number' ? new Float64Array(sc.frames).fill(r) : r.v;
+          return typeof r === 'number' ? new Float64Array(nn).fill(r) : r.v;
         } catch (e) { throw new Error(name + ': ' + (e.message || e)); } finally { active.delete(c); }
       };
       f.channels.push(c); byName.set(name, c); return c;
@@ -108,7 +109,7 @@ async function binOpen(file, d, withRaw) {
     for (const fd of d.fields) {
       try {
         const nm = BIN.clean(fd.name || ''); if (!nm) continue; if (byName.has(nm)) throw new Error('"' + nm + '" adı zaten var');
-        const sp = BIN.spec(lay, fd); mk(nm, 'Alanlar', sp.bits ? 'state' : 'other', sp, (fd.expr || '').trim(), fd.unit);
+        const sp = BIN.spec(lay, fd); mk(nm, 'Alanlar', sp.bits ? 'state' : 'other', sp, (fd.expr || '').trim(), fd.unit, fd.period, fd.phase);
       } catch (e) { errs.push(e.message || String(e)); }
     }
     prog(1); f.sc = sc; S.files.push(f); BS.lastFile = f; S.open.add(f.id + '/Alanlar');
@@ -124,16 +125,16 @@ function binExportDialog(f) {
     fr('Alan kanalları (' + fields.length + ')', h('input', {type: 'checkbox', id: 'beF', checked: true})),
     fr('Ham bayt matrisleri (alt sistem başına kare × bayt, ' + subs.length + ' değişken)', h('input', {type: 'checkbox', id: 'beR'})),
     fr('Silinen noktalar', selIn('beD', [['nan', 'NaN olarak yaz'], ['keep', 'Olduğu gibi yaz']], 'nan')),
-    h('div', {class: 'note'}, 'Zaman vektörü (zaman_s) ve kare numarası (kare_no) her zaman eklenir. Ham bayt matrisleri büyük olabilir (kare sayısı × 12500 × 8 bayt).')));
+    h('div', {class: 'note'}, 'Zaman vektörü (zaman_s) ve kare numarası (kare_no) her zaman eklenir; farklı periyotlu alanlar için ayrıca <ad>_zaman_s yazılır. Ham bayt matrisleri büyük olabilir (kare sayısı × 12500 × 8 bayt).')));
   modal('Çözülmüş veriyi .mat olarak kaydet', body, [{t: 'Kaydet', primary: true, fn: () => { binExport(f, ck('beF'), ck('beR'), sv('beD') === 'nan'); }}, {t: 'Vazgeç'}]);
 }
 async function binExport(f, wf, wr, nan) {
   await busy('Dışa aktarılıyor…', async prog => {
     const vars = [], sc = f.bin.sc, lay = f.bin.lay, n = sc.frames, used = new Set();
     const uniq = nm => { let s = sanitizeName(nm).slice(0, 63), k = 2; while (used.has(s)) s = sanitizeName(nm).slice(0, 58) + '_' + k++; used.add(s); return s; };
-    const ref = f.channels[0]; const t = new Float64Array(n), kn = new Float64Array(n); for (let i = 0; i < n; i++) { t[i] = ref.t(i); kn[i] = sc.g ? sc.g[i] : i; }
+    const t = new Float64Array(n), kn = new Float64Array(n); for (let i = 0; i < n; i++) { kn[i] = sc.g ? sc.g[i] : i; t[i] = kn[i] * f.Tpkt; }
     vars.push({name: uniq('zaman_s'), data: t}, {name: uniq('kare_no'), data: kn});
-    if (wf) { const fl = f.channels.filter(c => c.dev === 'Alanlar'); let k = 0; for (const c of fl) { await ensureLoaded(c); let d = c.data; if (nan && c.del) { d = Float64Array.from(d); for (let i = 0; i < d.length; i++) if (c.del[i]) d[i] = NaN; } vars.push({name: uniq(c.name), data: d}); prog(++k / (fl.length + 1)); } }
+    if (wf) { const fl = f.channels.filter(c => c.dev === 'Alanlar'); let k = 0; for (const c of fl) { await ensureLoaded(c); let d = c.data; if (nan && c.del) { d = Float64Array.from(d); for (let i = 0; i < d.length; i++) if (c.del[i]) d[i] = NaN; } vars.push({name: uniq(c.name), data: d}); if (d.length !== n) { const tt = new Float64Array(d.length); for (let i = 0; i < tt.length; i++) tt[i] = c.t(i); vars.push({name: uniq(c.name + '_zaman_s'), data: tt}); } prog(++k / (fl.length + 1)); } }
     if (wr) for (const s of lay.subs) {
       const idx = []; for (let i = 0; i < lay.L; i++) if (lay.raw[i] === s.name) idx.push(i);
       const m = new Float64Array(n * idx.length); idx.forEach((off, j) => m.set(BIN.extract(f.bin.u8, sc.pos, {off, size: 1, getter: 'getUint8', le: false, bits: null}), j * n));

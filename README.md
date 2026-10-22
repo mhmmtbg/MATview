@@ -69,3 +69,5 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 ## Binary çerçeve şablonu
 `sablon/MATView_Cerceve_Sablonu.xlsx` (üreten: `test/make_template.py`): Nasıl Kullanılır / Çerçeve (125×100 = 12.500 bayt) / Senaryo / Alanlar / Türler sayfaları. `sablon/sablon_deneme.bin` şablonla uyumlu sentetik deneme verisidir (gerçek veri değildir). Test: `test/pw_sablon.py`.
 Ölçüm (sentetik, 12.500 bayt/kare, 700 sn): 10 Hz = 87,5 MB → çözme 0,2 sn; 50 Hz = 437,5 MB → 0,6 sn; çözülmüş alanların .mat çıktısı birkaç MB.
+
+Şablon sütun akışlıdır (100 satır × 125 sütun; 1. sütun = bayt 1-100). Alanlardaki `Periyot (kare)` / `Faz` sütunları karışık hızlı (5 ms / 10 ms) akışı destekler: çerçeve en hızlı alt sisteme göre tanımlanır, yavaş alanlar kendi zaman eksenleriyle okunur. 200 Hz × 700 sn = 1,75 GB dosya da çözüldü (≈2 sn, ≈1,8 GB bellek); 2 GB üstü dosyalar henüz desteklenmez.

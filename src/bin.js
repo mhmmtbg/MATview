@@ -33,6 +33,8 @@ const BIN = (() => {
     }
     return {pos: Float64Array.from(pos), g: lost ? Float64Array.from(gl) : null, lost, junk, frames: pos.length};
   }
+  // Çok hızlı çerçevede yavaş alan: her p. karede (faz ph) güncellenen alanın kare indisleri
+  function subIdx(n, g, p, ph) { const o = []; for (let k = 0; k < n; k++) { const f = g ? Math.round(g[k]) : k; if ((f + ph) % p === 0) o.push(k); } return Int32Array.from(o); }
   function parseBits(s) {
     s = String(s ?? '').trim(); if (!s) return null; const m = /^(\d+)\s*(?:[-:]\s*(\d+))?$/.exec(s); if (!m) throw new Error('Bit biçimi hatalı: ' + s);
     const lo = +m[1], hi = m[2] != null ? +m[2] : lo; if (hi < lo || hi > 31) throw new Error('Bit aralığı hatalı: ' + s); return [lo, hi];
@@ -56,9 +58,9 @@ const BIN = (() => {
     for (let k = 1; k < n; k++) { let d = ((raw[k] - raw[k - 1]) % W + W) % W; if (d === 0 || d > 5000) d = 1; acc += d; lost += d - 1; g[k] = acc; }
     return {g, lost};
   }
-  const FIELD_HDR = ['Ad', 'Başlangıç', 'Tür', 'Bayt sırası', 'Bit', 'İfade', 'Birim'];
+  const FIELD_HDR = ['Ad', 'Başlangıç', 'Tür', 'Bayt sırası', 'Bit', 'İfade', 'Birim', 'Periyot (kare)', 'Faz'];
   function fieldsFromRows(rows) {
-    const out = []; for (let r = 1; r < rows.length; r++) { const x = rows[r] || []; if (!x[0] && !x[1]) continue; out.push({name: x[0] || '', src: x[1] || '', type: (x[2] || 'u8').toLowerCase(), endian: /^(le|k)/i.test(x[3] || '') ? 'LE' : 'BE', bit: x[4] || '', expr: x[5] || '', unit: x[6] || ''}); }
+    const out = []; for (let r = 1; r < rows.length; r++) { const x = rows[r] || []; if (!x[0] && !x[1]) continue; out.push({name: x[0] || '', src: x[1] || '', type: (x[2] || 'u8').toLowerCase(), endian: /^(le|k)/i.test(x[3] || '') ? 'LE' : 'BE', bit: x[4] || '', expr: x[5] || '', unit: x[6] || '', period: Math.max(1, parseInt(x[7]) || 1), phase: Math.max(0, parseInt(x[8]) || 0)}); }
     return out;
   }
   function scenarioFromRows(rows) {
@@ -77,8 +79,8 @@ const BIN = (() => {
     const C = Math.max(0, ...d.grid.map(r => r.length));
     return [{name: 'Çerçeve', rows: d.grid.map(r => Array.from({length: C}, (_, i) => r[i] ?? ''))},
       {name: 'Senaryo', rows: [['Anahtar', 'Değer'], ['Okuma sırası', d.order === 'col' ? 'sütun' : 'satır'], ['Senkron (hex)', d.sync || ''], ['Kare hızı (Hz)', d.fps], ['Atlanacak bayt', d.skip | 0], ['Sayaç alanı', d.counter || '']]},
-      {name: 'Alanlar', rows: [FIELD_HDR, ...d.fields.map(f => [f.name, f.src, f.type, f.endian, f.bit, f.expr, f.unit])]}];
+      {name: 'Alanlar', rows: [FIELD_HDR, ...d.fields.map(f => [f.name, f.src, f.type, f.endian, f.bit, f.expr, f.unit, f.period || 1, f.phase || 0])]}];
   }
-  return {counterG, TYPES, clean, parseSync, layout, scan, spec, extract, defFromSheets, defToSheets, FIELD_HDR, parseBits};
+  return {counterG, TYPES, clean, parseSync, layout, scan, spec, extract, subIdx, defFromSheets, defToSheets, FIELD_HDR, parseBits};
 })();
 if (typeof module !== 'undefined') module.exports = BIN;
