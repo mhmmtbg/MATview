@@ -71,3 +71,7 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 Ölçüm (sentetik, 12.500 bayt/kare, 700 sn): 10 Hz = 87,5 MB → çözme 0,2 sn; 50 Hz = 437,5 MB → 0,6 sn; çözülmüş alanların .mat çıktısı birkaç MB.
 
 Şablon sütun akışlıdır (100 satır × 125 sütun; 1. sütun = bayt 1-100). Alanlardaki `Periyot (kare)` / `Faz` sütunları karışık hızlı (5 ms / 10 ms) akışı destekler: çerçeve en hızlı alt sisteme göre tanımlanır, yavaş alanlar kendi zaman eksenleriyle okunur. 200 Hz × 700 sn = 1,75 GB dosya da çözüldü (≈2 sn, ≈1,8 GB bellek); 2 GB üstü dosyalar henüz desteklenmez.
+
+## Büyük binary dosyalar ve ek analizler
+- 200 MB üstü binary dosyalar blok blok (File.slice) okunur; yalnız Alanlar sayfasında tanımlı alanlar çıkarılır (ham bayt kanalları yok). 2,65 GB dosya ≈3 sn, ≈70 MB bellek. Test: `test/pw_stream.py` (parçalı ve bütün okuma aynı sonucu verir).
+- Analiz sekmesi: oktav/1/3 oktav bant seviyeleri (Z/A/C ağırlık, genel seviye), SRS (Smallwood, mutlak ivme, Q ve nokta/oktav ayarlı), iki kanallı FRF (H1/H2, faz, koherans). Çekirdek: `src/dsp.js`, arayüz: `src/app8.js`, testler: `test/t_an.js` (analitik doğrulamalar), `test/pw_an.py`.

@@ -75,23 +75,37 @@ function binDialog() {
 
 async function binOpen(file, d, withRaw) {
   await busy('Binary çözümleniyor: ' + file.name, async prog => {
-    if (file.size > 2147000000) throw new Error('Dosya 2 GB sınırını aşıyor');
-    const u8 = new Uint8Array(await file.arrayBuffer()), lay = BIN.layout(d.grid, d.order), sync = BIN.parseSync(d.sync);
-    if (!lay.L) throw new Error('Çerçeve matrisi boş');
-    const sc = BIN.scan(u8, lay.L, sync, d.skip); if (!sc.frames) throw new Error('Hiç çerçeve bulunamadı (senkron kelimesi/çerçeve boyutu uyuşmuyor)');
-    if (d.counter) {
-      const fd = d.fields.find(x => BIN.clean(x.name) === BIN.clean(d.counter)); if (!fd) throw new Error('Sayaç alanı "' + d.counter + '" Alanlar tablosunda yok');
-      const sp = BIN.spec(lay, Object.assign({}, fd, {bit: ''})), cg = BIN.counterG(BIN.extract(u8, sc.pos, sp), sp.size);
-      if (cg.lost) { sc.g = cg.g; sc.lost += cg.lost; }
+    const lay = BIN.layout(d.grid, d.order), sync = BIN.parseSync(d.sync); if (!lay.L) throw new Error('Çerçeve matrisi boş');
+    const stream = file.size > (BS.streamMin ?? 200 * 1048576); let u8 = null, sc, pre = new Map();
+    if (stream) {   // büyük dosya: tek geçişte blok blok oku; yalnız tanımlı alanları çıkar (ham bayt kanalları yok)
+      withRaw = false; const specs = [];
+      for (const fd of d.fields) { const nm = BIN.clean(fd.name || ''); if (!nm) continue; try { specs.push({nm, sp: BIN.spec(lay, fd), parts: []}); } catch (e) { /* hata sonra bildirilir */ } }
+      const cf = d.counter && d.fields.find(x => BIN.clean(x.name) === BIN.clean(d.counter)); let cs = null;
+      if (d.counter) { if (!cf) throw new Error('Sayaç alanı "' + d.counter + '" Alanlar tablosunda yok'); cs = {sp: BIN.spec(lay, Object.assign({}, cf, {bit: ''})), parts: []}; }
+      sc = await BIN.scanStream(file.size, async (a, b) => new Uint8Array(await file.slice(a, b).arrayBuffer()), lay.L, sync, d.skip, async (b8, loc) => {
+        for (const e of specs) e.parts.push(BIN.extract(b8, loc, e.sp)); if (cs) cs.parts.push(BIN.extract(b8, loc, cs.sp));
+      }, prog, BS.streamBlock);
+      if (!sc.frames) throw new Error('Hiç çerçeve bulunamadı (senkron kelimesi/çerçeve boyutu uyuşmuyor)');
+      const cat = parts => { const o = new Float64Array(sc.frames); let k = 0; for (const x of parts) { o.set(x, k); k += x.length; } return o; };
+      for (const e of specs) pre.set(e.nm, cat(e.parts));
+      if (cs) { const cg = BIN.counterG(cat(cs.parts), cs.sp.size); if (cg.lost) { sc.g = cg.g; sc.lost += cg.lost; } }
+    } else {
+      u8 = new Uint8Array(await file.arrayBuffer());
+      sc = BIN.scan(u8, lay.L, sync, d.skip); if (!sc.frames) throw new Error('Hiç çerçeve bulunamadı (senkron kelimesi/çerçeve boyutu uyuşmuyor)');
+      if (d.counter) {
+        const fd = d.fields.find(x => BIN.clean(x.name) === BIN.clean(d.counter)); if (!fd) throw new Error('Sayaç alanı "' + d.counter + '" Alanlar tablosunda yok');
+        const sp = BIN.spec(lay, Object.assign({}, fd, {bit: ''})), cg = BIN.counterG(BIN.extract(u8, sc.pos, sp), sp.size);
+        if (cg.lost) { sc.g = cg.g; sc.lost += cg.lost; }
+      }
     }
-    const Tp = 1 / d.fps, f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: Tp, baseFs: d.fps, cnts: {}, gcache: {}, baseN: sc.frames, binary: true, bin: {lay, sc, def: JSON.parse(JSON.stringify(d)), u8}};
+    const Tp = 1 / d.fps, f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: Tp, baseFs: d.fps, cnts: {}, gcache: {}, baseN: sc.frames, binary: true, bin: {lay, sc, def: JSON.parse(JSON.stringify(d)), u8, stream}};
     const byName = new Map(), active = new Set();
     const mk = (name, dev, kind, sp, expr, unit, per, ph) => {
       per = Math.max(1, per | 0 || 1); const idx = per > 1 ? BIN.subIdx(sc.frames, sc.g, per, ph | 0) : null, pos = idx ? Float64Array.from(idx, i => sc.pos[i]) : sc.pos, gg = sc.g ? (idx ? Float64Array.from(idx, i => sc.g[i] / per) : sc.g) : null, nn = idx ? idx.length : sc.frames;
       const c = new Channel({name, rest: name, base: name, comp: '', dev, kind, n: nn, file: f, label: name, varIdx: -1, bin: true, unit: unit || ''});
       c.g = gg; c.spp = 1; c.Tpkt = Tp * per; c.dtS = Tp * per;
       c.binLoad = async () => {
-        let rawv = BIN.extract(u8, pos, sp); if (!expr) return rawv;
+        let rawv = pre.has(name) && sp.pre ? (idx ? Float64Array.from(idx, i => pre.get(name)[i]) : pre.get(name)) : BIN.extract(u8, pos, sp); if (!expr) return rawv;
         if (active.has(c)) throw new Error('Döngüsel formül: ' + name); active.add(c);
         try {
           for (const id of new Set(EXPR.identifiers(expr))) { const o = byName.get(id); if (o && o !== c) { await ensureLoaded(o); if (o.data.length !== rawv.length) throw new Error('"' + id + '" farklı periyotta (kare sayıları uyuşmuyor)'); } else if (o === c) throw new Error(name + ': formül kendine başvuruyor'); }
@@ -109,12 +123,12 @@ async function binOpen(file, d, withRaw) {
     for (const fd of d.fields) {
       try {
         const nm = BIN.clean(fd.name || ''); if (!nm) continue; if (byName.has(nm)) throw new Error('"' + nm + '" adı zaten var');
-        const sp = BIN.spec(lay, fd); mk(nm, 'Alanlar', sp.bits ? 'state' : 'other', sp, (fd.expr || '').trim(), fd.unit, fd.period, fd.phase);
+        const sp = BIN.spec(lay, fd); mk(nm, 'Alanlar', sp.bits ? 'state' : 'other', Object.assign(sp, {pre: true}), (fd.expr || '').trim(), fd.unit, fd.period, fd.phase);
       } catch (e) { errs.push(e.message || String(e)); }
     }
     prog(1); f.sc = sc; S.files.push(f); BS.lastFile = f; S.open.add(f.id + '/Alanlar');
     renderChips(); renderTree();
-    toast(`${file.name}: ${fmtCnt(sc.frames)} kare, ${fmtCnt(f.channels.length)} kanal` + (sc.lost ? ` · kayıp kare: ${sc.lost}` : '') + (sc.junk ? ` · atlanan bayt: ${fmtCnt(sc.junk)}` : '') + (errs.length ? ' · UYARI: ' + errs.join('; ') : ''), errs.length || sc.lost ? 9000 : 4000);
+    toast(`${file.name}: ${fmtCnt(sc.frames)} kare${stream ? ' (büyük dosya: yalnız tanımlı alanlar)' : ''}, ${fmtCnt(f.channels.length)} kanal` + (sc.lost ? ` · kayıp kare: ${sc.lost}` : '') + (sc.junk ? ` · atlanan bayt: ${fmtCnt(sc.junk)}` : '') + (errs.length ? ' · UYARI: ' + errs.join('; ') : ''), errs.length || sc.lost ? 9000 : 4000);
   });
 }
 
@@ -123,10 +137,10 @@ function binExportDialog(f) {
   const fields = f.channels.filter(c => c.dev === 'Alanlar'), subs = f.bin.lay.subs;
   const body = h('div', null, card('Dışa aktarılacaklar',
     fr('Alan kanalları (' + fields.length + ')', h('input', {type: 'checkbox', id: 'beF', checked: true})),
-    fr('Ham bayt matrisleri (alt sistem başına kare × bayt, ' + subs.length + ' değişken)', h('input', {type: 'checkbox', id: 'beR'})),
+    f.bin.u8 ? fr('Ham bayt matrisleri (alt sistem başına kare × bayt, ' + subs.length + ' değişken)', h('input', {type: 'checkbox', id: 'beR'})) : h('div', {class: 'note'}, 'Büyük dosya modunda ham bayt matrisleri yazılmaz.'),
     fr('Silinen noktalar', selIn('beD', [['nan', 'NaN olarak yaz'], ['keep', 'Olduğu gibi yaz']], 'nan')),
     h('div', {class: 'note'}, 'Zaman vektörü (zaman_s) ve kare numarası (kare_no) her zaman eklenir; farklı periyotlu alanlar için ayrıca <ad>_zaman_s yazılır. Ham bayt matrisleri büyük olabilir (kare sayısı × 12500 × 8 bayt).')));
-  modal('Çözülmüş veriyi .mat olarak kaydet', body, [{t: 'Kaydet', primary: true, fn: () => { binExport(f, ck('beF'), ck('beR'), sv('beD') === 'nan'); }}, {t: 'Vazgeç'}]);
+  modal('Çözülmüş veriyi .mat olarak kaydet', body, [{t: 'Kaydet', primary: true, fn: () => { binExport(f, ck('beF'), $('#beR') ? ck('beR') : false, sv('beD') === 'nan'); }}, {t: 'Vazgeç'}]);
 }
 async function binExport(f, wf, wr, nan) {
   await busy('Dışa aktarılıyor…', async prog => {

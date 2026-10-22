@@ -35,6 +35,28 @@ const BIN = (() => {
   }
   // Çok hızlı çerçevede yavaş alan: her p. karede (faz ph) güncellenen alanın kare indisleri
   function subIdx(n, g, p, ph) { const o = []; for (let k = 0; k < n; k++) { const f = g ? Math.round(g[k]) : k; if ((f + ph) % p === 0) o.push(k); } return Int32Array.from(o); }
+  // Büyük dosya: blok blok tarama. read(a,b) -> Uint8Array; onBlock(u8, yerelKonumlar, ilkKareNo) alanları çıkarmak için çağrılır.
+  async function scanStream(size, read, L, sync, skip, onBlock, prog, B) {
+    B = Math.max(B || 64 * 1048576, 4 * L); const pos = [], gl = []; let p = skip | 0, lost = 0, junk = 0, extra = 0;
+    while (p + L <= size) {
+      const end = Math.min(size, p + B), atEnd = end >= size, u8 = await read(p, end), n = u8.length, loc = []; let q0 = 0;
+      const match = q => { for (let i = 0; i < sync.length; i++) if (u8[q + i] !== sync[i]) return false; return true; };
+      let stop = false;
+      while (q0 + L <= n) {
+        if (sync.length && !match(q0)) {
+          let q = q0 + 1; for (;;) { q = u8.indexOf(sync[0], q); if (q < 0 || q + L > n) { q = -1; break; } if (match(q)) break; q++; }
+          if (q < 0) { if (atEnd) { junk += n - q0; q0 = n; } else { const nx = Math.max(q0 + 1, n - L + 1); junk += nx - q0; q0 = nx; } stop = true; break; }
+          const d = q - q0; junk += d; const miss = Math.round(d / L); if (miss > 0) { extra += miss; lost += miss; } q0 = q;
+        }
+        gl.push(pos.length + extra); pos.push(p + q0); loc.push(q0); q0 += L;
+      }
+      if (loc.length) await onBlock(u8, Float64Array.from(loc), pos.length - loc.length);
+      if (atEnd && !stop) break;
+      if (atEnd && stop) break;
+      p += q0; if (prog) prog(Math.min(1, p / size));
+    }
+    return {pos: Float64Array.from(pos), g: lost ? Float64Array.from(gl) : null, lost, junk, frames: pos.length};
+  }
   function parseBits(s) {
     s = String(s ?? '').trim(); if (!s) return null; const m = /^(\d+)\s*(?:[-:]\s*(\d+))?$/.exec(s); if (!m) throw new Error('Bit biçimi hatalı: ' + s);
     const lo = +m[1], hi = m[2] != null ? +m[2] : lo; if (hi < lo || hi > 31) throw new Error('Bit aralığı hatalı: ' + s); return [lo, hi];
@@ -81,6 +103,6 @@ const BIN = (() => {
       {name: 'Senaryo', rows: [['Anahtar', 'Değer'], ['Okuma sırası', d.order === 'col' ? 'sütun' : 'satır'], ['Senkron (hex)', d.sync || ''], ['Kare hızı (Hz)', d.fps], ['Atlanacak bayt', d.skip | 0], ['Sayaç alanı', d.counter || '']]},
       {name: 'Alanlar', rows: [FIELD_HDR, ...d.fields.map(f => [f.name, f.src, f.type, f.endian, f.bit, f.expr, f.unit, f.period || 1, f.phase || 0])]}];
   }
-  return {counterG, TYPES, clean, parseSync, layout, scan, spec, extract, subIdx, defFromSheets, defToSheets, FIELD_HDR, parseBits};
+  return {counterG, TYPES, clean, parseSync, layout, scan, spec, extract, scanStream, subIdx, defFromSheets, defToSheets, FIELD_HDR, parseBits};
 })();
 if (typeof module !== 'undefined') module.exports = BIN;

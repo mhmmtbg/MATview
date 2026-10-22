@@ -157,6 +157,8 @@ function buildAnalyze() {
     fr('dB aralığı', numIn('sgLo', ''), numIn('sgHi', '')),
     h('div', {class: 'btns'}, btn('Spektrogramı hesapla', computeSpectrogram, 'primary'), btn('Renk aralığını uygula', applyClim)),
     h('div', {class: 'note'}, 'Çok uzun aralıklarda kare sayısı 1500 ile sınırlıdır; daha ayrıntı için önce yakınlaştırın.')));
+  for (const c of extraAnalysisCards()) r.append(c);
+  setTimeout(refreshFrfPick);
   r.append(card('Süzgeç (sıfır faz, Butterworth)',
     fr('Tür', selIn('flType', [['lp', 'Alçak geçiren'], ['hp', 'Yüksek geçiren'], ['bp', 'Band geçiren'], ['bs', 'Band söndüren'], ['notch', 'Notch (çentik)']], 'lp')),
     fr('f1 / f2 (Hz)', numIn('flF1', 100), numIn('flF2', 500)),
@@ -557,7 +559,7 @@ function init() {
     else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
-  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); }, 1500);
+  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); refreshFrfPick(); }, 1500);
   initUX(); syncFeatUI(); startupFiles();
 }
 async function startupFiles() {

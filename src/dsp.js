@@ -381,6 +381,65 @@ const DSP = (() => {
     } else minStat('Kayıt kısa', 0);
     return res;
   }
-  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob};
+
+  // ---- 1/3 oktav (ve 1/1 oktav) bant seviyeleri: PSD'nin bantlar üzerinden integrali ----
+  function wA(f) { const f2 = f * f, r = 12194 ** 2 * f2 * f2 / ((f2 + 20.6 ** 2) * Math.sqrt((f2 + 107.7 ** 2) * (f2 + 737.9 ** 2)) * (f2 + 12194 ** 2)); return 20 * Math.log10(r) + 2.0; }
+  function wC(f) { const f2 = f * f, r = 12194 ** 2 * f2 / ((f2 + 20.6 ** 2) * (f2 + 12194 ** 2)); return 20 * Math.log10(r) + 0.06; }
+  // opt: frac (3 = 1/3 oktav, 1 = oktav), fmin, fmax, ref, weight ('Z'|'A'|'C'), win, overlap
+  function octaveBands(x, fs, opt) {
+    const frac = opt.frac || 3, fmin = opt.fmin || 20, fmax = Math.min(opt.fmax || fs / 2.5, fs / 2.2), ref = opt.ref || 1;
+    const nfft = Math.min(131072, Math.max(1024, nextPow2(Math.ceil(fs / (fmin * (frac === 3 ? 0.06 : 0.12))))));
+    const ps = welch(x, fs, {nfft, overlap: opt.overlap ?? 0.5, win: opt.win || 'hann', scale: 'psd', maxSeg: 3000});
+    const df = ps.df, fc = [], L = [], P = [], step = frac === 3 ? 0.1 : 0.3, half = frac === 3 ? 0.05 : 0.15, W = opt.weight || 'Z';
+    for (let n = -40; n <= 20; n++) {
+      const c = 1000 * 10 ** (n * step), lo = c * 10 ** -half, hi = c * 10 ** half; if (hi < fmin * 0.999 || lo > fmax) continue;
+      let pw = 0; for (let k = Math.max(0, Math.floor(lo / df)); k <= Math.min(ps.f.length - 1, Math.ceil(hi / df)); k++) { const a = Math.max(lo, (k - 0.5) * df), b = Math.min(hi, (k + 0.5) * df); if (b > a) pw += ps.y[k] * (b - a); }
+      const wdb = W === 'A' ? wA(c) : W === 'C' ? wC(c) : 0; pw *= 10 ** (wdb / 10);
+      fc.push(c); P.push(pw); L.push(10 * Math.log10(pw / (ref * ref) + 1e-300));
+    }
+    let tot = 0; for (const p of P) tot += p;
+    return {fc: Float64Array.from(fc), L: Float64Array.from(L), power: Float64Array.from(P), overall: 10 * Math.log10(tot / (ref * ref) + 1e-300), nfft, df};
+  }
+
+  // ---- SRS: Smallwood rampa-değişmez dijital süzgeç, mutlak ivme yanıtı (SDOF) ----
+  function srs(x, fs, freqs, Q) {
+    const T = 1 / fs, z = 1 / (2 * Q), n = x.length, pos = new Float64Array(freqs.length), neg = new Float64Array(freqs.length);
+    for (let j = 0; j < freqs.length; j++) {
+      const w = 2 * Math.PI * freqs[j], wd = w * Math.sqrt(1 - z * z), E = Math.exp(-z * w * T), K = wd * T, C = E * Math.cos(K), Sn = E * Math.sin(K), Sp = Sn / K;
+      const b0 = 1 - Sp, b1 = 2 * (Sp - C), b2 = E * E - Sp, a1 = -2 * C, a2 = E * E;
+      let x1 = x[0], x2 = x[0], y1 = x[0], y2 = x[0], mx = -Infinity, mn = Infinity;   // başlangıçta sabit durum
+      for (let i = 0; i < n; i++) { const xi = x[i], y = b0 * xi + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = xi; y2 = y1; y1 = y; if (y > mx) mx = y; if (y < mn) mn = y; }
+      // artık yanıt: giriş bittikten sonra sıfır girişle salınım (en fazla ~2 periyot)
+      const tail = Math.min(Math.ceil(2 * fs / freqs[j]), 200000);
+      for (let i = 0; i < tail; i++) { const yy = b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = 0; y2 = y1; y1 = yy; if (yy > mx) mx = yy; if (yy < mn) mn = yy; }
+      pos[j] = mx; neg[j] = -mn;
+    }
+    const mm = pos.map((v, i) => Math.max(v, neg[i])); return {f: Float64Array.from(freqs), pos, neg, maximax: mm};
+  }
+  function srsFreqs(fmin, fmax, ppo) { const o = []; for (let f = fmin; f <= fmax * 1.0001; f = f * 2 ** (1 / ppo)) o.push(f); return o; }
+
+  // ---- FRF: H1, H2, koherans (x = giriş, y = çıkış) ----
+  function frf(x, y, fs, opt) {
+    const n0 = Math.min(x.length, y.length), nfft = Math.min(opt.nfft, nextPow2(n0)), w = window(opt.win || 'hann', nfft), nb = nfft / 2 + 1;
+    let hop = Math.max(1, Math.round(nfft * (1 - (opt.overlap ?? 0.5)))); const maxSeg = opt.maxSeg || 4000; if ((n0 - nfft) / hop + 1 > maxSeg) hop = Math.ceil((n0 - nfft) / (maxSeg - 1));
+    const Sxx = new Float64Array(nb), Syy = new Float64Array(nb), Sr = new Float64Array(nb), Si = new Float64Array(nb);
+    const ar = new Float64Array(nfft), ai = new Float64Array(nfft), br = new Float64Array(nfft), bi = new Float64Array(nfft); let nseg = 0;
+    for (let st = 0; st + nfft <= n0; st += hop) {
+      let mx = 0, my = 0; for (let i = 0; i < nfft; i++) { mx += x[st + i]; my += y[st + i]; } mx /= nfft; my /= nfft;
+      for (let i = 0; i < nfft; i++) { ar[i] = (x[st + i] - mx) * w[i]; ai[i] = 0; br[i] = (y[st + i] - my) * w[i]; bi[i] = 0; }
+      fft(ar, ai, false); fft(br, bi, false);
+      for (let k = 0; k < nb; k++) { Sxx[k] += ar[k] * ar[k] + ai[k] * ai[k]; Syy[k] += br[k] * br[k] + bi[k] * bi[k]; Sr[k] += ar[k] * br[k] + ai[k] * bi[k]; Si[k] += ar[k] * bi[k] - ai[k] * br[k]; }   // conj(X)*Y
+      nseg++;
+    }
+    if (!nseg) throw new Error('Veri NFFT için çok kısa');
+    const f = new Float64Array(nb), h1 = new Float64Array(nb), h2 = new Float64Array(nb), ph = new Float64Array(nb), coh = new Float64Array(nb);
+    for (let k = 0; k < nb; k++) {
+      f[k] = k * fs / nfft; const sxy2 = Sr[k] * Sr[k] + Si[k] * Si[k], sxy = Math.sqrt(sxy2);
+      h1[k] = sxy / (Sxx[k] || 1e-300); h2[k] = Syy[k] / (sxy || 1e-300); ph[k] = Math.atan2(Si[k], Sr[k]) * 180 / Math.PI; coh[k] = sxy2 / ((Sxx[k] * Syy[k]) || 1e-300);
+    }
+    return {f, h1, h2, phase: ph, coh, nseg, nfft, df: fs / nfft};
+  }
+
+  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, srs, srsFreqs, frf, wA, wC};
 })();
 if (typeof module !== 'undefined') module.exports = DSP;

@@ -702,6 +702,28 @@ const BIN = (() => {
   }
   // Çok hızlı çerçevede yavaş alan: her p. karede (faz ph) güncellenen alanın kare indisleri
   function subIdx(n, g, p, ph) { const o = []; for (let k = 0; k < n; k++) { const f = g ? Math.round(g[k]) : k; if ((f + ph) % p === 0) o.push(k); } return Int32Array.from(o); }
+  // Büyük dosya: blok blok tarama. read(a,b) -> Uint8Array; onBlock(u8, yerelKonumlar, ilkKareNo) alanları çıkarmak için çağrılır.
+  async function scanStream(size, read, L, sync, skip, onBlock, prog, B) {
+    B = Math.max(B || 64 * 1048576, 4 * L); const pos = [], gl = []; let p = skip | 0, lost = 0, junk = 0, extra = 0;
+    while (p + L <= size) {
+      const end = Math.min(size, p + B), atEnd = end >= size, u8 = await read(p, end), n = u8.length, loc = []; let q0 = 0;
+      const match = q => { for (let i = 0; i < sync.length; i++) if (u8[q + i] !== sync[i]) return false; return true; };
+      let stop = false;
+      while (q0 + L <= n) {
+        if (sync.length && !match(q0)) {
+          let q = q0 + 1; for (;;) { q = u8.indexOf(sync[0], q); if (q < 0 || q + L > n) { q = -1; break; } if (match(q)) break; q++; }
+          if (q < 0) { if (atEnd) { junk += n - q0; q0 = n; } else { const nx = Math.max(q0 + 1, n - L + 1); junk += nx - q0; q0 = nx; } stop = true; break; }
+          const d = q - q0; junk += d; const miss = Math.round(d / L); if (miss > 0) { extra += miss; lost += miss; } q0 = q;
+        }
+        gl.push(pos.length + extra); pos.push(p + q0); loc.push(q0); q0 += L;
+      }
+      if (loc.length) await onBlock(u8, Float64Array.from(loc), pos.length - loc.length);
+      if (atEnd && !stop) break;
+      if (atEnd && stop) break;
+      p += q0; if (prog) prog(Math.min(1, p / size));
+    }
+    return {pos: Float64Array.from(pos), g: lost ? Float64Array.from(gl) : null, lost, junk, frames: pos.length};
+  }
   function parseBits(s) {
     s = String(s ?? '').trim(); if (!s) return null; const m = /^(\d+)\s*(?:[-:]\s*(\d+))?$/.exec(s); if (!m) throw new Error('Bit biçimi hatalı: ' + s);
     const lo = +m[1], hi = m[2] != null ? +m[2] : lo; if (hi < lo || hi > 31) throw new Error('Bit aralığı hatalı: ' + s); return [lo, hi];
@@ -748,7 +770,7 @@ const BIN = (() => {
       {name: 'Senaryo', rows: [['Anahtar', 'Değer'], ['Okuma sırası', d.order === 'col' ? 'sütun' : 'satır'], ['Senkron (hex)', d.sync || ''], ['Kare hızı (Hz)', d.fps], ['Atlanacak bayt', d.skip | 0], ['Sayaç alanı', d.counter || '']]},
       {name: 'Alanlar', rows: [FIELD_HDR, ...d.fields.map(f => [f.name, f.src, f.type, f.endian, f.bit, f.expr, f.unit, f.period || 1, f.phase || 0])]}];
   }
-  return {counterG, TYPES, clean, parseSync, layout, scan, spec, extract, subIdx, defFromSheets, defToSheets, FIELD_HDR, parseBits};
+  return {counterG, TYPES, clean, parseSync, layout, scan, spec, extract, scanStream, subIdx, defFromSheets, defToSheets, FIELD_HDR, parseBits};
 })();
 
 /* UNV (I-DEAS Universal) dataset 58 okuyucu — ASCII; kanal sayısı dosyadan okunur */
@@ -1209,7 +1231,66 @@ const DSP = (() => {
     } else minStat('Kayıt kısa', 0);
     return res;
   }
-  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob};
+
+  // ---- 1/3 oktav (ve 1/1 oktav) bant seviyeleri: PSD'nin bantlar üzerinden integrali ----
+  function wA(f) { const f2 = f * f, r = 12194 ** 2 * f2 * f2 / ((f2 + 20.6 ** 2) * Math.sqrt((f2 + 107.7 ** 2) * (f2 + 737.9 ** 2)) * (f2 + 12194 ** 2)); return 20 * Math.log10(r) + 2.0; }
+  function wC(f) { const f2 = f * f, r = 12194 ** 2 * f2 / ((f2 + 20.6 ** 2) * (f2 + 12194 ** 2)); return 20 * Math.log10(r) + 0.06; }
+  // opt: frac (3 = 1/3 oktav, 1 = oktav), fmin, fmax, ref, weight ('Z'|'A'|'C'), win, overlap
+  function octaveBands(x, fs, opt) {
+    const frac = opt.frac || 3, fmin = opt.fmin || 20, fmax = Math.min(opt.fmax || fs / 2.5, fs / 2.2), ref = opt.ref || 1;
+    const nfft = Math.min(131072, Math.max(1024, nextPow2(Math.ceil(fs / (fmin * (frac === 3 ? 0.06 : 0.12))))));
+    const ps = welch(x, fs, {nfft, overlap: opt.overlap ?? 0.5, win: opt.win || 'hann', scale: 'psd', maxSeg: 3000});
+    const df = ps.df, fc = [], L = [], P = [], step = frac === 3 ? 0.1 : 0.3, half = frac === 3 ? 0.05 : 0.15, W = opt.weight || 'Z';
+    for (let n = -40; n <= 20; n++) {
+      const c = 1000 * 10 ** (n * step), lo = c * 10 ** -half, hi = c * 10 ** half; if (hi < fmin * 0.999 || lo > fmax) continue;
+      let pw = 0; for (let k = Math.max(0, Math.floor(lo / df)); k <= Math.min(ps.f.length - 1, Math.ceil(hi / df)); k++) { const a = Math.max(lo, (k - 0.5) * df), b = Math.min(hi, (k + 0.5) * df); if (b > a) pw += ps.y[k] * (b - a); }
+      const wdb = W === 'A' ? wA(c) : W === 'C' ? wC(c) : 0; pw *= 10 ** (wdb / 10);
+      fc.push(c); P.push(pw); L.push(10 * Math.log10(pw / (ref * ref) + 1e-300));
+    }
+    let tot = 0; for (const p of P) tot += p;
+    return {fc: Float64Array.from(fc), L: Float64Array.from(L), power: Float64Array.from(P), overall: 10 * Math.log10(tot / (ref * ref) + 1e-300), nfft, df};
+  }
+
+  // ---- SRS: Smallwood rampa-değişmez dijital süzgeç, mutlak ivme yanıtı (SDOF) ----
+  function srs(x, fs, freqs, Q) {
+    const T = 1 / fs, z = 1 / (2 * Q), n = x.length, pos = new Float64Array(freqs.length), neg = new Float64Array(freqs.length);
+    for (let j = 0; j < freqs.length; j++) {
+      const w = 2 * Math.PI * freqs[j], wd = w * Math.sqrt(1 - z * z), E = Math.exp(-z * w * T), K = wd * T, C = E * Math.cos(K), Sn = E * Math.sin(K), Sp = Sn / K;
+      const b0 = 1 - Sp, b1 = 2 * (Sp - C), b2 = E * E - Sp, a1 = -2 * C, a2 = E * E;
+      let x1 = x[0], x2 = x[0], y1 = x[0], y2 = x[0], mx = -Infinity, mn = Infinity;   // başlangıçta sabit durum
+      for (let i = 0; i < n; i++) { const xi = x[i], y = b0 * xi + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = xi; y2 = y1; y1 = y; if (y > mx) mx = y; if (y < mn) mn = y; }
+      // artık yanıt: giriş bittikten sonra sıfır girişle salınım (en fazla ~2 periyot)
+      const tail = Math.min(Math.ceil(2 * fs / freqs[j]), 200000);
+      for (let i = 0; i < tail; i++) { const yy = b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = 0; y2 = y1; y1 = yy; if (yy > mx) mx = yy; if (yy < mn) mn = yy; }
+      pos[j] = mx; neg[j] = -mn;
+    }
+    const mm = pos.map((v, i) => Math.max(v, neg[i])); return {f: Float64Array.from(freqs), pos, neg, maximax: mm};
+  }
+  function srsFreqs(fmin, fmax, ppo) { const o = []; for (let f = fmin; f <= fmax * 1.0001; f = f * 2 ** (1 / ppo)) o.push(f); return o; }
+
+  // ---- FRF: H1, H2, koherans (x = giriş, y = çıkış) ----
+  function frf(x, y, fs, opt) {
+    const n0 = Math.min(x.length, y.length), nfft = Math.min(opt.nfft, nextPow2(n0)), w = window(opt.win || 'hann', nfft), nb = nfft / 2 + 1;
+    let hop = Math.max(1, Math.round(nfft * (1 - (opt.overlap ?? 0.5)))); const maxSeg = opt.maxSeg || 4000; if ((n0 - nfft) / hop + 1 > maxSeg) hop = Math.ceil((n0 - nfft) / (maxSeg - 1));
+    const Sxx = new Float64Array(nb), Syy = new Float64Array(nb), Sr = new Float64Array(nb), Si = new Float64Array(nb);
+    const ar = new Float64Array(nfft), ai = new Float64Array(nfft), br = new Float64Array(nfft), bi = new Float64Array(nfft); let nseg = 0;
+    for (let st = 0; st + nfft <= n0; st += hop) {
+      let mx = 0, my = 0; for (let i = 0; i < nfft; i++) { mx += x[st + i]; my += y[st + i]; } mx /= nfft; my /= nfft;
+      for (let i = 0; i < nfft; i++) { ar[i] = (x[st + i] - mx) * w[i]; ai[i] = 0; br[i] = (y[st + i] - my) * w[i]; bi[i] = 0; }
+      fft(ar, ai, false); fft(br, bi, false);
+      for (let k = 0; k < nb; k++) { Sxx[k] += ar[k] * ar[k] + ai[k] * ai[k]; Syy[k] += br[k] * br[k] + bi[k] * bi[k]; Sr[k] += ar[k] * br[k] + ai[k] * bi[k]; Si[k] += ar[k] * bi[k] - ai[k] * br[k]; }   // conj(X)*Y
+      nseg++;
+    }
+    if (!nseg) throw new Error('Veri NFFT için çok kısa');
+    const f = new Float64Array(nb), h1 = new Float64Array(nb), h2 = new Float64Array(nb), ph = new Float64Array(nb), coh = new Float64Array(nb);
+    for (let k = 0; k < nb; k++) {
+      f[k] = k * fs / nfft; const sxy2 = Sr[k] * Sr[k] + Si[k] * Si[k], sxy = Math.sqrt(sxy2);
+      h1[k] = sxy / (Sxx[k] || 1e-300); h2[k] = Syy[k] / (sxy || 1e-300); ph[k] = Math.atan2(Si[k], Sr[k]) * 180 / Math.PI; coh[k] = sxy2 / ((Sxx[k] * Syy[k]) || 1e-300);
+    }
+    return {f, h1, h2, phase: ph, coh, nseg, nfft, df: fs / nfft};
+  }
+
+  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, srs, srsFreqs, frf, wA, wC};
 })();
 
 /* MATLAB tarzı ifade ayrıştırıcı: kanal adları, + - * / ^, fonksiyonlar */
@@ -1321,7 +1402,6 @@ const EXPR = (() => {
         case 'gradient': case 'turev': { const a = vec(args[0], f), o = new Float64Array(a.v.length); for (let i = 1; i < o.length; i++) o[i] = (a.v[i] - a.v[i - 1]) * a.fs; return {v: o, fs: a.fs, ch: a.ch}; }
         case 'cumsum': { const a = vec(args[0], f), o = new Float64Array(a.v.length); let s = 0; for (let i = 0; i < o.length; i++) { s += a.v[i]; o[i] = s; } return {v: o, fs: a.fs, ch: a.ch}; }
         case 'integrate': case 'integral': { const a = vec(args[0], f), o = new Float64Array(a.v.length); let s = 0; for (let i = 0; i < o.length; i++) { s += a.v[i] / a.fs; o[i] = s; } return {v: o, fs: a.fs, ch: a.ch}; }
-        case 'detrend': { const a = vec(args[0], f); return {v: ctx.DSP.detrendLinear(a.v), fs: a.fs, ch: a.ch}; }
         case 'demean': { const a = vec(args[0], f); const m = RED.mean(a.v); return {v: a.v.map(x => x - m), fs: a.fs, ch: a.ch}; }
         case 'movmean': { const a = vec(args[0], f), w = Math.max(1, Math.round(scal(args[1], f))), n = a.v.length, o = new Float64Array(n); const cs = new Float64Array(n + 1); for (let i = 0; i < n; i++) cs[i + 1] = cs[i] + a.v[i]; for (let i = 0; i < n; i++) { const lo = Math.max(0, i - (w >> 1)), hi = Math.min(n - 1, i + ((w - 1) >> 1)); o[i] = (cs[hi + 1] - cs[lo]) / (hi - lo + 1); } return {v: o, fs: a.fs, ch: a.ch}; }
         case 'movmedian': { const a = vec(args[0], f), w = Math.max(1, Math.round(scal(args[1], f))), n = a.v.length, o = new Float64Array(n); for (let i = 0; i < n; i++) { const lo = Math.max(0, i - (w >> 1)), hi = Math.min(n - 1, i + ((w - 1) >> 1)); o[i] = sortedMed(a.v.subarray(lo, hi + 1)); } return {v: o, fs: a.fs, ch: a.ch}; }
@@ -2567,6 +2647,8 @@ function buildAnalyze() {
     fr('dB aralığı', numIn('sgLo', ''), numIn('sgHi', '')),
     h('div', {class: 'btns'}, btn('Spektrogramı hesapla', computeSpectrogram, 'primary'), btn('Renk aralığını uygula', applyClim)),
     h('div', {class: 'note'}, 'Çok uzun aralıklarda kare sayısı 1500 ile sınırlıdır; daha ayrıntı için önce yakınlaştırın.')));
+  for (const c of extraAnalysisCards()) r.append(c);
+  setTimeout(refreshFrfPick);
   r.append(card('Süzgeç (sıfır faz, Butterworth)',
     fr('Tür', selIn('flType', [['lp', 'Alçak geçiren'], ['hp', 'Yüksek geçiren'], ['bp', 'Band geçiren'], ['bs', 'Band söndüren'], ['notch', 'Notch (çentik)']], 'lp')),
     fr('f1 / f2 (Hz)', numIn('flF1', 100), numIn('flF2', 500)),
@@ -2967,7 +3049,7 @@ function init() {
     else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
-  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); }, 1500);
+  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); refreshFrfPick(); }, 1500);
   initUX(); syncFeatUI(); startupFiles();
 }
 async function startupFiles() {
@@ -3058,23 +3140,37 @@ function binDialog() {
 
 async function binOpen(file, d, withRaw) {
   await busy('Binary çözümleniyor: ' + file.name, async prog => {
-    if (file.size > 2147000000) throw new Error('Dosya 2 GB sınırını aşıyor');
-    const u8 = new Uint8Array(await file.arrayBuffer()), lay = BIN.layout(d.grid, d.order), sync = BIN.parseSync(d.sync);
-    if (!lay.L) throw new Error('Çerçeve matrisi boş');
-    const sc = BIN.scan(u8, lay.L, sync, d.skip); if (!sc.frames) throw new Error('Hiç çerçeve bulunamadı (senkron kelimesi/çerçeve boyutu uyuşmuyor)');
-    if (d.counter) {
-      const fd = d.fields.find(x => BIN.clean(x.name) === BIN.clean(d.counter)); if (!fd) throw new Error('Sayaç alanı "' + d.counter + '" Alanlar tablosunda yok');
-      const sp = BIN.spec(lay, Object.assign({}, fd, {bit: ''})), cg = BIN.counterG(BIN.extract(u8, sc.pos, sp), sp.size);
-      if (cg.lost) { sc.g = cg.g; sc.lost += cg.lost; }
+    const lay = BIN.layout(d.grid, d.order), sync = BIN.parseSync(d.sync); if (!lay.L) throw new Error('Çerçeve matrisi boş');
+    const stream = file.size > (BS.streamMin ?? 200 * 1048576); let u8 = null, sc, pre = new Map();
+    if (stream) {   // büyük dosya: tek geçişte blok blok oku; yalnız tanımlı alanları çıkar (ham bayt kanalları yok)
+      withRaw = false; const specs = [];
+      for (const fd of d.fields) { const nm = BIN.clean(fd.name || ''); if (!nm) continue; try { specs.push({nm, sp: BIN.spec(lay, fd), parts: []}); } catch (e) { /* hata sonra bildirilir */ } }
+      const cf = d.counter && d.fields.find(x => BIN.clean(x.name) === BIN.clean(d.counter)); let cs = null;
+      if (d.counter) { if (!cf) throw new Error('Sayaç alanı "' + d.counter + '" Alanlar tablosunda yok'); cs = {sp: BIN.spec(lay, Object.assign({}, cf, {bit: ''})), parts: []}; }
+      sc = await BIN.scanStream(file.size, async (a, b) => new Uint8Array(await file.slice(a, b).arrayBuffer()), lay.L, sync, d.skip, async (b8, loc) => {
+        for (const e of specs) e.parts.push(BIN.extract(b8, loc, e.sp)); if (cs) cs.parts.push(BIN.extract(b8, loc, cs.sp));
+      }, prog, BS.streamBlock);
+      if (!sc.frames) throw new Error('Hiç çerçeve bulunamadı (senkron kelimesi/çerçeve boyutu uyuşmuyor)');
+      const cat = parts => { const o = new Float64Array(sc.frames); let k = 0; for (const x of parts) { o.set(x, k); k += x.length; } return o; };
+      for (const e of specs) pre.set(e.nm, cat(e.parts));
+      if (cs) { const cg = BIN.counterG(cat(cs.parts), cs.sp.size); if (cg.lost) { sc.g = cg.g; sc.lost += cg.lost; } }
+    } else {
+      u8 = new Uint8Array(await file.arrayBuffer());
+      sc = BIN.scan(u8, lay.L, sync, d.skip); if (!sc.frames) throw new Error('Hiç çerçeve bulunamadı (senkron kelimesi/çerçeve boyutu uyuşmuyor)');
+      if (d.counter) {
+        const fd = d.fields.find(x => BIN.clean(x.name) === BIN.clean(d.counter)); if (!fd) throw new Error('Sayaç alanı "' + d.counter + '" Alanlar tablosunda yok');
+        const sp = BIN.spec(lay, Object.assign({}, fd, {bit: ''})), cg = BIN.counterG(BIN.extract(u8, sc.pos, sp), sp.size);
+        if (cg.lost) { sc.g = cg.g; sc.lost += cg.lost; }
+      }
     }
-    const Tp = 1 / d.fps, f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: Tp, baseFs: d.fps, cnts: {}, gcache: {}, baseN: sc.frames, binary: true, bin: {lay, sc, def: JSON.parse(JSON.stringify(d)), u8}};
+    const Tp = 1 / d.fps, f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: Tp, baseFs: d.fps, cnts: {}, gcache: {}, baseN: sc.frames, binary: true, bin: {lay, sc, def: JSON.parse(JSON.stringify(d)), u8, stream}};
     const byName = new Map(), active = new Set();
     const mk = (name, dev, kind, sp, expr, unit, per, ph) => {
       per = Math.max(1, per | 0 || 1); const idx = per > 1 ? BIN.subIdx(sc.frames, sc.g, per, ph | 0) : null, pos = idx ? Float64Array.from(idx, i => sc.pos[i]) : sc.pos, gg = sc.g ? (idx ? Float64Array.from(idx, i => sc.g[i] / per) : sc.g) : null, nn = idx ? idx.length : sc.frames;
       const c = new Channel({name, rest: name, base: name, comp: '', dev, kind, n: nn, file: f, label: name, varIdx: -1, bin: true, unit: unit || ''});
       c.g = gg; c.spp = 1; c.Tpkt = Tp * per; c.dtS = Tp * per;
       c.binLoad = async () => {
-        let rawv = BIN.extract(u8, pos, sp); if (!expr) return rawv;
+        let rawv = pre.has(name) && sp.pre ? (idx ? Float64Array.from(idx, i => pre.get(name)[i]) : pre.get(name)) : BIN.extract(u8, pos, sp); if (!expr) return rawv;
         if (active.has(c)) throw new Error('Döngüsel formül: ' + name); active.add(c);
         try {
           for (const id of new Set(EXPR.identifiers(expr))) { const o = byName.get(id); if (o && o !== c) { await ensureLoaded(o); if (o.data.length !== rawv.length) throw new Error('"' + id + '" farklı periyotta (kare sayıları uyuşmuyor)'); } else if (o === c) throw new Error(name + ': formül kendine başvuruyor'); }
@@ -3092,12 +3188,12 @@ async function binOpen(file, d, withRaw) {
     for (const fd of d.fields) {
       try {
         const nm = BIN.clean(fd.name || ''); if (!nm) continue; if (byName.has(nm)) throw new Error('"' + nm + '" adı zaten var');
-        const sp = BIN.spec(lay, fd); mk(nm, 'Alanlar', sp.bits ? 'state' : 'other', sp, (fd.expr || '').trim(), fd.unit, fd.period, fd.phase);
+        const sp = BIN.spec(lay, fd); mk(nm, 'Alanlar', sp.bits ? 'state' : 'other', Object.assign(sp, {pre: true}), (fd.expr || '').trim(), fd.unit, fd.period, fd.phase);
       } catch (e) { errs.push(e.message || String(e)); }
     }
     prog(1); f.sc = sc; S.files.push(f); BS.lastFile = f; S.open.add(f.id + '/Alanlar');
     renderChips(); renderTree();
-    toast(`${file.name}: ${fmtCnt(sc.frames)} kare, ${fmtCnt(f.channels.length)} kanal` + (sc.lost ? ` · kayıp kare: ${sc.lost}` : '') + (sc.junk ? ` · atlanan bayt: ${fmtCnt(sc.junk)}` : '') + (errs.length ? ' · UYARI: ' + errs.join('; ') : ''), errs.length || sc.lost ? 9000 : 4000);
+    toast(`${file.name}: ${fmtCnt(sc.frames)} kare${stream ? ' (büyük dosya: yalnız tanımlı alanlar)' : ''}, ${fmtCnt(f.channels.length)} kanal` + (sc.lost ? ` · kayıp kare: ${sc.lost}` : '') + (sc.junk ? ` · atlanan bayt: ${fmtCnt(sc.junk)}` : '') + (errs.length ? ' · UYARI: ' + errs.join('; ') : ''), errs.length || sc.lost ? 9000 : 4000);
   });
 }
 
@@ -3106,10 +3202,10 @@ function binExportDialog(f) {
   const fields = f.channels.filter(c => c.dev === 'Alanlar'), subs = f.bin.lay.subs;
   const body = h('div', null, card('Dışa aktarılacaklar',
     fr('Alan kanalları (' + fields.length + ')', h('input', {type: 'checkbox', id: 'beF', checked: true})),
-    fr('Ham bayt matrisleri (alt sistem başına kare × bayt, ' + subs.length + ' değişken)', h('input', {type: 'checkbox', id: 'beR'})),
+    f.bin.u8 ? fr('Ham bayt matrisleri (alt sistem başına kare × bayt, ' + subs.length + ' değişken)', h('input', {type: 'checkbox', id: 'beR'})) : h('div', {class: 'note'}, 'Büyük dosya modunda ham bayt matrisleri yazılmaz.'),
     fr('Silinen noktalar', selIn('beD', [['nan', 'NaN olarak yaz'], ['keep', 'Olduğu gibi yaz']], 'nan')),
     h('div', {class: 'note'}, 'Zaman vektörü (zaman_s) ve kare numarası (kare_no) her zaman eklenir; farklı periyotlu alanlar için ayrıca <ad>_zaman_s yazılır. Ham bayt matrisleri büyük olabilir (kare sayısı × 12500 × 8 bayt).')));
-  modal('Çözülmüş veriyi .mat olarak kaydet', body, [{t: 'Kaydet', primary: true, fn: () => { binExport(f, ck('beF'), ck('beR'), sv('beD') === 'nan'); }}, {t: 'Vazgeç'}]);
+  modal('Çözülmüş veriyi .mat olarak kaydet', body, [{t: 'Kaydet', primary: true, fn: () => { binExport(f, ck('beF'), $('#beR') ? ck('beR') : false, sv('beD') === 'nan'); }}, {t: 'Vazgeç'}]);
 }
 async function binExport(f, wf, wr, nan) {
   await busy('Dışa aktarılıyor…', async prog => {
@@ -3914,6 +4010,96 @@ function featAdd(list) {
   const f = list[0].file; if (!S.feat || S.feat.fid !== f.id) S.feat = {fid: f.id, x: '__idx', ys: new Set(), type: 'scatter', fit: 'none', deg: 2, resid: false, color: '', bins: 0};
   S.feat.ys = new Set(list.map(c => c.name)); if (S.feat.x === '__idx' && f.cols.length > 1) { const other = f.cols.find(c => !S.feat.ys.has(c.name)); if (other && list.length === 1) { S.feat.x = other.name; } }
   setTab('feat'); refreshFeatUI(); featPlot();
+}
+
+/* ===== Ek analizler: oktav bant (dBA/dBC), SRS, FRF (H1/H2 + koherans) ===== */
+function extraAnalysisCards() {
+  return [
+    card('Oktav / 1/3 oktav bant analizi',
+      fr('Bant', selIn('ocFrac', [[3, '1/3 oktav'], [1, '1/1 oktav']], 3)),
+      fr('Ağırlık', selIn('ocW', [['Z', 'Doğrusal (Z)'], ['A', 'A ağırlıklı (dBA)'], ['C', 'C ağırlıklı (dBC)']], 'Z')),
+      fr('Referans', selIn('ocRef', [['2e-5', '20 µPa (ses basıncı, Pa)'], ['1', '1 birim']], '2e-5')),
+      fr('f min / f max (Hz)', numIn('ocF1', 20), numIn('ocF2', 10000)),
+      fr('Kapsam', selIn('ocScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
+      h('div', {class: 'btns'}, btn('Bant seviyelerini hesapla', computeOctave, 'primary')),
+      h('div', {id: 'ocInfo', class: 'note'}, 'Kanal birimi Pa ise 20 µPa seçin; sonuç dB (re referans) olarak çizilir. Genel seviye (OASPL) bilgi satırında verilir.')),
+    card('SRS (şok yanıt spektrumu)',
+      fr('f min / f max (Hz)', numIn('srF1', 10), numIn('srF2', 2000)),
+      fr('Nokta / oktav', numIn('srPpo', 12, {min: 1, max: 48, step: 1})), fr('Q', numIn('srQ', 10, {min: 0.6})),
+      fr('Gösterim', selIn('srShow', [['mm', 'Maksimaks'], ['pn', 'Pozitif ve negatif']], 'mm')),
+      fr('Kapsam', selIn('srScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
+      h('div', {class: 'btns'}, btn('SRS hesapla', computeSRS, 'primary')),
+      h('div', {id: 'srInfo', class: 'note'}, 'Smallwood rampa-değişmez süzgeci, mutlak ivme yanıtı (SDOF). f max örnekleme hızının 1/6’sını aşarsa kırpılır; artık (kalıcı) yanıt dahildir.')),
+    card('FRF (iki kanallı, H1/H2 + koherans)',
+      fr('Giriş (referans)', h('select', {id: 'frIn'})), fr('Çıkış (yanıt)', h('select', {id: 'frOut'})),
+      fr('NFFT', selIn('frN', [256, 512, 1024, 2048, 4096, 8192, 16384].map(v => [v, v]), 2048)),
+      fr('Pencere', selIn('frWin', [['hann', 'Hann'], ['hamming', 'Hamming'], ['blackman', 'Blackman'], ['flattop', 'Flat-top']], 'hann')),
+      fr('Örtüşme', selIn('frOv', [['0.5', '%50'], ['0.75', '%75']], '0.5')),
+      fr('Tahminci', selIn('frH', [['h1', 'H1 (çıkış gürültüsüne karşı)'], ['h2', 'H2 (giriş gürültüsüne karşı)'], ['both', 'H1 ve H2']], 'h1')),
+      fr('Kapsam', selIn('frScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
+      h('div', {class: 'btns'}, btn('FRF hesapla', computeFRF, 'primary')),
+      h('div', {id: 'frInfo', class: 'note'}, 'Aktif alt grafikteki izlerden giriş ve çıkış seçilir; iki kanalın örnekleme hızı aynı olmalıdır. Genlik, faz ve koherans üç ayrı grafikte gelir.'))];
+}
+let _frfKey = '';
+function refreshFrfPick() {
+  const a = $('#frIn'), b = $('#frOut'); if (!a || !b) return; const ax = activeAxes(); const tr = ax ? ax.traces.filter(t => t.ch) : [];
+  const key = tr.map(t => t.label).join('|'); if (key === _frfKey) return; _frfKey = key; const va = a.value, vb = b.value;
+  for (const [el, v, d] of [[a, va, 0], [b, vb, 1]]) { el.replaceChildren(...tr.map((t, i) => h('option', {value: i}, t.label))); el.value = v !== '' && +v < tr.length ? v : String(Math.min(d, tr.length - 1)); }
+}
+function specAxesReset(o) { const P = S.specPlot; P.axes.slice().forEach(a => P.removeAxes(a)); return P; }
+async function computeOctave() {
+  const ax = activeAxes(); if (!ax || !ax.traces.length) return toast('Önce Zaman grafiğine bir iz ekleyin');
+  await busy('Bant seviyeleri hesaplanıyor…', async prog => {
+    const frac = +sv('ocFrac'), W = sv('ocW'), ref = +sv('ocRef'), P = specAxesReset(), sa = P.addAxes({xlog: true, ylog: false, title: ax.title || ''}); let k = 0; const info = [];
+    sa.ylabel = `Seviye (dB${W !== 'Z' ? W : ''} re ${ref === 2e-5 ? '20 µPa' : ref})`; sa.xlabel = (frac === 3 ? '1/3 oktav' : 'Oktav') + ' merkez frekansı (Hz)';
+    const list = ax.traces.filter(t => t.ch && t.visible);
+    for (const tr of list) {
+      await ensureLoaded(tr.ch); const [a, b] = specRange(tr, ax, sv('ocScope')); if (b - a < 256) { toast('Aralık çok kısa: ' + tr.label); continue; }
+      const seg = DSP.segment(tr.ch.data, tr.ch.del, a, b), r = DSP.octaveBands(seg, tr.ch.fs, {frac, fmin: num('ocF1'), fmax: num('ocF2'), ref, weight: W});
+      sa.traces.push({kind: 'xy', x: r.fc, y: r.L, label: tr.label, color: tr.color, width: 1.6, visible: true, raw: r.L, scale: 'db', df: r.df, srcKind: tr.ch.kind});
+      info.push(`${tr.label}: genel ${fmtNum(r.overall, 4)} dB${W !== 'Z' ? W : ''} · ${r.fc.length} bant · Δf=${fmtNum(r.df, 3)} Hz`); prog(++k / list.length);
+    }
+    $('#ocInfo').textContent = info.join('\n'); $('#ocInfo').style.whiteSpace = 'pre-line';
+    if (!sa.traces.length) { P.removeAxes(sa); return; } P.fitAll(); switchView('spec');
+  });
+}
+async function computeSRS() {
+  const ax = activeAxes(); if (!ax || !ax.traces.length) return toast('Önce Zaman grafiğine bir iz ekleyin');
+  await busy('SRS hesaplanıyor…', async prog => {
+    const Q = num('srQ'), P = specAxesReset(), sa = P.addAxes({xlog: true, ylog: true, title: ax.title || ''}); let k = 0; const info = [];
+    const list = ax.traces.filter(t => t.ch && t.visible);
+    for (const tr of list) {
+      await ensureLoaded(tr.ch); const ch = tr.ch, [a, b] = specRange(tr, ax, sv('srScope')); if (b - a < 16) continue;
+      const fmax = Math.min(num('srF2'), ch.fs / 6), freqs = DSP.srsFreqs(Math.max(0.1, num('srF1')), fmax, Math.max(1, num('srPpo')));
+      if (freqs.length < 2) { toast('Frekans aralığı geçersiz (f max ≤ fs/6 = ' + fmtNum(ch.fs / 6, 4) + ' Hz)'); continue; }
+      const seg = DSP.segment(ch.data, ch.del, a, b), r = DSP.srs(seg, ch.fs, freqs, Q), u = ch.unit || (ch.kind === 'vib' ? 'g' : 'birim');
+      const mk = (y, lab, col) => ({kind: 'xy', x: r.f, y, label: lab, color: col, width: 1.5, visible: true, raw: y, scale: 'srs', srcKind: ch.kind});
+      if (sv('srShow') === 'mm') sa.traces.push(mk(r.maximax, tr.label, tr.color)); else { sa.traces.push(mk(r.pos, tr.label + ' (+)', tr.color)); const t2 = mk(r.neg, tr.label + ' (−)', tr.color); t2.dash = [5, 3]; sa.traces.push(t2); }
+      let pk = 0, pf = 0; for (let i = 0; i < r.f.length; i++) if (r.maximax[i] > pk) { pk = r.maximax[i]; pf = r.f[i]; }
+      sa.ylabel = `Yanıt ivmesi (${u}), Q=${Q}`; info.push(`${tr.label}: tepe ${fmtNum(pk, 4)} ${u} @ ${fmtNum(pf, 4)} Hz`); prog(++k / list.length);
+    }
+    sa.xlabel = 'Doğal frekans (Hz)'; $('#srInfo').textContent = info.join('\n'); $('#srInfo').style.whiteSpace = 'pre-line';
+    if (!sa.traces.length) { P.removeAxes(sa); return; } P.fitAll(); switchView('spec');
+  });
+}
+async function computeFRF() {
+  const ax = activeAxes(); if (!ax) return toast('Önce Zaman grafiğine iki iz ekleyin'); refreshFrfPick();
+  const tr = ax.traces.filter(t => t.ch), ti = tr[+sv('frIn')], to = tr[+sv('frOut')]; if (!ti || !to || ti === to) return toast('Farklı bir giriş ve çıkış izi seçin');
+  await busy('FRF hesaplanıyor…', async () => {
+    await ensureLoaded(ti.ch); await ensureLoaded(to.ch); if (Math.abs(ti.ch.fs - to.ch.fs) > 1e-6 * ti.ch.fs) throw new Error('Örnekleme hızları farklı: ' + fmtNum(ti.ch.fs, 6) + ' ve ' + fmtNum(to.ch.fs, 6) + ' Hz');
+    const [a, b] = specRange(ti, ax, sv('frScope')), [a2, b2] = specRange(to, ax, sv('frScope')), n = Math.min(b - a, b2 - a2); if (n < 256) throw new Error('Aralık çok kısa');
+    // silinen noktalar her iki kanalda da çıkarılır (aynı indisler)
+    const xs = DSP.segment(ti.ch.data, ti.ch.del, a, a + n), ys = DSP.segment(to.ch.data, to.ch.del, a2, a2 + n), m = Math.min(xs.length, ys.length);
+    const r = DSP.frf(xs.subarray(0, m), ys.subarray(0, m), ti.ch.fs, {nfft: +sv('frN'), win: sv('frWin'), overlap: +sv('frOv')});
+    const P = specAxesReset(), mode = sv('frH'), lab = `${to.label} / ${ti.label}`;
+    const aM = P.addAxes({xlog: true, ylog: true, title: 'FRF genliği'}), aP = P.addAxes({xlog: true, ylog: false, title: 'Faz'}), aC = P.addAxes({xlog: true, ylog: false, title: 'Koherans'});
+    aM.hw = 2; aM.ylabel = 'Genlik |H|'; aP.ylabel = 'Faz (°)'; aC.ylabel = 'γ²'; aC.xlabel = 'Frekans (Hz)';
+    const mk = (y, label, color) => ({kind: 'xy', x: r.f, y, label, color, width: 1.2, visible: true, raw: y, scale: 'frf', srcKind: 'frf'});
+    if (mode !== 'h2') aM.traces.push(mk(r.h1, 'H1 ' + lab, '#2b6cb0')); if (mode !== 'h1') aM.traces.push(mk(r.h2, 'H2 ' + lab, '#c05621'));
+    aP.traces.push(mk(r.phase, 'Faz ' + lab, '#2b6cb0')); aC.traces.push(mk(r.coh, 'Koherans', '#2f855a'));
+    P.fitAll(); aC.yAuto = false; aC.ylim = [0, 1.05]; for (const q of [aM, aP, aC]) if (q.xlim[0] <= 0) q.xlim[0] = r.f[1]; P.invalidate();
+    $('#frInfo').textContent = `Δf=${fmtNum(r.df, 4)} Hz · ${r.nseg} bölüt` + (r.nseg < 8 ? ' · UYARI: bölüt sayısı az, koherans güvenilmez (düşük NFFT veya daha uzun kayıt deneyin)' : ''); switchView('spec');
+  });
 }
 
 </script>
