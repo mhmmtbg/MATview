@@ -65,3 +65,7 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 - Sol panel sayfa boyunda kalır; her dosya açılır/kapanır menüdür ve kendi kaydırma alanına sahiptir. Tür süzgeçleri yalnız ikondur.
 - **Formül** sekmesi (eski İfade): hızlı hesaplar (integral, ikinci integral, türev, kayan RMS/ort/std/maks/min/medyan, z-skoru, normalize, kırp, DC/doğrusal/polinom eğilim çıkar, süzgeçler, zarf, seyreltme…), iki kanal işlemleri (A±B, A·B, A/B, bileşke, açı, korelasyon, kovaryans) ve skaler ölçüler (RMS, ort, std, tepe faktörü, basıklık, çarpıklık, yüzdelik…).
 - **CSV / Excel (.xlsx)** içe aktarma: sütun türü, birim ve zaman sütunu seçimi. Veri **zaman serisi** (Zaman grafiği) ya da **özellik / regresyon** (Dağılım görünümü: nokta/çizgi/histogram, doğrusal-polinom-üstel-güç-logaritmik uyum, R², artık grafiği, renk sütunu, korelasyon matrisi, sütun istatistikleri) olarak otomatik ayrılır; istenirse elle değiştirilir.
+
+## Binary çerçeve şablonu
+`sablon/MATView_Cerceve_Sablonu.xlsx` (üreten: `test/make_template.py`): Nasıl Kullanılır / Çerçeve (125×100 = 12.500 bayt) / Senaryo / Alanlar / Türler sayfaları. `sablon/sablon_deneme.bin` şablonla uyumlu sentetik deneme verisidir (gerçek veri değildir). Test: `test/pw_sablon.py`.
+Ölçüm (sentetik, 12.500 bayt/kare, 700 sn): 10 Hz = 87,5 MB → çözme 0,2 sn; 50 Hz = 437,5 MB → 0,6 sn; çözülmüş alanların .mat çıktısı birkaç MB.
