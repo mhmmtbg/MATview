@@ -72,17 +72,22 @@ const XLSX = (() => {
       s.rows.forEach((row, r) => { x += `<row r="${r + 1}">`; row.forEach((v, c) => { if (v == null || v === '') return; const ref = colName(c) + (r + 1); x += typeof v === 'number' ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t>${esc(v)}</t></is></c>`; }); x += '</row>'; });
       files.push([`xl/worksheets/sheet${i + 1}.xml`, x + '</sheetData></worksheet>']);
     });
+    return zipBlob(files, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }
+  // [ad, metin|Uint8Array] listesinden 'stored' (sıkıştırmasız) zip; .xlsx/.docx/.zip için
+  function zipBlob(files, type) {
+    const enc = new TextEncoder();
     const parts = [], cen = []; let off = 0;
     for (const [name, txt] of files) {
-      const nb = enc.encode(name), data = enc.encode(txt), crc = crc32(data);
-      const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, nb.length, true);
+      const nb = enc.encode(name), data = typeof txt === 'string' ? enc.encode(txt) : txt, crc = crc32(data);
+      const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, nb.length, true);
       parts.push(new Uint8Array(lh.buffer), nb, data);
-      const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
+      const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
       cen.push(new Uint8Array(ch.buffer), nb); off += 30 + nb.length + data.length;
     }
     let cs = 0; for (const c of cen) cs += c.length;
     const ed = new DataView(new ArrayBuffer(22)); ed.setUint32(0, 0x06054b50, true); ed.setUint16(8, files.length, true); ed.setUint16(10, files.length, true); ed.setUint32(12, cs, true); ed.setUint32(16, off, true);
-    return new Blob([...parts, ...cen, new Uint8Array(ed.buffer)], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    return new Blob([...parts, ...cen, new Uint8Array(ed.buffer)], {type: type || 'application/zip'});
   }
-  return {read, write};
+  return {read, write, zip: zipBlob};
 })();

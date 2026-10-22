@@ -81,3 +81,7 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 - **Harmonik/yan-band imleçleri**: Analiz sekmesi; spektrum görünümünde k×f0 ve ±m×aralık çizgileri (PNG/SVG'ye de girer).
 - **WAV** (PCM 8/16/24/32, float 32/64, çok kanallı) açılır.
 - **Bit akışı alanı** (`ub`/`sb`, Bit="a-b"): 12/14 bit paketli telemetre için; şablonda örnek var.
+
+## MAT dışa aktarma ve Word raporu
+- **MAT**: soldaki ağaçta binary dosya adına / alt sisteme / kanala sağ tıklayın ya da Çıktı sekmesindeki "MAT dışa aktarma" kartını kullanın. Seçenekler: tek alt sistem (ham bayt matrisi uint8 kare×bayt + o alt sisteme ait çözülmüş alanlar, isteğe bağlı bayt aralığı "1-100, 250"), tüm binary tek .mat, her alt sistem ayrı .mat (tek .zip), seçilen kanallar (Ctrl/Shift ile) tek .mat. Büyük dosyada ham bayt parça parça okunur. Açık grafiğin CSV/MAT çıktısı Çıktı sekmesinde durur. Kod: `src/app10.js`, test: `test/pw_mat.py`.
+- **Word**: rapor önizlemesindeki "Word (.docx) kaydet" (kapak, üst/alt bilgi ve sayfa no alanları, içindekiler, şekil/tablo/not). İçindekiler sayfa numaraları Word'de F9 ile güncellenir. Kod: `src/app11.js`, test: `test/pw_docx.py`.

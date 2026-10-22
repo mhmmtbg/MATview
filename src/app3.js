@@ -98,7 +98,7 @@ async function binOpen(file, d, withRaw) {
         if (cg.lost) { sc.g = cg.g; sc.lost += cg.lost; }
       }
     }
-    const Tp = 1 / d.fps, f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: Tp, baseFs: d.fps, cnts: {}, gcache: {}, baseN: sc.frames, binary: true, bin: {lay, sc, def: JSON.parse(JSON.stringify(d)), u8, stream}};
+    const Tp = 1 / d.fps, f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: Tp, baseFs: d.fps, cnts: {}, gcache: {}, baseN: sc.frames, binary: true, bin: {lay, sc, def: JSON.parse(JSON.stringify(d)), u8, stream, file}};
     const byName = new Map(), active = new Set();
     const mk = (name, dev, kind, sp, expr, unit, per, ph) => {
       per = Math.max(1, per | 0 || 1); const idx = per > 1 ? BIN.subIdx(sc.frames, sc.g, per, ph | 0) : null, pos = idx ? Float64Array.from(idx, i => sc.pos[i]) : sc.pos, gg = sc.g ? (idx ? Float64Array.from(idx, i => sc.g[i] / per) : sc.g) : null, nn = idx ? idx.length : sc.frames;
@@ -129,31 +129,5 @@ async function binOpen(file, d, withRaw) {
     prog(1); f.sc = sc; S.files.push(f); BS.lastFile = f; S.open.add(f.id + '/Alanlar');
     renderChips(); renderTree();
     toast(`${file.name}: ${fmtCnt(sc.frames)} kare${stream ? ' (büyük dosya: yalnız tanımlı alanlar)' : ''}, ${fmtCnt(f.channels.length)} kanal` + (sc.lost ? ` · kayıp kare: ${sc.lost}` : '') + (sc.junk ? ` · atlanan bayt: ${fmtCnt(sc.junk)}` : '') + (errs.length ? ' · UYARI: ' + errs.join('; ') : ''), errs.length || sc.lost ? 9000 : 4000);
-  });
-}
-
-/* ---- çözülmüş veriyi .mat olarak dışa aktar ---- */
-function binExportDialog(f) {
-  const fields = f.channels.filter(c => c.dev === 'Alanlar'), subs = f.bin.lay.subs;
-  const body = h('div', null, card('Dışa aktarılacaklar',
-    fr('Alan kanalları (' + fields.length + ')', h('input', {type: 'checkbox', id: 'beF', checked: true})),
-    f.bin.u8 ? fr('Ham bayt matrisleri (alt sistem başına kare × bayt, ' + subs.length + ' değişken)', h('input', {type: 'checkbox', id: 'beR'})) : h('div', {class: 'note'}, 'Büyük dosya modunda ham bayt matrisleri yazılmaz.'),
-    fr('Silinen noktalar', selIn('beD', [['nan', 'NaN olarak yaz'], ['keep', 'Olduğu gibi yaz']], 'nan')),
-    h('div', {class: 'note'}, 'Zaman vektörü (zaman_s) ve kare numarası (kare_no) her zaman eklenir; farklı periyotlu alanlar için ayrıca <ad>_zaman_s yazılır. Ham bayt matrisleri büyük olabilir (kare sayısı × 12500 × 8 bayt).')));
-  modal('Çözülmüş veriyi .mat olarak kaydet', body, [{t: 'Kaydet', primary: true, fn: () => { binExport(f, ck('beF'), $('#beR') ? ck('beR') : false, sv('beD') === 'nan'); }}, {t: 'Vazgeç'}]);
-}
-async function binExport(f, wf, wr, nan) {
-  await busy('Dışa aktarılıyor…', async prog => {
-    const vars = [], sc = f.bin.sc, lay = f.bin.lay, n = sc.frames, used = new Set();
-    const uniq = nm => { let s = sanitizeName(nm).slice(0, 63), k = 2; while (used.has(s)) s = sanitizeName(nm).slice(0, 58) + '_' + k++; used.add(s); return s; };
-    const t = new Float64Array(n), kn = new Float64Array(n); for (let i = 0; i < n; i++) { kn[i] = sc.g ? sc.g[i] : i; t[i] = kn[i] * f.Tpkt; }
-    vars.push({name: uniq('zaman_s'), data: t}, {name: uniq('kare_no'), data: kn});
-    if (wf) { const fl = f.channels.filter(c => c.dev === 'Alanlar'); let k = 0; for (const c of fl) { await ensureLoaded(c); let d = c.data; if (nan && c.del) { d = Float64Array.from(d); for (let i = 0; i < d.length; i++) if (c.del[i]) d[i] = NaN; } vars.push({name: uniq(c.name), data: d}); if (d.length !== n) { const tt = new Float64Array(d.length); for (let i = 0; i < tt.length; i++) tt[i] = c.t(i); vars.push({name: uniq(c.name + '_zaman_s'), data: tt}); } prog(++k / (fl.length + 1)); } }
-    if (wr) for (const s of lay.subs) {
-      const idx = []; for (let i = 0; i < lay.L; i++) if (lay.raw[i] === s.name) idx.push(i);
-      const m = new Float64Array(n * idx.length); idx.forEach((off, j) => m.set(BIN.extract(f.bin.u8, sc.pos, {off, size: 1, getter: 'getUint8', le: false, bits: null}), j * n));
-      vars.push({name: uniq(s.name), data: m, rows: n, cols: idx.length});
-    }
-    await saveBlob(matWrite(vars), f.name.replace(/\.[^.]*$/, '') + '_cozulmus.mat');
   });
 }

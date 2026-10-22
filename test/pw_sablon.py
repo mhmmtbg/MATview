@@ -15,7 +15,7 @@ async def main():
           for(const n of ['SAYAC','GUC_VOLT','GUC_AKIM','GUC_WATT','SICAKLIK_1','SICAKLIK_12BIT','ENLEM','BOYLAM','YAKIT_SEVIYE','KONTROL_MOD','BAYRAK_0','BAYRAK_1','ADC_KANAL']){const d=await g(n); o[n]=d?Array.from(d.slice(0,3)).map(x=>+x.toFixed(4)):'YOK'}
           o.T=['GUC_VOLT','SICAKLIK_1','YAKIT_SEVIYE'].map(T); return o}''')
         for k, v in r.items(): print(k, v)
-        res = await pg.evaluate('''async()=>{let blob=null; window.saveBlob=async(b)=>{blob=b;return true}; await binExport(S.files[0],true,false,true);
+        res = await pg.evaluate('''async()=>{let blob=null; window.saveBlob=async(b)=>{blob=b;return true}; await binMatExport(S.files[0],{subs:null,raw:false,fields:true,nan:true,time:true});
           const buf=new Uint8Array(await blob.arrayBuffer()); let s=''; for(let i=0;i<buf.length;i+=8192) s+=String.fromCharCode(...buf.subarray(i,i+8192)); return btoa(s);}''')
         open('/tmp/sablon_out.mat','wb').write(base64.b64decode(res)); print('ERRS', errs); await b.close()
 asyncio.run(main())

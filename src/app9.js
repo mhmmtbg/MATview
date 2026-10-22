@@ -144,6 +144,7 @@ function repPreview() {
   const close = () => $('#repPrev').remove();
   const bar = h('div', {class: 'repBar'}, h('b', null, 'Rapor önizleme'), h('span', {class: 'muted'}, 'PDF için: Yazdır → Hedef: PDF olarak kaydet (kenar boşluğu: yok, arka plan grafikleri: açık)'), h('div', {class: 'spacer', style: 'flex:1'}),
     btn('Yazdır / PDF', () => { try { fr_.contentWindow.focus(); fr_.contentWindow.print(); } catch (e) { toast('Yazdırma açılamadı: ' + e.message); } }, 'primary'),
+    btn('Word (.docx) kaydet', repDocxSave),
     btn('HTML kaydet', () => saveBlob(new Blob([html], {type: 'text/html'}), sanitizeName(m.docNo || m.title || 'rapor') + '_' + sanitizeName(m.rev || 'A') + '.html')), btn('Kapat', close));
   document.body.append(h('div', {id: 'repPrev'}, bar, fr_));
 }

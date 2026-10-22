@@ -388,7 +388,7 @@ async function acWav(clean) {
 function buildOutput() {
   const r = h('div');
   r.append(card('Görüntü (açık olan görünüm)', h('div', {class: 'note'}, 'Zaman, Spektrum ve Spektrogram görünümlerinin hepsi PNG veya SVG (vektör) olarak kaydedilir.'), fr('PNG ölçeği', selIn('pngScale', [[1, '1×'], [2, '2×'], [3, '3×'], [4, '4×']], 2)), chkIn('pngLight', 'Açık tema ile (baskı için)', true), h('div', {class: 'btns'}, btn('PNG kaydet', savePng, 'primary'), btn('SVG kaydet', saveSvg), btn('Panoya kopyala', copyPng))));
-  r.append(buildReportCard()); setTimeout(repRefreshList);
+  r.append(buildMatCard()); r.append(buildReportCard()); setTimeout(repRefreshList);
   r.append(card('Veri (CSV / MAT)',
     h('div', {class: 'note'}, 'Grafikteki izlerin verisi aktarılır.'),
     fr('Aralık', selIn('exScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
@@ -453,15 +453,15 @@ function matWrite(vars) {
   const hdr = new Uint8Array(128); const txt = 'MATLAB 5.0 MAT-file, MATView ile olusturuldu'; for (let i = 0; i < 116; i++) hdr[i] = i < txt.length ? txt.charCodeAt(i) : 32; hdr[124] = 0x00; hdr[125] = 0x01; hdr[126] = 0x49; hdr[127] = 0x4D;
   const parts = [hdr];
   for (const v of vars) {
-    const nm = v.name, nmPad = (nm.length + 7) & ~7, small = nm.length <= 4, nameBytes = small ? 8 : 8 + nmPad, dataBytes = v.data.length * 8;
-    const total = 16 + 16 + nameBytes + 8 + dataBytes, head = new ArrayBuffer(8 + 16 + 16 + nameBytes + 8), dv = new DataView(head); let o = 0;
+    const nm = v.name, nmPad = (nm.length + 7) & ~7, small = nm.length <= 4, nameBytes = small ? 8 : 8 + nmPad, dataBytes = v.data.length * (v.u8 ? 1 : 8), pad = (8 - dataBytes % 8) % 8;
+    const total = 16 + 16 + nameBytes + 8 + dataBytes + pad, head = new ArrayBuffer(8 + 16 + 16 + nameBytes + 8), dv = new DataView(head); let o = 0;
     dv.setUint32(o, 14, true); dv.setUint32(o + 4, total, true); o += 8;
-    dv.setUint32(o, 6, true); dv.setUint32(o + 4, 8, true); dv.setUint32(o + 8, 6, true); dv.setUint32(o + 12, 0, true); o += 16;
+    dv.setUint32(o, 6, true); dv.setUint32(o + 4, 8, true); dv.setUint32(o + 8, v.u8 ? 9 : 6, true); dv.setUint32(o + 12, 0, true); o += 16;
     dv.setUint32(o, 5, true); dv.setUint32(o + 4, 8, true); dv.setInt32(o + 8, v.rows || v.data.length, true); dv.setInt32(o + 12, v.cols || 1, true); o += 16;
     if (small) { dv.setUint32(o, (nm.length << 16) | 1, true); for (let i = 0; i < nm.length; i++) dv.setUint8(o + 4 + i, nm.charCodeAt(i)); o += 8; }
     else { dv.setUint32(o, 1, true); dv.setUint32(o + 4, nm.length, true); for (let i = 0; i < nm.length; i++) dv.setUint8(o + 8 + i, nm.charCodeAt(i)); o += 8 + nmPad; }
-    dv.setUint32(o, 9, true); dv.setUint32(o + 4, dataBytes, true);
-    parts.push(new Uint8Array(head), new Uint8Array(v.data.buffer, v.data.byteOffset, dataBytes));
+    dv.setUint32(o, v.u8 ? 2 : 9, true); dv.setUint32(o + 4, dataBytes, true);
+    parts.push(new Uint8Array(head), new Uint8Array(v.data.buffer, v.data.byteOffset, dataBytes)); if (pad) parts.push(new Uint8Array(pad));
   }
   return new Blob(parts, {type: 'application/octet-stream'});
 }
@@ -560,7 +560,7 @@ function init() {
     else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
-  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); refreshFrfPick(); }, 1500);
+  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); refreshFrfPick(); refreshMatCard(); }, 1500);
   initUX(); syncFeatUI(); startupFiles();
 }
 async function startupFiles() {

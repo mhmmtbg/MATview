@@ -70,16 +70,16 @@ function renderTree() {
     if (!S.seenF.has(f.id)) { S.seenF.add(f.id); S.fopen.add(f.id); }
     const fop = filtering || S.fopen.has(f.id), grp = h('div', {class: 'fgrp' + (fop ? ' open' : '')}), body = h('div', {class: 'tbody', 'data-f': f.id});
     const tog = () => { S.fopen.has(f.id) ? S.fopen.delete(f.id) : S.fopen.add(f.id); renderTree(); };
-    grp.append(h('div', {class: 'tfile', tabindex: 0, role: 'button', 'aria-expanded': fop, title: f.name + ' — aç/kapat', onclick: e => { if (!e.target.closest('button')) tog(); }, onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(); } }},
+    grp.append(h('div', {class: 'tfile', tabindex: 0, role: 'button', 'aria-expanded': fop, title: f.name + ' — aç/kapat (sağ tık: dışa aktar)', oncontextmenu: e => { e.preventDefault(); fileMenu(f, e.clientX, e.clientY); }, onclick: e => { if (!e.target.closest('button')) tog(); }, onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(); } }},
       h('span', {class: 'twisty'}, fop ? '▼' : '▶'), h('span', {class: 'nm'}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
-      f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => binExportDialog(f)}, '.mat') : null,
+      f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => matDlg(f, {t: 'all'})}, '.mat') : null,
       f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
     const devs = new Map();
     for (const c of chs) { if (!devs.has(c.dev)) devs.set(c.dev, new Map()); const bm = devs.get(c.dev); if (!bm.has(c.base)) bm.set(c.base, []); bm.get(c.base).push(c); }
     for (const [dev, bm] of devs) {
       const dk = f.id + '/' + dev, open = filtering || S.open.has(dk);
       const total = [...bm.values()].reduce((a, b) => a + b.length, 0);
-      body.append(h('div', {class: 'tdev', onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
+      body.append(h('div', {class: 'tdev', oncontextmenu: e => { e.preventDefault(); devMenu(f, dev, e.clientX, e.clientY); }, onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
       if (!open) continue;
       for (const [base, list] of bm) {
         if (list.length > 1 && list.every(c => c.base === base)) {
@@ -110,7 +110,7 @@ function chRow(c, label, sub) {
       else if (e.ctrlKey || e.metaKey) { S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); S.lastSel = c.uid; } else { S.selCh = new Set([c.uid]); S.lastSel = c.uid; }
       renderTree(); const r = [...document.querySelectorAll('#tree .trow')].find(x => x._uid === c.uid); if (r && e.detail === 0) r.focus();
     },
-    ondblclick: e => dblAct(e, [c]), ondragstart: e => dragStart(e, S.selCh.has(c.uid) ? chsFromSel() : [c]), ondragend: () => hideDZ(),
+    oncontextmenu: e => { e.preventDefault(); if (!S.selCh.has(c.uid)) { S.selCh = new Set([c.uid]); S.lastSel = c.uid; renderTree(); } chMenu(c, e.clientX, e.clientY); }, ondblclick: e => dblAct(e, [c]), ondragstart: e => dragStart(e, S.selCh.has(c.uid) ? chsFromSel() : [c]), ondragend: () => hideDZ(),
     onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); dblAct(e, S.selCh.size > 1 && S.selCh.has(c.uid) ? chsFromSel() : [c]); } else if (e.key === ' ') { e.preventDefault(); S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); S.lastSel = c.uid; const u = c.uid; renderTree(); const r = [...document.querySelectorAll('#tree .trow')].find(x => x._uid === u); if (r) r.focus(); } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const rows = [...document.querySelectorAll('#tree .trow')], i = rows.indexOf(row), n = rows[i + (e.key === 'ArrowDown' ? 1 : -1)]; if (n) n.focus(); } },
     title: c.name + '\n' + fmtCnt(c.n) + ' örnek · ' + fmtNum(c.fs, 6) + ' Hz' + chMM(c)},
     kic(c.kind), h('span', {class: 'nm'}, hl(label)), h('span', {class: 'meta'}, c.n >= 1e6 ? (c.n / 1e6).toFixed(1) + 'M' : c.n >= 1e3 ? (c.n / 1e3).toFixed(0) + 'k' : c.n),

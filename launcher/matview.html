@@ -653,19 +653,24 @@ const XLSX = (() => {
       s.rows.forEach((row, r) => { x += `<row r="${r + 1}">`; row.forEach((v, c) => { if (v == null || v === '') return; const ref = colName(c) + (r + 1); x += typeof v === 'number' ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t>${esc(v)}</t></is></c>`; }); x += '</row>'; });
       files.push([`xl/worksheets/sheet${i + 1}.xml`, x + '</sheetData></worksheet>']);
     });
+    return zipBlob(files, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }
+  // [ad, metin|Uint8Array] listesinden 'stored' (sıkıştırmasız) zip; .xlsx/.docx/.zip için
+  function zipBlob(files, type) {
+    const enc = new TextEncoder();
     const parts = [], cen = []; let off = 0;
     for (const [name, txt] of files) {
-      const nb = enc.encode(name), data = enc.encode(txt), crc = crc32(data);
-      const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, nb.length, true);
+      const nb = enc.encode(name), data = typeof txt === 'string' ? enc.encode(txt) : txt, crc = crc32(data);
+      const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, nb.length, true);
       parts.push(new Uint8Array(lh.buffer), nb, data);
-      const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
+      const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
       cen.push(new Uint8Array(ch.buffer), nb); off += 30 + nb.length + data.length;
     }
     let cs = 0; for (const c of cen) cs += c.length;
     const ed = new DataView(new ArrayBuffer(22)); ed.setUint32(0, 0x06054b50, true); ed.setUint16(8, files.length, true); ed.setUint16(10, files.length, true); ed.setUint32(12, cs, true); ed.setUint32(16, off, true);
-    return new Blob([...parts, ...cen, new Uint8Array(ed.buffer)], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    return new Blob([...parts, ...cen, new Uint8Array(ed.buffer)], {type: type || 'application/zip'});
   }
-  return {read, write};
+  return {read, write, zip: zipBlob};
 })();
 
 /* Binary dosya çözücü (DOM'suz çekirdek): matris çerçeve tanımı -> kanallar */
@@ -2360,16 +2365,16 @@ function renderTree() {
     if (!S.seenF.has(f.id)) { S.seenF.add(f.id); S.fopen.add(f.id); }
     const fop = filtering || S.fopen.has(f.id), grp = h('div', {class: 'fgrp' + (fop ? ' open' : '')}), body = h('div', {class: 'tbody', 'data-f': f.id});
     const tog = () => { S.fopen.has(f.id) ? S.fopen.delete(f.id) : S.fopen.add(f.id); renderTree(); };
-    grp.append(h('div', {class: 'tfile', tabindex: 0, role: 'button', 'aria-expanded': fop, title: f.name + ' — aç/kapat', onclick: e => { if (!e.target.closest('button')) tog(); }, onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(); } }},
+    grp.append(h('div', {class: 'tfile', tabindex: 0, role: 'button', 'aria-expanded': fop, title: f.name + ' — aç/kapat (sağ tık: dışa aktar)', oncontextmenu: e => { e.preventDefault(); fileMenu(f, e.clientX, e.clientY); }, onclick: e => { if (!e.target.closest('button')) tog(); }, onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(); } }},
       h('span', {class: 'twisty'}, fop ? '▼' : '▶'), h('span', {class: 'nm'}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
-      f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => binExportDialog(f)}, '.mat') : null,
+      f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => matDlg(f, {t: 'all'})}, '.mat') : null,
       f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
     const devs = new Map();
     for (const c of chs) { if (!devs.has(c.dev)) devs.set(c.dev, new Map()); const bm = devs.get(c.dev); if (!bm.has(c.base)) bm.set(c.base, []); bm.get(c.base).push(c); }
     for (const [dev, bm] of devs) {
       const dk = f.id + '/' + dev, open = filtering || S.open.has(dk);
       const total = [...bm.values()].reduce((a, b) => a + b.length, 0);
-      body.append(h('div', {class: 'tdev', onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
+      body.append(h('div', {class: 'tdev', oncontextmenu: e => { e.preventDefault(); devMenu(f, dev, e.clientX, e.clientY); }, onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
       if (!open) continue;
       for (const [base, list] of bm) {
         if (list.length > 1 && list.every(c => c.base === base)) {
@@ -2400,7 +2405,7 @@ function chRow(c, label, sub) {
       else if (e.ctrlKey || e.metaKey) { S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); S.lastSel = c.uid; } else { S.selCh = new Set([c.uid]); S.lastSel = c.uid; }
       renderTree(); const r = [...document.querySelectorAll('#tree .trow')].find(x => x._uid === c.uid); if (r && e.detail === 0) r.focus();
     },
-    ondblclick: e => dblAct(e, [c]), ondragstart: e => dragStart(e, S.selCh.has(c.uid) ? chsFromSel() : [c]), ondragend: () => hideDZ(),
+    oncontextmenu: e => { e.preventDefault(); if (!S.selCh.has(c.uid)) { S.selCh = new Set([c.uid]); S.lastSel = c.uid; renderTree(); } chMenu(c, e.clientX, e.clientY); }, ondblclick: e => dblAct(e, [c]), ondragstart: e => dragStart(e, S.selCh.has(c.uid) ? chsFromSel() : [c]), ondragend: () => hideDZ(),
     onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); dblAct(e, S.selCh.size > 1 && S.selCh.has(c.uid) ? chsFromSel() : [c]); } else if (e.key === ' ') { e.preventDefault(); S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); S.lastSel = c.uid; const u = c.uid; renderTree(); const r = [...document.querySelectorAll('#tree .trow')].find(x => x._uid === u); if (r) r.focus(); } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const rows = [...document.querySelectorAll('#tree .trow')], i = rows.indexOf(row), n = rows[i + (e.key === 'ArrowDown' ? 1 : -1)]; if (n) n.focus(); } },
     title: c.name + '\n' + fmtCnt(c.n) + ' örnek · ' + fmtNum(c.fs, 6) + ' Hz' + chMM(c)},
     kic(c.kind), h('span', {class: 'nm'}, hl(label)), h('span', {class: 'meta'}, c.n >= 1e6 ? (c.n / 1e6).toFixed(1) + 'M' : c.n >= 1e3 ? (c.n / 1e3).toFixed(0) + 'k' : c.n),
@@ -2920,7 +2925,7 @@ async function acWav(clean) {
 function buildOutput() {
   const r = h('div');
   r.append(card('Görüntü (açık olan görünüm)', h('div', {class: 'note'}, 'Zaman, Spektrum ve Spektrogram görünümlerinin hepsi PNG veya SVG (vektör) olarak kaydedilir.'), fr('PNG ölçeği', selIn('pngScale', [[1, '1×'], [2, '2×'], [3, '3×'], [4, '4×']], 2)), chkIn('pngLight', 'Açık tema ile (baskı için)', true), h('div', {class: 'btns'}, btn('PNG kaydet', savePng, 'primary'), btn('SVG kaydet', saveSvg), btn('Panoya kopyala', copyPng))));
-  r.append(buildReportCard()); setTimeout(repRefreshList);
+  r.append(buildMatCard()); r.append(buildReportCard()); setTimeout(repRefreshList);
   r.append(card('Veri (CSV / MAT)',
     h('div', {class: 'note'}, 'Grafikteki izlerin verisi aktarılır.'),
     fr('Aralık', selIn('exScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
@@ -2985,15 +2990,15 @@ function matWrite(vars) {
   const hdr = new Uint8Array(128); const txt = 'MATLAB 5.0 MAT-file, MATView ile olusturuldu'; for (let i = 0; i < 116; i++) hdr[i] = i < txt.length ? txt.charCodeAt(i) : 32; hdr[124] = 0x00; hdr[125] = 0x01; hdr[126] = 0x49; hdr[127] = 0x4D;
   const parts = [hdr];
   for (const v of vars) {
-    const nm = v.name, nmPad = (nm.length + 7) & ~7, small = nm.length <= 4, nameBytes = small ? 8 : 8 + nmPad, dataBytes = v.data.length * 8;
-    const total = 16 + 16 + nameBytes + 8 + dataBytes, head = new ArrayBuffer(8 + 16 + 16 + nameBytes + 8), dv = new DataView(head); let o = 0;
+    const nm = v.name, nmPad = (nm.length + 7) & ~7, small = nm.length <= 4, nameBytes = small ? 8 : 8 + nmPad, dataBytes = v.data.length * (v.u8 ? 1 : 8), pad = (8 - dataBytes % 8) % 8;
+    const total = 16 + 16 + nameBytes + 8 + dataBytes + pad, head = new ArrayBuffer(8 + 16 + 16 + nameBytes + 8), dv = new DataView(head); let o = 0;
     dv.setUint32(o, 14, true); dv.setUint32(o + 4, total, true); o += 8;
-    dv.setUint32(o, 6, true); dv.setUint32(o + 4, 8, true); dv.setUint32(o + 8, 6, true); dv.setUint32(o + 12, 0, true); o += 16;
+    dv.setUint32(o, 6, true); dv.setUint32(o + 4, 8, true); dv.setUint32(o + 8, v.u8 ? 9 : 6, true); dv.setUint32(o + 12, 0, true); o += 16;
     dv.setUint32(o, 5, true); dv.setUint32(o + 4, 8, true); dv.setInt32(o + 8, v.rows || v.data.length, true); dv.setInt32(o + 12, v.cols || 1, true); o += 16;
     if (small) { dv.setUint32(o, (nm.length << 16) | 1, true); for (let i = 0; i < nm.length; i++) dv.setUint8(o + 4 + i, nm.charCodeAt(i)); o += 8; }
     else { dv.setUint32(o, 1, true); dv.setUint32(o + 4, nm.length, true); for (let i = 0; i < nm.length; i++) dv.setUint8(o + 8 + i, nm.charCodeAt(i)); o += 8 + nmPad; }
-    dv.setUint32(o, 9, true); dv.setUint32(o + 4, dataBytes, true);
-    parts.push(new Uint8Array(head), new Uint8Array(v.data.buffer, v.data.byteOffset, dataBytes));
+    dv.setUint32(o, v.u8 ? 2 : 9, true); dv.setUint32(o + 4, dataBytes, true);
+    parts.push(new Uint8Array(head), new Uint8Array(v.data.buffer, v.data.byteOffset, dataBytes)); if (pad) parts.push(new Uint8Array(pad));
   }
   return new Blob(parts, {type: 'application/octet-stream'});
 }
@@ -3092,7 +3097,7 @@ function init() {
     else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
-  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); refreshFrfPick(); }, 1500);
+  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); refreshFrfPick(); refreshMatCard(); }, 1500);
   initUX(); syncFeatUI(); startupFiles();
 }
 async function startupFiles() {
@@ -3206,7 +3211,7 @@ async function binOpen(file, d, withRaw) {
         if (cg.lost) { sc.g = cg.g; sc.lost += cg.lost; }
       }
     }
-    const Tp = 1 / d.fps, f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: Tp, baseFs: d.fps, cnts: {}, gcache: {}, baseN: sc.frames, binary: true, bin: {lay, sc, def: JSON.parse(JSON.stringify(d)), u8, stream}};
+    const Tp = 1 / d.fps, f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: Tp, baseFs: d.fps, cnts: {}, gcache: {}, baseN: sc.frames, binary: true, bin: {lay, sc, def: JSON.parse(JSON.stringify(d)), u8, stream, file}};
     const byName = new Map(), active = new Set();
     const mk = (name, dev, kind, sp, expr, unit, per, ph) => {
       per = Math.max(1, per | 0 || 1); const idx = per > 1 ? BIN.subIdx(sc.frames, sc.g, per, ph | 0) : null, pos = idx ? Float64Array.from(idx, i => sc.pos[i]) : sc.pos, gg = sc.g ? (idx ? Float64Array.from(idx, i => sc.g[i] / per) : sc.g) : null, nn = idx ? idx.length : sc.frames;
@@ -3237,32 +3242,6 @@ async function binOpen(file, d, withRaw) {
     prog(1); f.sc = sc; S.files.push(f); BS.lastFile = f; S.open.add(f.id + '/Alanlar');
     renderChips(); renderTree();
     toast(`${file.name}: ${fmtCnt(sc.frames)} kare${stream ? ' (büyük dosya: yalnız tanımlı alanlar)' : ''}, ${fmtCnt(f.channels.length)} kanal` + (sc.lost ? ` · kayıp kare: ${sc.lost}` : '') + (sc.junk ? ` · atlanan bayt: ${fmtCnt(sc.junk)}` : '') + (errs.length ? ' · UYARI: ' + errs.join('; ') : ''), errs.length || sc.lost ? 9000 : 4000);
-  });
-}
-
-/* ---- çözülmüş veriyi .mat olarak dışa aktar ---- */
-function binExportDialog(f) {
-  const fields = f.channels.filter(c => c.dev === 'Alanlar'), subs = f.bin.lay.subs;
-  const body = h('div', null, card('Dışa aktarılacaklar',
-    fr('Alan kanalları (' + fields.length + ')', h('input', {type: 'checkbox', id: 'beF', checked: true})),
-    f.bin.u8 ? fr('Ham bayt matrisleri (alt sistem başına kare × bayt, ' + subs.length + ' değişken)', h('input', {type: 'checkbox', id: 'beR'})) : h('div', {class: 'note'}, 'Büyük dosya modunda ham bayt matrisleri yazılmaz.'),
-    fr('Silinen noktalar', selIn('beD', [['nan', 'NaN olarak yaz'], ['keep', 'Olduğu gibi yaz']], 'nan')),
-    h('div', {class: 'note'}, 'Zaman vektörü (zaman_s) ve kare numarası (kare_no) her zaman eklenir; farklı periyotlu alanlar için ayrıca <ad>_zaman_s yazılır. Ham bayt matrisleri büyük olabilir (kare sayısı × 12500 × 8 bayt).')));
-  modal('Çözülmüş veriyi .mat olarak kaydet', body, [{t: 'Kaydet', primary: true, fn: () => { binExport(f, ck('beF'), $('#beR') ? ck('beR') : false, sv('beD') === 'nan'); }}, {t: 'Vazgeç'}]);
-}
-async function binExport(f, wf, wr, nan) {
-  await busy('Dışa aktarılıyor…', async prog => {
-    const vars = [], sc = f.bin.sc, lay = f.bin.lay, n = sc.frames, used = new Set();
-    const uniq = nm => { let s = sanitizeName(nm).slice(0, 63), k = 2; while (used.has(s)) s = sanitizeName(nm).slice(0, 58) + '_' + k++; used.add(s); return s; };
-    const t = new Float64Array(n), kn = new Float64Array(n); for (let i = 0; i < n; i++) { kn[i] = sc.g ? sc.g[i] : i; t[i] = kn[i] * f.Tpkt; }
-    vars.push({name: uniq('zaman_s'), data: t}, {name: uniq('kare_no'), data: kn});
-    if (wf) { const fl = f.channels.filter(c => c.dev === 'Alanlar'); let k = 0; for (const c of fl) { await ensureLoaded(c); let d = c.data; if (nan && c.del) { d = Float64Array.from(d); for (let i = 0; i < d.length; i++) if (c.del[i]) d[i] = NaN; } vars.push({name: uniq(c.name), data: d}); if (d.length !== n) { const tt = new Float64Array(d.length); for (let i = 0; i < tt.length; i++) tt[i] = c.t(i); vars.push({name: uniq(c.name + '_zaman_s'), data: tt}); } prog(++k / (fl.length + 1)); } }
-    if (wr) for (const s of lay.subs) {
-      const idx = []; for (let i = 0; i < lay.L; i++) if (lay.raw[i] === s.name) idx.push(i);
-      const m = new Float64Array(n * idx.length); idx.forEach((off, j) => m.set(BIN.extract(f.bin.u8, sc.pos, {off, size: 1, getter: 'getUint8', le: false, bits: null}), j * n));
-      vars.push({name: uniq(s.name), data: m, rows: n, cols: idx.length});
-    }
-    await saveBlob(matWrite(vars), f.name.replace(/\.[^.]*$/, '') + '_cozulmus.mat');
   });
 }
 
@@ -4315,9 +4294,221 @@ function repPreview() {
   const close = () => $('#repPrev').remove();
   const bar = h('div', {class: 'repBar'}, h('b', null, 'Rapor önizleme'), h('span', {class: 'muted'}, 'PDF için: Yazdır → Hedef: PDF olarak kaydet (kenar boşluğu: yok, arka plan grafikleri: açık)'), h('div', {class: 'spacer', style: 'flex:1'}),
     btn('Yazdır / PDF', () => { try { fr_.contentWindow.focus(); fr_.contentWindow.print(); } catch (e) { toast('Yazdırma açılamadı: ' + e.message); } }, 'primary'),
+    btn('Word (.docx) kaydet', repDocxSave),
     btn('HTML kaydet', () => saveBlob(new Blob([html], {type: 'text/html'}), sanitizeName(m.docNo || m.title || 'rapor') + '_' + sanitizeName(m.rev || 'A') + '.html')), btn('Kapat', close));
   document.body.append(h('div', {id: 'repPrev'}, bar, fr_));
 }
+
+/* ===== MAT dışa aktarma: alt sistem / tüm binary / seçili bileşenler (sağ tık menüleri + Çıktı sekmesi) ===== */
+const matBase = f => sanitizeName(f.name.replace(/\.[^.]*$/, ''));
+function binFieldSub(f, fd) { const lay = f.bin.lay, s = String(fd.src ?? '').trim(); const i = lay.pos.has(s) ? lay.pos.get(s) : (/^#?\d+$/.test(s) ? +s.replace('#', '') : -1); return i >= 0 ? lay.raw[i] : ''; }
+function binSubOffsets(f, name) { const lay = f.bin.lay, o = []; for (let i = 0; i < lay.L; i++) if (lay.raw[i] === name) o.push(i); return o; }
+function parseRanges(txt, max) {   // "1-100, 250, 300-310" -> artan 1 tabanlı indisler; boş/tümü -> hepsi
+  txt = String(txt || '').trim(); if (!txt || /^(t[üu]m[üu]?|hepsi|all)$/i.test(txt)) return null; const s = new Set();
+  for (const part of txt.split(/[,;\s]+/).filter(Boolean)) { const m = /^(\d+)(?:\s*[-:]\s*(\d+))?$/.exec(part); if (!m) throw new Error('Bayt seçimi hatalı: "' + part + '" (örnek: 1-100, 250, 300-310)'); let a = +m[1], b = m[2] ? +m[2] : a; if (b < a) [a, b] = [b, a]; for (let i = a; i <= Math.min(b, max); i++) s.add(i); }
+  if (!s.size) throw new Error('Bayt seçimi boş'); return s;
+}
+// Seçilen bayt konumlarının tüm karelerdeki değerleri: uint8, sütun-ana düzen (kare × bayt)
+async function binRawU8(f, offs, prog) {
+  const {sc, lay, file} = f.bin, n = sc.frames, L = lay.L, out = new Uint8Array(n * offs.length), g = Math.max(1, Math.floor(48e6 / L));
+  if (!file) throw new Error('Binary kaynak dosya artık erişilebilir değil; dosyayı yeniden açın');
+  for (let a = 0; a < n; a += g) {
+    const b = Math.min(n, a + g), p0 = sc.pos[a], u8 = new Uint8Array(await file.slice(p0, sc.pos[b - 1] + L).arrayBuffer());
+    for (let j = 0; j < offs.length; j++) { const o = offs[j], base = j * n; for (let k = a; k < b; k++) out[base + k] = u8[sc.pos[k] - p0 + o]; }
+    if (prog) prog(b / n);
+  }
+  return out;
+}
+const MAT_CAP = 1.3e9;
+// o: {subs: [ad]|null (tümü), raw, fields, time, nan, ranges: {ad: Set}|null, zip}
+async function binMatBuild(f, o, prog, subs) {
+  const vars = [], sc = f.bin.sc, lay = f.bin.lay, n = sc.frames, used = new Set();
+  const uniq = nm => { let s = sanitizeName(nm).slice(0, 63), k = 2; while (used.has(s)) s = sanitizeName(nm).slice(0, 58) + '_' + k++; used.add(s); return s; };
+  if (o.time !== false) { const t = new Float64Array(n), kn = new Float64Array(n); for (let i = 0; i < n; i++) { kn[i] = sc.g ? sc.g[i] : i; t[i] = kn[i] * f.Tpkt; } vars.push({name: uniq('zaman_s'), data: t}, {name: uniq('kare_no'), data: kn}); }
+  if (o.fields) {
+    const fl = f.channels.filter(c => c.dev === 'Alanlar' && (!o.subs || subs.includes(binFieldSub(f, (f.bin.def.fields.find(x => BIN.clean(x.name) === c.name)) || {}))));
+    let k = 0; for (const c of fl) {
+      await ensureLoaded(c); let d = c.data; if (o.nan && c.del) { d = Float64Array.from(d); for (let i = 0; i < d.length; i++) if (c.del[i]) d[i] = NaN; }
+      vars.push({name: uniq(c.name), data: d}); if (d.length !== n && o.time !== false) { const tt = new Float64Array(d.length); for (let i = 0; i < tt.length; i++) tt[i] = c.t(i); vars.push({name: uniq(c.name + '_zaman_s'), data: tt}); } if (prog) prog(++k / (fl.length + 1) * 0.3);
+    }
+  }
+  if (o.raw) for (const s of subs) {
+    let offs = binSubOffsets(f, s), idx = offs.map((_, i) => i + 1); const rg = o.ranges && o.ranges[s];
+    if (rg) { offs = offs.filter((_, i) => rg.has(i + 1)); idx = idx.filter(i => rg.has(i)); } if (!offs.length) continue;
+    const m = await binRawU8(f, offs, p => prog && prog(0.3 + 0.7 * p)); vars.push({name: uniq(s), data: m, u8: true, rows: n, cols: offs.length}, {name: uniq(s + '_bayt_no'), data: Float64Array.from(idx)});
+  }
+  return vars;
+}
+async function binMatExport(f, o) {
+  await busy('MAT hazırlanıyor…', async prog => {
+    const lay = f.bin.lay, subs = o.subs || lay.subs.map(s => s.name), n = f.bin.sc.frames;
+    if (o.raw) { let tot = 0; for (const s of subs) { const k = binSubOffsets(f, s).length, rg = o.ranges && o.ranges[s]; tot += rg ? [...rg].filter(i => i <= k).length : k; } if (tot * n > MAT_CAP) throw new Error('Ham bayt verisi ' + fmtCnt(Math.round(tot * n / 1e6)) + ' MB: tek dosya için çok büyük (sınır ≈ ' + Math.round(MAT_CAP / 1e6) + ' MB). Alt sistemleri ayrı ayrı veya bayt aralığı seçerek kaydedin.'); }
+    if (o.zip && subs.length > 1) {   // her alt sistem ayrı .mat, hepsi tek zip içinde
+      const files = []; let i = 0;
+      for (const s of subs) { const v = await binMatBuild(f, Object.assign({}, o, {subs: [s]}), p => prog((i + p) / subs.length), [s]); files.push([sanitizeName(s) + '.mat', new Uint8Array(await matWrite(v).arrayBuffer())]); i++; }
+      await saveBlob(XLSX.zip(files, 'application/zip'), matBase(f) + '_alt_sistemler.zip'); return;
+    }
+    const vars = await binMatBuild(f, o, prog, subs);
+    await saveBlob(matWrite(vars), matBase(f) + '_' + (o.subs && subs.length === 1 ? sanitizeName(subs[0]) : o.subs ? 'secim' : 'tum') + '.mat');
+  });
+}
+// Kanal seçiminden MAT: ham bayt kanalları uint8, diğerleri çift duyarlıklı; zaman vektörleri isteğe bağlı
+async function matSelExport(chs, o = {}) {
+  if (!chs.length) return toast('Önce kanal seçin (tıklama / Ctrl / Shift)');
+  await busy('MAT hazırlanıyor…', async prog => {
+    const vars = [], used = new Set(); const uniq = nm => { let s = sanitizeName(nm).slice(0, 63), k = 2; while (used.has(s)) s = sanitizeName(nm).slice(0, 58) + '_' + k++; used.add(s); return s; };
+    const byF = new Map(); for (const c of chs) if (c.bin && c.dev !== 'Alanlar' && c.file.bin) { if (!byF.has(c.file)) byF.set(c.file, []); byF.get(c.file).push(c); }
+    let tref = null, k = 0;
+    const addT = (c, nm) => { if (o.time === false) return; const key = c.n + '|' + c.t(0) + '|' + c.t(c.n - 1); if (!tref) { tref = key; const t = new Float64Array(c.n); for (let i = 0; i < c.n; i++) t[i] = c.t(i); vars.push({name: uniq('zaman_s'), data: t}); } else if (key !== tref) { const t = new Float64Array(c.n); for (let i = 0; i < c.n; i++) t[i] = c.t(i); vars.push({name: uniq(nm + '_zaman_s'), data: t}); } };
+    for (const [f, list] of byF) {
+      const offs = list.map(c => f.bin.lay.pos.get(c.name)), n = f.bin.sc.frames; if (offs.length * n > MAT_CAP) throw new Error('Seçim çok büyük (' + fmtCnt(Math.round(offs.length * n / 1e6)) + ' MB)');
+      const m = await binRawU8(f, offs, p => prog(p * 0.5)); list.forEach((c, j) => { addT(c, c.name); vars.push({name: uniq(c.name), data: m.subarray(j * n, (j + 1) * n), u8: true}); });
+    }
+    for (const c of chs) { if (byF.has(c.file) && byF.get(c.file).includes(c)) continue; await ensureLoaded(c); let d = c.data; if (o.nan !== false && c.del) { d = Float64Array.from(d); for (let i = 0; i < d.length; i++) if (c.del[i]) d[i] = NaN; } addT(c, c.name); vars.push({name: uniq(c.name), data: d}); prog(0.5 + 0.5 * (++k / chs.length)); }
+    await saveBlob(matWrite(vars), 'MATView_secim_' + chs.length + '_kanal.mat');
+  });
+}
+/* ---- iletişim kutusu ---- */
+function matDlg(f, scope) {
+  const sub = scope.t === 'sub', all = scope.t === 'all', fl = f.channels.filter(c => c.dev === 'Alanlar'), n = f.bin.sc.frames, lay = f.bin.lay, subs = lay.subs.map(s => s.name);
+  const rawMB = nm => (nm ? binSubOffsets(f, nm).length : lay.raw.filter(Boolean).length) * n / 1048576;
+  const fieldsIn = sub ? fl.filter(c => binFieldSub(f, f.bin.def.fields.find(x => BIN.clean(x.name) === c.name) || {}) === scope.name).length : fl.length;
+  const body = h('div', null, card(sub ? 'Alt sistem: ' + scope.name : all ? 'Tüm binary dosya: ' + f.name : 'Seçili alt sistemler (' + scope.names.length + ')',
+    h('div', {class: 'note'}, `${fmtCnt(n)} kare · ${sub ? binSubOffsets(f, scope.name).length : all ? lay.raw.filter(Boolean).length : '…'} bayt/kare`),
+    f.bin.file ? chkIn('mxRaw', 'Ham bayt matrisi (uint8, kare × bayt) ≈ ' + (sub ? rawMB(scope.name) : all ? rawMB() : scope.names.reduce((a, s) => a + rawMB(s), 0)).toFixed(0) + ' MB', sub) : null,
+    sub ? fr('Bayt seçimi', h('input', {type: 'text', id: 'mxR', placeholder: 'tümü  veya  1-100, 250, 300-310', style: 'width:100%'})) : null,
+    chkIn('mxF', 'Çözülmüş alanlar' + (sub || !all ? ' (bu alt sisteme ait: ' + fieldsIn + ')' : ' (' + fl.length + ')'), true),
+    chkIn('mxT', 'Zaman vektörü (zaman_s) ve kare numarası (kare_no)', true), chkIn('mxN', 'Silinen noktalar NaN olsun', true),
+    all || !sub ? chkIn('mxZ', 'Her alt sistem ayrı .mat dosyası olsun (tek .zip içinde)', false) : null,
+    h('div', {class: 'note'}, 'Ham bayt matrisi satırları kare, sütunları alt sistemdeki bayt sırasıdır; `<ad>_bayt_no` bayt numaralarını verir. Farklı periyotlu alanlar için `<alan>_zaman_s` yazılır.')));
+  modal('Binary → .mat dışa aktar', body, [{t: 'Kaydet', primary: true, fn: () => {
+    try {
+      const o = {subs: sub ? [scope.name] : all ? null : scope.names, raw: $('#mxRaw') ? ck('mxRaw') : false, fields: ck('mxF'), time: ck('mxT'), nan: ck('mxN'), zip: $('#mxZ') ? ck('mxZ') : false};
+      if (sub && o.raw) { const r = parseRanges(sv('mxR'), 1e6); if (r) o.ranges = {[scope.name]: r}; }
+      if (!o.raw && !o.fields) throw new Error('En az bir içerik seçin');
+      binMatExport(f, o);
+    } catch (e) { toast(e.message, 6000); return false; }
+  }}, {t: 'Vazgeç'}]);
+}
+/* ---- sağ tık menüleri ---- */
+function selOf(f) { return chsFromSel().filter(c => !f || c.file === f); }
+function fileMenu(f, x, y) {
+  const items = []; if (f.binary) items.push({t: 'Tüm binary dosyayı .mat olarak kaydet…', ic: 'download', fn: () => matDlg(f, {t: 'all'})}, {t: 'Alt sistemleri ayrı .mat olarak kaydet (zip)…', ic: 'download', fn: () => matDlg(f, {t: 'all'})});
+  const k = chsFromSel().length; items.push({t: 'Seçili kanalları .mat olarak kaydet' + (k ? ' (' + k + ')' : '') + '…', ic: 'download', fn: () => matSelExport(chsFromSel())});
+  if (!f.derived) items.push('-', {t: 'Dosyayı kapat', ic: 'close', fn: () => closeFile(f)}); ctxMenu(x, y, items);
+}
+function devMenu(f, dev, x, y) {
+  const chs = f.channels.filter(c => c.dev === dev), items = [{t: 'Bu gruptaki tüm kanalları seç (' + chs.length + ')', ic: 'layers', fn: () => { S.selCh = new Set(chs.map(c => c.uid)); renderTree(); }}];
+  if (f.binary && dev !== 'Alanlar') items.unshift({t: 'Bu alt sistemi .mat olarak kaydet…', ic: 'download', fn: () => matDlg(f, {t: 'sub', name: dev})});
+  else if (f.binary) items.unshift({t: 'Çözülmüş alanları .mat olarak kaydet…', ic: 'download', fn: () => matDlg(f, {t: 'all'})});
+  const k = chsFromSel().length; if (k) items.push({t: 'Seçili kanalları .mat olarak kaydet (' + k + ')…', ic: 'download', fn: () => matSelExport(chsFromSel())});
+  ctxMenu(x, y, items);
+}
+function chMenu(c, x, y) {
+  const sel = chsFromSel(); ctxMenu(x, y, [{t: 'Seçili ' + sel.length + ' kanalı .mat olarak kaydet…', ic: 'download', fn: () => matSelExport(sel)}, '-', {t: 'Yeni alt grafiğe ekle', ic: 'plus', fn: () => addToNewAxes(sel.length > 1 ? sel : [c], false)}, {t: 'Aktif grafiğe aynı eksende ekle', ic: 'layers', fn: () => addToAxes(activeAxes(), sel.length > 1 ? sel : [c])}]);
+}
+/* ---- Çıktı sekmesi kartı ---- */
+function buildMatCard() {
+  const box = h('div', {id: 'matBox'}); setTimeout(refreshMatCard); return card('MAT dışa aktarma (binary / seçim)', box);
+}
+function refreshMatCard() {
+  const box = $('#matBox'); if (!box) return; const fs = S.files.filter(f => f.binary), key = fs.map(f => f.id).join(','); if (box._k === key) { const s = $('#mcSub'); if (s) {} return; } box._k = key; box.replaceChildren();
+  const sel = h('div', {class: 'btns'}, btn('Seçili kanalları kaydet', () => matSelExport(chsFromSel())));
+  if (!fs.length) { box.append(h('div', {class: 'note'}, 'Binary dosya açılınca alt sistem/tüm dosya aktarımı burada görünür. Soldaki ağaçta kanalları seçip (Ctrl/Shift) aşağıdan .mat olarak kaydedebilirsiniz.'), sel); return; }
+  const fsel = h('select', {id: 'mcF', onchange: () => { box._k = null; fillSubs(); }}, fs.map(f => h('option', {value: f.id}, f.name))), subs = h('select', {id: 'mcSub', multiple: true, size: 6, style: 'width:100%'});
+  const cur = () => fs.find(f => f.id === fsel.value) || fs[0];
+  const fillSubs = () => { subs.replaceChildren(...cur().bin.lay.subs.map(s => h('option', {value: s.name}, s.name + ' (' + s.count + ' bayt)'))); };
+  fillSubs();
+  box.append(fr('Binary dosya', fsel), h('div', {class: 'note'}, 'Alt sistem(ler) (Ctrl/Shift ile çoklu seçim):'), subs,
+    h('div', {class: 'btns'}, btn('Seçili alt sistem(ler)i kaydet', () => { const names = [...subs.selectedOptions].map(o => o.value); if (!names.length) return toast('Alt sistem seçin'); matDlg(cur(), names.length === 1 ? {t: 'sub', name: names[0]} : {t: 'subs', names}); }, 'primary'),
+      btn('Tüm binary dosyayı kaydet', () => matDlg(cur(), {t: 'all'}))), sel);
+}
+
+/* ===== Rapor → Word (.docx): kapak, üst/alt bilgi (sayfa no alanları), içindekiler, şekil/tablo/not ===== */
+const DX = {esc: s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'), mm: v => Math.round(v * 36000)};
+const dxNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+const dxRun = (t, o = {}) => `<w:r><w:rPr>${o.b ? '<w:b/>' : ''}${o.i ? '<w:i/>' : ''}${o.color ? `<w:color w:val="${o.color}"/>` : ''}${o.sz ? `<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/>` : ''}${o.sp ? `<w:spacing w:val="${o.sp}"/>` : ''}</w:rPr><w:t xml:space="preserve">${DX.esc(t)}</w:t></w:r>`;
+const dxP = (inner, o = {}) => `<w:p><w:pPr>${o.keep ? '<w:keepNext/>' : ''}${o.tabs || ''}${o.border || ''}<w:spacing w:before="${o.before ?? 0}" w:after="${o.after ?? 80}"${o.line ? ` w:line="${o.line}" w:lineRule="auto"` : ''}/>${o.jc ? `<w:jc w:val="${o.jc}"/>` : ''}</w:pPr>${inner}</w:p>`;
+const dxField = (instr, cached, o) => `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${instr} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${dxRun(cached, o)}<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+function dxImgSize(url) { return new Promise(r => { const im = new Image(); im.onload = () => r([im.naturalWidth || 300, im.naturalHeight || 100]); im.onerror = () => r([300, 100]); im.src = url; }); }
+function dxBytes(url) { const b64 = url.slice(url.indexOf(',') + 1), bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+const dxExt = url => /image\/jpe?g/.test(url) ? 'jpeg' : /svg/.test(url) ? 'svg' : 'png';
+function dxDrawing(rid, id, wEmu, hEmu, name) {
+  return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${wEmu}" cy="${hEmu}"/><wp:docPr id="${id}" name="${DX.esc(name)}"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="${DX.esc(name)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${wEmu}" cy="${hEmu}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+}
+const dxCell = (inner, w, o = {}) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${o.shd ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.shd}"/>` : ''}${o.noB ? '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/></w:tcBorders>' : ''}<w:vAlign w:val="${o.va || 'center'}"/></w:tcPr>${inner}</w:tc>`;
+function dxTable(head, rows, widths, o = {}) {
+  const sz = o.sz || 16, bd = '<w:tblBorders>' + ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(k => `<w:${k} w:val="single" w:sz="4" w:space="0" w:color="666666"/>`).join('') + '</w:tblBorders>';
+  const cp = (t, w, shd, b) => dxCell(dxP(dxRun(t, {sz, b}), {after: 0}), w, {shd});
+  return `<w:tbl><w:tblPr><w:tblW w:w="${widths.reduce((a, b) => a + b, 0)}" w:type="dxa"/>${bd}<w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="70" w:type="dxa"/><w:right w:w="70" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${widths.map(w => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>`
+    + (head ? `<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>${head.map((t, i) => cp(t, widths[i], 'E5E8EE', true)).join('')}</w:tr>` : '')
+    + rows.map(r => `<w:tr><w:trPr><w:cantSplit/></w:trPr>${r.map((t, i) => cp(t, widths[i], o.firstShd && i === 0 ? 'EEF0F4' : null, o.firstShd && i === 0)).join('')}</w:tr>`).join('') + '</w:tbl>';
+}
+async function repDocx(m) {
+  const items = REP.items, W = 10206, rels = [], media = [], enc = new TextEncoder(); let rid = 10, imgN = 0, did = 1;
+  const addImg = url => { const id = 'rId' + (rid++), ext = dxExt(url), name = 'image' + (++imgN) + '.' + ext; media.push(['word/media/' + name, dxBytes(url)]); return {id, name, ext}; };
+  // üst bilgi için logo (header1 kendi ilişki dosyasına sahip)
+  let logoSize = null, logoBytes = null, logoExt = 'png'; if (m.logo) { logoSize = await dxImgSize(m.logo); logoBytes = dxBytes(m.logo); logoExt = dxExt(m.logo); }
+  const logoEmu = (maxH, maxW) => { const [w, h] = logoSize, s = Math.min(maxH / h, maxW / w); return [DX.mm(w * s), DX.mm(h * s)]; };   // w,h px -> mm ölçeği: oran korunur
+  const hdrLogo = m.logo ? (() => { const [w, h] = logoSize, sc = Math.min(15 / h, 46 / w); return dxDrawing('rIdLogo', 900, DX.mm(w * sc), DX.mm(h * sc), 'logo'); })() : '';
+  const meta = [['Dok. No', m.docNo], ['Tarih', m.date], ['Proje No', m.project], ['Revizyon', m.rev]].filter(x => x[1]);
+  const header = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${dxNS}><w:tbl><w:tblPr><w:tblW w:w="${W}" w:type="dxa"/><w:tblBorders><w:bottom w:val="single" w:sz="8" w:space="0" w:color="000000"/></w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="2700"/><w:gridCol w:w="4806"/><w:gridCol w:w="2700"/></w:tblGrid><w:tr>`
+    + dxCell(dxP(hdrLogo, {after: 0}), 2700)
+    + dxCell(dxP(dxRun(m.title, {b: 1, sz: 24}), {jc: 'center', after: 0}), 4806)
+    + dxCell(meta.map(([k, v]) => dxP(dxRun(k + ': ', {sz: 15, color: '444444'}) + dxRun(v, {b: 1, sz: 15}), {jc: 'right', after: 0})).join(''), 2700) + '</w:tr></w:tbl>' + dxP('', {after: 0}) + '</w:hdr>';
+  const ftTabs = `<w:tabs><w:tab w:val="center" w:pos="${W / 2}"/><w:tab w:val="right" w:pos="${W}"/></w:tabs>`, topB = '<w:pBdr><w:top w:val="single" w:sz="6" w:space="2" w:color="000000"/></w:pBdr>';
+  const footer = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${dxNS}>${dxP(dxRun(m.org, {sz: 16}) + '<w:r><w:tab/></w:r>' + dxRun(m.cls, {b: 1, sz: 16, sp: 20}) + '<w:r><w:tab/></w:r>' + dxRun('Sayfa ', {sz: 16}) + dxField('PAGE', '1', {sz: 16}) + dxRun(' / ', {sz: 16}) + dxField('NUMPAGES', '1', {sz: 16}), {tabs: ftTabs, border: topB, after: 0})}</w:ftr>`;
+  const footerFirst = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${dxNS}>${dxP(dxRun(m.cls, {b: 1, sz: 20, sp: 30}), {jc: 'center', border: topB, after: 0})}</w:ftr>`;
+  const headerFirst = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${dxNS}>${dxP(dxRun(m.cls, {b: 1, sz: 20, sp: 30}), {jc: 'center', border: '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="2" w:color="000000"/></w:pBdr>', after: 0})}</w:hdr>`;
+  const parts = []; const pb = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+  // --- kapak ---
+  let coverLogo = ''; if (m.logo) { const [w, h] = logoSize, sc = Math.min(28 / h, 70 / w), a = addImg(m.logo); coverLogo = dxDrawing(a.id, did++, DX.mm(w * sc), DX.mm(h * sc), 'logo'); }
+  parts.push(dxP(coverLogo + (m.org ? '<w:r><w:tab/></w:r>' + dxRun(m.org, {sz: 22}) : ''), {tabs: `<w:tabs><w:tab w:val="right" w:pos="${W}"/></w:tabs>`, after: 2600}));
+  parts.push(dxP(dxRun(m.title, {b: 1, sz: 52}), {jc: 'center', before: 1800, after: 1800, line: 276}));
+  parts.push(dxTable(null, [['Doküman no', m.docNo], ['Proje no', m.project], ['Revizyon', m.rev], ['Tarih', m.date], ['Gizlilik derecesi', m.cls]].filter(x => x[1]), [2800, 5400], {sz: 21, firstShd: true}).replace('<w:tblW w:w="8200" w:type="dxa"/>', '<w:tblW w:w="8200" w:type="dxa"/><w:jc w:val="center"/>'));
+  parts.push(dxP('', {before: 1800, after: 0}));
+  parts.push(dxTable(['Hazırlayan', 'Kontrol eden', 'Onaylayan'], [[m.prep || ' ', m.chk || ' ', m.appr || ' ']], [3400, 3400, 3400], {sz: 19}));
+  parts.push(pb);
+  // --- özet / revizyon / içindekiler ---
+  const {toc} = repPaginate(m); let bm = 0; const tocBm = [];
+  const sumParas = m.summary ? [dxP(dxRun('Özet', {b: 1, sz: 26}), {keep: 1, after: 100})].concat(m.summary.split(/\n\s*\n/).map(p => dxP(dxRun(p.replace(/\n/g, ' ')), {jc: 'both'}))) : [];
+  const revRows = (m.revs || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => l.split('|').map(x => x.trim()));
+  parts.push(...sumParas);
+  if (revRows.length) { parts.push(dxP(dxRun('Revizyon geçmişi', {b: 1, sz: 24}), {before: 200, keep: 1, after: 80})); parts.push(dxTable(['Rev', 'Tarih', 'Açıklama'], revRows.map(r => [r[0] || '', r[1] || '', r.slice(2).join(' | ')]), [1000, 1800, 7406], {sz: 18})); }
+  parts.push(dxP(dxRun('İçindekiler', {b: 1, sz: 24}), {before: 200, keep: 1, after: 80}));
+  const tocIdx = parts.length; parts.push('@@TOC@@'); parts.push(pb);
+  // --- içerik ---
+  let figN = 0, tabN = 0, ti = 0; const tocRows = [];
+  const bmark = (inner, name) => { const id = ++bm; return `<w:bookmarkStart w:id="${id}" w:name="${name}"/>${inner}<w:bookmarkEnd w:id="${id}"/>`; };
+  for (const it of items) {
+    if (it.type === 'fig') {
+      figN++; const nm = '_Ref_f' + figN, a = addImg(it.url), w = 180, hh = Math.min(w * it.ar, 150), ww = hh / it.ar; tocRows.push([`Şekil ${figN} – ${it.title || ''}`, nm, toc[ti++]?.[1] ?? '']);
+      parts.push(dxP(dxDrawing(a.id, did++, DX.mm(ww), DX.mm(hh), 'sekil' + figN), {jc: 'center', keep: 1, after: 40}));
+      parts.push(dxP(bmark(dxRun('Şekil ' + figN, {b: 1, sz: 18}) + dxRun(' – ' + (it.title || ''), {sz: 18}), nm), {jc: 'center', after: it.note ? 20 : 200}));
+      if (it.note) parts.push(dxP(dxRun(it.note, {sz: 17, color: '333333'}), {after: 200}));
+    } else if (it.type === 'table') {
+      tabN++; const nm = '_Ref_t' + tabN; tocRows.push([`Tablo ${tabN} – ${it.title || ''}`, nm, toc[ti++]?.[1] ?? '']);
+      parts.push(dxP(bmark(dxRun('Tablo ' + tabN, {b: 1, sz: 18}) + dxRun(' – ' + (it.title || ''), {sz: 18}), nm), {keep: 1, before: 100, after: 60}));
+      const nc = it.head.length, wcol = Math.floor(W / nc), ws = it.head.map(() => wcol); ws[0] += W - wcol * nc;
+      parts.push(dxTable(it.head, it.rows, ws, {sz: 15})); if (it.note) parts.push(dxP(dxRun(it.note, {sz: 16, color: '333333'}), {before: 60, after: 200})); else parts.push(dxP('', {after: 120}));
+    } else if (it.type === 'text') {
+      if (it.title) { const nm = '_Ref_x' + (++bm); tocRows.push([it.title, nm, toc[ti++]?.[1] ?? '']); parts.push(dxP(bmark(dxRun(it.title, {b: 1, sz: 24}), nm), {keep: 1, before: 120, after: 80})); }
+      for (const p of it.body.split(/\n\s*\n/)) parts.push(dxP(dxRun(p.replace(/\n/g, ' ')), {jc: 'both'}));
+    }
+  }
+  parts[tocIdx] = tocRows.map(([t, nm, pg]) => dxP(dxRun(t) + '<w:r><w:tab/></w:r>' + dxField(`PAGEREF ${nm} \\h`, String(pg)), {tabs: `<w:tabs><w:tab w:val="right" w:leader="dot" w:pos="${W}"/></w:tabs>`, after: 30})).join('') || dxP('', {});
+  const sect = `<w:sectPr><w:headerReference w:type="default" r:id="rIdH1"/><w:headerReference w:type="first" r:id="rIdH2"/><w:footerReference w:type="default" r:id="rIdF1"/><w:footerReference w:type="first" r:id="rIdF2"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1650" w:right="850" w:bottom="1100" w:left="850" w:header="450" w:footer="400" w:gutter="0"/><w:titlePg/></w:sectPr>`;
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${dxNS}><w:body>${parts.join('')}${sect}</w:body></w:document>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="20"/><w:szCs w:val="20"/><w:lang w:val="tr-TR"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style></w:styles>`;
+  const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdS" Type="${R}/styles" Target="styles.xml"/><Relationship Id="rIdH1" Type="${R}/header" Target="header1.xml"/><Relationship Id="rIdH2" Type="${R}/header" Target="header2.xml"/><Relationship Id="rIdF1" Type="${R}/footer" Target="footer1.xml"/><Relationship Id="rIdF2" Type="${R}/footer" Target="footer2.xml"/>` + media.map(([p], i) => { const nm = p.split('/').pop(); const id = 'rId' + (10 + i); return `<Relationship Id="${id}" Type="${R}/image" Target="media/${nm}"/>`; }).join('') + '</Relationships>';
+  const files = [['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="svg" ContentType="image/svg+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/word/footer2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>`],
+    ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${R}/officeDocument" Target="word/document.xml"/></Relationships>`],
+    ['word/document.xml', doc], ['word/styles.xml', styles], ['word/_rels/document.xml.rels', docRels], ['word/header1.xml', header], ['word/header2.xml', headerFirst], ['word/footer1.xml', footer], ['word/footer2.xml', footerFirst]];
+  if (m.logo) { files.push(['word/media/logo.' + logoExt, logoBytes], ['word/_rels/header1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdLogo" Type="${R}/image" Target="media/logo.${logoExt}"/></Relationships>`]); if (logoExt === 'svg') toast('SVG logo Word’de görünmeyebilir; PNG/JPEG önerilir', 6000); }
+  return XLSX.zip([...files, ...media], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+}
+async function repDocxSave() { const m = repMeta(); try { const b = await repDocx(m); await saveBlob(b, sanitizeName(m.docNo || m.title || 'rapor') + '_' + sanitizeName(m.rev || 'A') + '.docx'); } catch (e) { toast('Word çıktısı hatası: ' + e.message, 8000); } }
 
 </script>
 </body>
