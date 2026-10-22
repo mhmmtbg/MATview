@@ -16,6 +16,11 @@ function extraAnalysisCards() {
       fr('Kapsam', selIn('srScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
       h('div', {class: 'btns'}, btn('SRS hesapla', computeSRS, 'primary')),
       h('div', {id: 'srInfo', class: 'note'}, 'Smallwood rampa-değişmez süzgeci, mutlak ivme yanıtı (SDOF). f max örnekleme hızının 1/6’sını aşarsa kırpılır; artık (kalıcı) yanıt dahildir.')),
+    card('Harmonik / yan-band imleçleri',
+      fr('Temel f0 (Hz)', numIn('hmF0', 100)), fr('Harmonik sayısı', numIn('hmN', 10, {min: 1, max: 100, step: 1})),
+      fr('Yan-band aralığı (Hz)', numIn('hmFm', 0, {min: 0})), fr('Yan-band sayısı', numIn('hmNs', 2, {min: 1, max: 10, step: 1})),
+      h('div', {class: 'btns'}, btn('Çiz', applyHarm, 'primary'), btn('En yüksek tepeden f0 al', pickHarm), btn('Kaldır', () => { S.specPlot.harm = null; S.specPlot.invalidate(); })),
+      h('div', {class: 'note'}, 'Spektrum görünümüne k×f0 çizgileri (ve ± m×aralık yan-bantları) çizer; PNG/SVG çıktısına da girer. Yan-band aralığı için ör. devir/dişli frekansı girilir.')),
     card('FRF (iki kanallı, H1/H2 + koherans)',
       fr('Giriş (referans)', h('select', {id: 'frIn'})), fr('Çıkış (yanıt)', h('select', {id: 'frOut'})),
       fr('NFFT', selIn('frN', [256, 512, 1024, 2048, 4096, 8192, 16384].map(v => [v, v]), 2048)),
@@ -86,4 +91,11 @@ async function computeFRF() {
     P.fitAll(); aC.yAuto = false; aC.ylim = [0, 1.05]; for (const q of [aM, aP, aC]) if (q.xlim[0] <= 0) q.xlim[0] = r.f[1]; P.invalidate();
     $('#frInfo').textContent = `Δf=${fmtNum(r.df, 4)} Hz · ${r.nseg} bölüt` + (r.nseg < 8 ? ' · UYARI: bölüt sayısı az, koherans güvenilmez (düşük NFFT veya daha uzun kayıt deneyin)' : ''); switchView('spec');
   });
+}
+
+function applyHarm() { const P = S.specPlot, f0 = num('hmF0'); if (!(f0 > 0)) return toast('f0 > 0 olmalı'); P.harm = {f0, n: Math.max(1, num('hmN') | 0), fm: Math.max(0, num('hmFm') || 0), nsb: Math.max(1, num('hmNs') | 0)}; P.invalidate(); switchView('spec'); }
+function pickHarm() {
+  const P = S.specPlot, ax = P.axes[0], t = ax && ax.traces.find(x => x.visible && x.x); if (!t) return toast('Önce bir spektrum hesaplayın');
+  let m = -1, v = -Infinity; for (let i = 1; i < t.x.length; i++) { if (t.x[i] < ax.xlim[0] || t.x[i] > ax.xlim[1]) continue; if (t.y[i] > v) { v = t.y[i]; m = i; } }
+  if (m < 0) return; $('#hmF0').value = (+t.x[m].toPrecision(6)); applyHarm();
 }

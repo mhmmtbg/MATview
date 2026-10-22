@@ -75,3 +75,9 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 ## Büyük binary dosyalar ve ek analizler
 - 200 MB üstü binary dosyalar blok blok (File.slice) okunur; yalnız Alanlar sayfasında tanımlı alanlar çıkarılır (ham bayt kanalları yok). 2,65 GB dosya ≈3 sn, ≈70 MB bellek. Test: `test/pw_stream.py` (parçalı ve bütün okuma aynı sonucu verir).
 - Analiz sekmesi: oktav/1/3 oktav bant seviyeleri (Z/A/C ağırlık, genel seviye), SRS (Smallwood, mutlak ivme, Q ve nokta/oktav ayarlı), iki kanallı FRF (H1/H2, faz, koherans). Çekirdek: `src/dsp.js`, arayüz: `src/app8.js`, testler: `test/t_an.js` (analitik doğrulamalar), `test/pw_an.py`.
+
+## Rapor, harmonik imleç, WAV, bit akışı
+- **Rapor** (Çıktı sekmesi / "Rapora ekle"): görünümleri, istatistik/veri özeti tablolarını ve notları toplar; kapak, özet+revizyon geçmişi+içindekiler, her sayfada üstte logo–rapor adı–dok no/tarih/proje no/revizyon, altta gizlilik derecesi ve "Sayfa x / N" olan A4 rapor üretir. Bilgiler üretmeden önce sorulur (kaydedilir; logo isteğe bağlı). Önizlemeden "Yazdır / PDF" veya HTML. Kod: `src/app9.js`, test: `test/pw_rep.py`, örnek çıktı: `sablon/ornek_rapor.pdf` (sentetik).
+- **Harmonik/yan-band imleçleri**: Analiz sekmesi; spektrum görünümünde k×f0 ve ±m×aralık çizgileri (PNG/SVG'ye de girer).
+- **WAV** (PCM 8/16/24/32, float 32/64, çok kanallı) açılır.
+- **Bit akışı alanı** (`ub`/`sb`, Bit="a-b"): 12/14 bit paketli telemetre için; şablonda örnek var.

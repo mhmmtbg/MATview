@@ -97,6 +97,8 @@ FIELDS = [
  ('BAYRAK_0', 'KONTROL_1', 'u8', 'BE', '0', '', '', 1, 0, 'Bit bayrağı'),
  ('BAYRAK_1', 'KONTROL_1', 'u8', 'BE', '1', '', '', 1, 0, 'Bit bayrağı'),
  ('BAYRAK_2', 'KONTROL_1', 'u8', 'BE', '2', '', '', 1, 0, 'Bit bayrağı'),
+ ('PAKET12_A', 'SENSOR_101', 'ub', 'BE', '0-11', '', '', 1, 0, '12 bit paketli (bit akışı): 1. örnek, bitler 0-11'),
+ ('PAKET12_B', 'SENSOR_101', 'ub', 'BE', '12-23', '', '', 1, 0, '12 bit paketli: 2. örnek (aynı 3 baytta), bitler 12-23'),
  ('ADC_KANAL', 'SENSOR_1', 'u16', 'BE', '', '(x-2048)/4096*5', 'V', 1, 0, '12 bit ADC sayısını 0–5 V’a çevirme (örnek)'),
 ]
 for f in FIELDS: al.append(f)
@@ -108,7 +110,7 @@ d1.add('C2:C500'); d2.add('D2:D500')
 
 # ---- 5. Türler (başvuru) ----
 tp = wb.create_sheet('Türler'); tp.append(('Tür', 'Bayt', 'Aralık / anlam'))
-for r in [('u8', 1, '0 … 255'), ('i8', 1, '−128 … 127'), ('u16', 2, '0 … 65.535'), ('i16', 2, '−32.768 … 32.767'), ('u32', 4, '0 … 4.294.967.295'), ('i32', 4, '−2.147.483.648 … 2.147.483.647'), ('f32', 4, 'IEEE-754 tek duyarlık'), ('f64', 8, 'IEEE-754 çift duyarlık')]: tp.append(r)
+for r in [('u8', 1, '0 … 255'), ('i8', 1, '−128 … 127'), ('u16', 2, '0 … 65.535'), ('i16', 2, '−32.768 … 32.767'), ('u32', 4, '0 … 4.294.967.295'), ('i32', 4, '−2.147.483.648 … 2.147.483.647'), ('f32', 4, 'IEEE-754 tek duyarlık'), ('ub / sb', '1-5', 'Bit akışı (işaretsiz/işaretli): Bit = a-b, başlangıç baytının en anlamlı bitinden sayılır (0=ilk bit), en çok 32 bit; 12/14 bit paketli telemetre için'), ('f64', 8, 'IEEE-754 çift duyarlık')]: tp.append(r)
 tp.append(()); tp.append(('Formül işlevleri', '', 'x, + − * / ^, ( ), abs sqrt sin cos tan exp log log10 sign round floor ceil atan2(a,b) pow(a,b) max(a,b) min(a,b) ve başka alan adları'))
 for c in 'ABC': tp[c + '1'].fill = HDR; tp[c + '1'].font = HF
 tp.column_dimensions['A'].width = 18; tp.column_dimensions['C'].width = 80
@@ -125,7 +127,7 @@ for k in range(NF):
         put('ISIL', 1, '<h', int((25 + 0.05 * k + 40) * 10)); put('ISIL', 3, '>H', int((25 + 2 * math.sin(t) + 40) / 0.0625) & 0xFFF)
         put('NAVIG', 1, '>f', 39.9 + 0.001 * k); put('NAVIG', 5, '>f', 32.8 + 0.0008 * k)
     else: put('YAKIT', 1, '>H', int(max(0, 100 - 0.01 * k) * 655.35))
-    fr_[start['KONTROL']] = ((k // 20 % 4) << 4) | (1 if k % 10 < 5 else 0) | (2 if k % 20 < 10 else 0); put('SENSOR', 1, '>H', int(2048 + 1500 * math.sin(2 * t)))
+    fr_[start['KONTROL']] = ((k // 20 % 4) << 4) | (1 if k % 10 < 5 else 0) | (2 if k % 20 < 10 else 0); put('SENSOR', 1, '>H', int(2048 + 1500 * math.sin(2 * t))); pk = (((k * 7) % 4096) << 12) | ((k * 13) % 4096); fr_[start['SENSOR'] + 100:start['SENSOR'] + 103] = pk.to_bytes(3, 'big')
     if k in LOST: continue
     buf += fr_
 open(f'{out}/sablon_deneme.bin', 'wb').write(buf); print('şablon + deneme binary:', len(buf), 'bayt,', len(buf) // L, 'kare')

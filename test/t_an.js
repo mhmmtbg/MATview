@@ -24,4 +24,10 @@ let r = DSP.frf(xin, yout, 1000, {nfft: 1024, overlap: 0.5}); const m = 100; ass
 for (let i = 0; i < M; i++) yout[i] = 2 * xin[i] + 1.0 * rnd(); r = DSP.frf(xin, yout, 1000, {nfft: 1024}); assert(r.coh[m] < 0.95 && r.h1[m] <= r.h2[m] + 1e-9);
 // faz: 90° gecikme için y[n]=x[n-?]; basit gecikme d örnek -> faz = -360*f*d/fs
 const dl = 5; for (let i = 0; i < M; i++) yout[i] = i >= dl ? xin[i - dl] : 0; r = DSP.frf(xin, yout, 1000, {nfft: 1024}); const f0 = r.f[m]; assert(Math.abs(r.phase[m] - (-360 * f0 * dl / 1000)) < 2, 'faz ' + r.phase[m]);
-console.log('t_an OK');
+// WAV: yazıcı -> okuyucu gidiş-dönüş (16 bit) ve 24 bit / float el yapımı
+(async () => { const y = Float64Array.from({length: 1000}, (_, i) => 0.5 * Math.sin(i / 7)), bl = DSP.wavBlob(y, 8000), u = new Uint8Array(await bl.arrayBuffer()), w = DSP.parseWav(u);
+  assert.strictEqual(w.rate, 8000); assert.strictEqual(w.channels.length, 1); let mx = 0; for (let i = 0; i < 1000; i++) mx = Math.max(mx, Math.abs(w.channels[0][i] - y[i])); assert(mx < 1e-4, 'wav ' + mx);
+  // 2 kanallı float32
+  const b = new ArrayBuffer(44 + 16), dv = new DataView(b), wr = (o, s) => [...s].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0))); wr(0, 'RIFF'); dv.setUint32(4, 52, true); wr(8, 'WAVE'); wr(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 3, true); dv.setUint16(22, 2, true); dv.setUint32(24, 1000, true); dv.setUint32(28, 8000, true); dv.setUint16(32, 8, true); dv.setUint16(34, 32, true); wr(36, 'data'); dv.setUint32(40, 16, true);
+  [0.25, -0.5, 0.75, 1].forEach((v, i) => dv.setFloat32(44 + i * 4, v, true)); const f = DSP.parseWav(new Uint8Array(b)); assert.deepStrictEqual(Array.from(f.channels[1]), [-0.5, 1]); assert.strictEqual(f.float, true);
+  console.log('t_an OK'); })();

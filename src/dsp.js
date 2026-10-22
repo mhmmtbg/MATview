@@ -382,6 +382,27 @@ const DSP = (() => {
     return res;
   }
 
+  // WAV okuyucu: PCM 8/16/24/32 ve float 32/64, çok kanallı; kanallar tam ölçeğe (±1) normalize edilir
+  function parseWav(u8) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), tag = o => String.fromCharCode(u8[o], u8[o + 1], u8[o + 2], u8[o + 3]);
+    if (u8.length < 44 || tag(0) !== 'RIFF' || tag(8) !== 'WAVE') throw new Error('Geçerli bir WAV dosyası değil');
+    let p = 12, fmt = null, data = null;
+    while (p + 8 <= u8.length) { const id = tag(p), sz = dv.getUint32(p + 4, true), b = p + 8;
+      if (id === 'fmt ') fmt = {tag: dv.getUint16(b, true), ch: dv.getUint16(b + 2, true), rate: dv.getUint32(b + 4, true), bits: dv.getUint16(b + 14, true), ext: sz >= 26 ? dv.getUint16(b + 24, true) : 0};
+      else if (id === 'data') { data = [b, Math.min(sz, u8.length - b)]; break; }
+      p = b + sz + (sz & 1); }
+    if (!fmt || !data) throw new Error('WAV başlığı eksik');
+    const ft = fmt.tag === 0xFFFE ? fmt.ext : fmt.tag, B = fmt.bits >> 3, nch = fmt.ch, n = Math.floor(data[1] / (B * nch));
+    if (!(ft === 1 || ft === 3) || ![1, 2, 3, 4, 8].includes(B)) throw new Error('Desteklenmeyen WAV biçimi (tür ' + ft + ', ' + fmt.bits + ' bit)');
+    const out = Array.from({length: nch}, () => new Float64Array(n));
+    for (let i = 0; i < n; i++) for (let c = 0; c < nch; c++) { const o = data[0] + (i * nch + c) * B; let v;
+      if (ft === 3) v = B === 4 ? dv.getFloat32(o, true) : dv.getFloat64(o, true);
+      else if (B === 1) v = (dv.getUint8(o) - 128) / 128; else if (B === 2) v = dv.getInt16(o, true) / 32768;
+      else if (B === 3) { let x = u8[o] | (u8[o + 1] << 8) | (u8[o + 2] << 16); if (x & 0x800000) x -= 0x1000000; v = x / 8388608; } else v = dv.getInt32(o, true) / 2147483648;
+      out[c][i] = v; }
+    return {rate: fmt.rate, channels: out, bits: fmt.bits, float: ft === 3};
+  }
+
   // ---- 1/3 oktav (ve 1/1 oktav) bant seviyeleri: PSD'nin bantlar üzerinden integrali ----
   function wA(f) { const f2 = f * f, r = 12194 ** 2 * f2 * f2 / ((f2 + 20.6 ** 2) * Math.sqrt((f2 + 107.7 ** 2) * (f2 + 737.9 ** 2)) * (f2 + 12194 ** 2)); return 20 * Math.log10(r) + 2.0; }
   function wC(f) { const f2 = f * f, r = 12194 ** 2 * f2 / ((f2 + 20.6 ** 2) * (f2 + 12194 ** 2)); return 20 * Math.log10(r) + 0.06; }
@@ -440,6 +461,6 @@ const DSP = (() => {
     return {f, h1, h2, phase: ph, coh, nseg, nfft, df: fs / nfft};
   }
 
-  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, srs, srsFreqs, frf, wA, wC};
+  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, parseWav, srs, srsFreqs, frf, wA, wC};
 })();
 if (typeof module !== 'undefined') module.exports = DSP;

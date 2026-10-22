@@ -62,6 +62,12 @@ const BIN = (() => {
     const lo = +m[1], hi = m[2] != null ? +m[2] : lo; if (hi < lo || hi > 31) throw new Error('Bit aralığı hatalı: ' + s); return [lo, hi];
   }
   function spec(lay, f) {
+    if (/^[us]b$/i.test(f.type || '')) {   // bit akışı alanı: başlangıç baytının MSB'sinden itibaren "a-b" bitleri (0 = ilk bit), en çok 32 bit; 12/14 bit paketli veri için
+      const m = /^(\d+)\s*[-:]\s*(\d+)$/.exec(String(f.bit ?? '').trim()); if (!m || +m[2] < +m[1] || +m[2] - +m[1] > 31) throw new Error(f.name + ': ub/sb türü için Bit alanı "a-b" olmalı (örn. 4-15, en çok 32 bit)');
+      const s0 = String(f.src ?? '').trim(); let off; if (lay.pos.has(s0)) off = lay.pos.get(s0); else if (/^#?\d+$/.test(s0)) off = +s0.replace('#', ''); else throw new Error('Başlangıç hücresi bulunamadı: "' + s0 + '"');
+      const lo = +m[1], hi = +m[2], last = off + (hi >> 3); if (last >= lay.L) throw new Error(f.name + ': alan çerçeve sınırını aşıyor');
+      return {off, size: 1, bitfield: {lo, hi, signed: /^s/i.test(f.type)}, bits: null, float: false, le: false, getter: 'getUint8'};
+    }
     const t = TYPES[(f.type || 'u8').toLowerCase()]; if (!t) throw new Error('Bilinmeyen tür: ' + f.type);
     let off; const s = String(f.src ?? '').trim();
     if (lay.pos.has(s)) off = lay.pos.get(s); else if (/^#?\d+$/.test(s)) off = +s.replace('#', ''); else throw new Error('Başlangıç hücresi bulunamadı: "' + s + '"');
@@ -69,6 +75,9 @@ const BIN = (() => {
     return {off, size: t[0], getter: t[1], le: /^(le|k)/i.test(f.endian || '') , float: /^f/.test(f.type), bits: parseBits(f.bit)};
   }
   function extract(u8, pos, sp) {
+    if (sp.bitfield) { const {lo, hi, signed} = sp.bitfield, w = hi - lo + 1, n = pos.length, out = new Float64Array(n), nb = (hi >> 3) - (lo >> 3) + 1;
+      for (let k = 0; k < n; k++) { let acc = 0; const b0 = pos[k] + sp.off + (lo >> 3); for (let j = 0; j < nb; j++) acc = acc * 256 + u8[b0 + j]; const sh = nb * 8 - ((lo & 7) + w); acc = Math.floor(acc / 2 ** sh) % 2 ** w; if (signed && acc >= 2 ** (w - 1)) acc -= 2 ** w; out[k] = acc; }
+      return out; }
     const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), n = pos.length, out = new Float64Array(n), g = sp.getter, le = sp.le, sz = sp.size, off = sp.off;
     for (let k = 0; k < n; k++) out[k] = sz === 1 ? dv[g](pos[k] + off) : dv[g](pos[k] + off, le);
     if (sp.bits && !sp.float) { const [lo, hi] = sp.bits, w = hi - lo + 1, mask = w >= 32 ? 0xFFFFFFFF : (2 ** w - 1); for (let k = 0; k < n; k++) out[k] = ((out[k] >>> 0) >>> lo) & mask; }

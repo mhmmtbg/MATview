@@ -187,7 +187,7 @@ function initUX() {
   for (const [dd, menu] of [['btnOpenM', 'mOpen'], ['btnSet', 'mSet']]) $('#' + dd).onclick = e => { e.stopPropagation(); const m = $('#' + menu), was = m.classList.contains('hidden'); closeMenus(); m.classList.toggle('hidden', !was); };
   document.addEventListener('click', e => { if (!e.target.closest('.dd') ) closeMenus(); else if (e.target.closest('.ddm button')) closeMenus(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenus(); });
-  $('#btnKeys').onclick = shortcutsDialog; $('#btnPng').onclick = savePng; $('#btnSvg').onclick = saveSvg;
+  $('#btnKeys').onclick = shortcutsDialog; $('#btnPng').onclick = savePng; $('#btnRep').onclick = repAddView; $('#btnSvg').onclick = saveSvg;
   $('#btnDbl').onclick = () => { S.pref.dbl = S.pref.dbl === 'same' ? 'new' : 'same'; try { localStorage.setItem('mv.dbl', S.pref.dbl); } catch (_) {} updDblBtn(); toast('Çift tık artık: ' + (S.pref.dbl === 'same' ? 'aktif grafiğe ekle' : 'yeni alt grafik')); };
   $('#btnTab').onclick = () => { $('#fileIn').click(); }; $('#wTab').onclick = () => $('#fileIn').click(); $('#wMat').onclick = () => $('#btnOpen').click(); $('#wUnv').onclick = () => $('#btnOpen').click(); $('#wBin').onclick = () => $('#btnBin').click();
   $('#btnSelAll').onclick = () => { const all = S.rowOrder || []; if (all.length && all.every(c => S.selCh.has(c.uid))) S.selCh.clear(); else for (const c of all) S.selCh.add(c.uid); renderTree(); };

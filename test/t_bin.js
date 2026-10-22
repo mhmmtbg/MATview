@@ -16,4 +16,10 @@ const bt = BIN.spec(l, {name: 'x', src: 'B_1', type: 'u8', bit: '1-3'}); assert.
 assert.throws(() => BIN.spec(l, {name: 'x', src: 'YOK', type: 'u8'}));
 assert.deepStrictEqual(BIN.parseSync('EB 90 0xA5'), [0xEB, 0x90, 0xA5]);
 const cg = BIN.counterG([65534, 65535, 0, 3], 2); assert.deepStrictEqual(Array.from(cg.g), [0, 1, 2, 5]); assert.strictEqual(cg.lost, 2);
+// bit akışı: 3 bayt = 0xABC 0xDEF (iki 12 bit), işaretli 12 bit: 0xFFF = -1
+const gb = [['A', 'A', 'A', 'A']], lb = BIN.layout(gb, 'row'), ub8 = Uint8Array.from([0xAB, 0xCD, 0xEF, 0x12]);
+assert.deepStrictEqual(Array.from(BIN.extract(ub8, [0], BIN.spec(lb, {name: 'x', src: 'A_1', type: 'ub', bit: '0-11'}))), [0xABC]);
+assert.deepStrictEqual(Array.from(BIN.extract(ub8, [0], BIN.spec(lb, {name: 'x', src: 'A_1', type: 'ub', bit: '12-23'}))), [0xDEF]);
+assert.deepStrictEqual(Array.from(BIN.extract(Uint8Array.from([0xFF, 0xF0]), [0], BIN.spec(lb, {name: 'x', src: 'A_1', type: 'sb', bit: '0-11'}))), [-1]);
+assert.deepStrictEqual(Array.from(BIN.extract(ub8, [0], BIN.spec(lb, {name: 'x', src: 'A_1', type: 'ub', bit: '4-17'}))), [(0xABCDEF >> 6) & 0x3FFF]);
 console.log('t_bin OK');

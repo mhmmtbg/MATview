@@ -57,7 +57,7 @@ function binDialog() {
     const tb = h('tbody'), mk = f => {
       const tr = h('tr'), inp = (k, w, v) => h('input', {type: 'text', value: v ?? f[k], style: 'width:' + w + 'px', oninput: e => f[k] = e.target.value});
       const sel = (k, opts) => h('select', {onchange: e => f[k] = e.target.value}, opts.map(o => h('option', {value: o, selected: f[k] === o}, o)));
-      tr.append(h('td', null, inp('name', 110)), h('td', null, inp('src', 90)), h('td', null, sel('type', Object.keys(BIN.TYPES))), h('td', null, sel('endian', ['BE', 'LE'])), h('td', null, inp('bit', 44)), h('td', null, inp('expr', 150)), h('td', null, inp('unit', 44)), h('td', null, inp('period', 36)), h('td', null, inp('phase', 30)),
+      tr.append(h('td', null, inp('name', 110)), h('td', null, inp('src', 90)), h('td', null, sel('type', [...Object.keys(BIN.TYPES), 'ub', 'sb'])), h('td', null, sel('endian', ['BE', 'LE'])), h('td', null, inp('bit', 44)), h('td', null, inp('expr', 150)), h('td', null, inp('unit', 44)), h('td', null, inp('period', 36)), h('td', null, inp('phase', 30)),
         h('td', null, h('button', {onclick: () => { d.fields.splice(d.fields.indexOf(f), 1); tr.remove(); }}, '×'))); return tr;
     };
     for (const f of d.fields) tb.append(mk(f));

@@ -231,3 +231,15 @@ function featAdd(list) {
   S.feat.ys = new Set(list.map(c => c.name)); if (S.feat.x === '__idx' && f.cols.length > 1) { const other = f.cols.find(c => !S.feat.ys.has(c.name)); if (other && list.length === 1) { S.feat.x = other.name; } }
   setTab('feat'); refreshFeatUI(); featPlot();
 }
+
+/* ---------- WAV içe aktarma ---------- */
+async function wavOpen(file) {
+  await busy('WAV okunuyor: ' + file.name, async () => {
+    const w = DSP.parseWav(new Uint8Array(await file.arrayBuffer())), n = w.channels[0].length;
+    const f = {id: 'f' + (importFile.seq++), name: file.name, table: true, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: 1 / w.rate, baseFs: w.rate, cnts: {}, baseN: n, cols: []};
+    w.channels.forEach((v, i) => { const nm = w.channels.length === 1 ? 'ses' : 'kanal_' + (i + 1), ch = new Channel({name: nm, rest: nm, base: nm, comp: '', dev: 'Sütunlar', kind: 'other', n, file: f, label: nm, varIdx: -1, unit: '', tbl: true, binLoad: async () => v});
+      ch.dtS = 1 / w.rate; ch.t0 = 0; ch.spp = 1; ch.Tpkt = 1 / w.rate; ch.data = v; f.channels.push(ch); f.cols.push({name: nm, unit: '', data: v}); });
+    S.files.push(f); S.fopen.add(f.id); S.open.add(f.id + '/Sütunlar'); renderChips(); renderTree(); if (!S.plot.axes.length) addToNewAxes(f.channels.slice(0, 4), false);
+    toast(`${file.name}: ${w.channels.length} kanal · ${w.rate} Hz · ${w.bits} bit${w.float ? ' (float)' : ''} · ${fmtNum(n / w.rate, 5)} s`);
+  });
+}

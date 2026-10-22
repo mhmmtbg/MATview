@@ -276,6 +276,15 @@ class Plot {
       ctx.restore();
     }
     for (const b of this.bands || []) for (const ax of this.axes) { const r = ax.rect; const x0 = Math.max(r.x, this.xPx(ax, b.x0)), x1 = Math.min(r.x + r.w, this.xPx(ax, b.x1)); if (x1 > x0) { ctx.save(); ctx.globalAlpha = .13; ctx.fillStyle = b.color || '#2aa198'; ctx.fillRect(x0, r.y, x1 - x0, r.h); ctx.restore(); } }
+    if (this.harm && this.harm.f0 > 0) for (const ax of this.axes) {   // harmonik ve yan-band imleçleri
+      const r = ax.rect, hm = this.harm; ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+      for (let k = 1; k <= hm.n; k++) {
+        const f = k * hm.f0, x = this.xPx(ax, f); if (f > ax.xlim[1]) break;
+        if (f >= ax.xlim[0]) { ctx.strokeStyle = T.acc || '#2b6cb0'; ctx.setLineDash([]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + .5, r.y); ctx.lineTo(x + .5, r.y + r.h); ctx.stroke(); ctx.fillStyle = T.acc || '#2b6cb0'; ctx.fillText(k + '×', x, r.y + 11); }
+        if (hm.fm > 0) for (let m = 1; m <= hm.nsb; m++) for (const sg of [-1, 1]) { const fs_ = f + sg * m * hm.fm; if (fs_ <= 0 || fs_ < ax.xlim[0] || fs_ > ax.xlim[1]) continue; const xs = this.xPx(ax, fs_); ctx.strokeStyle = T.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(xs + .5, r.y); ctx.lineTo(xs + .5, r.y + r.h); ctx.stroke(); }
+      }
+      ctx.restore();
+    }
     // veri imleçleri
     this.cursors.forEach((c, k) => this.drawCursor(ctx, c, k, T));
     if (this.playhead != null) for (const ax of this.axes) { const x = this.xPx(ax, this.playhead), r = ax.rect; if (x >= r.x && x <= r.x + r.w) { ctx.save(); ctx.strokeStyle = T.sel; ctx.beginPath(); ctx.moveTo(x + .5, r.y); ctx.lineTo(x + .5, r.y + r.h); ctx.stroke(); ctx.restore(); } }
