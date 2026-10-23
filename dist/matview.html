@@ -160,6 +160,7 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
 #repPrev{position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;background:var(--bg)}
 .repBar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)}
 .repItem{display:flex;align-items:center;gap:4px;margin:3px 0}.repItem input{flex:1;min-width:0}.repNote{width:100%;margin-bottom:4px}
+.lgrip{cursor:move;text-align:center;line-height:8px;height:10px;color:var(--muted);user-select:none;touch-action:none}
 </style>
 </head>
 <body>
@@ -1547,6 +1548,7 @@ class SvgCtx {
   toString() { const close = '</g>'.repeat(this.open); return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${this.W}" height="${this.H}" viewBox="0 0 ${this.W} ${this.H}">\n${this.o.join('\n')}${close}\n</svg>\n`; }
 }
 
+const fmtHz = f => (f >= 1000 ? (f / 1000).toPrecision(4).replace(/\.?0+$/, '') + ' kHz' : (+f.toPrecision(5)) + ' Hz');
 class Plot {
   constructor(canvas, opts = {}) {
     this.cv = canvas; this.opts = opts; this.mode = 'pan';
@@ -1715,7 +1717,7 @@ class Plot {
       const vis = ax.traces.filter(t => t.visible); if (vis.length) {
         ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const lbl = new Map(vis.map(t => [t, t.label + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
-        const bw = wmax + 34, bh = vis.length * 16 + 6, bx = r.x + r.w - bw - 6, by = r.y + 6;
+        const bw = wmax + 34, bh = vis.length * 16 + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx = Math.max(r.x, Math.min(r.x + r.w - bw, r.x + r.w - bw - 6 + lp.dx)), by = Math.max(r.y, Math.min(r.y + r.h - bh, r.y + 6 + lp.dy));
         ctx.globalAlpha = .92; ctx.fillStyle = T.box; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1;
         ctx.strokeStyle = T.grid; ctx.strokeRect(bx + .5, by + .5, bw, bh);
         vis.forEach((t, i) => { const y = by + 11 + i * 16; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
@@ -1750,8 +1752,8 @@ class Plot {
       const r = ax.rect, hm = this.harm; ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
       for (let k = 1; k <= hm.n; k++) {
         const f = k * hm.f0, x = this.xPx(ax, f); if (f > ax.xlim[1]) break;
-        if (f >= ax.xlim[0]) { ctx.strokeStyle = T.acc || '#2b6cb0'; ctx.setLineDash([]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + .5, r.y); ctx.lineTo(x + .5, r.y + r.h); ctx.stroke(); ctx.fillStyle = T.acc || '#2b6cb0'; ctx.fillText(k + '×', x, r.y + 11); }
-        if (hm.fm > 0) for (let m = 1; m <= hm.nsb; m++) for (const sg of [-1, 1]) { const fs_ = f + sg * m * hm.fm; if (fs_ <= 0 || fs_ < ax.xlim[0] || fs_ > ax.xlim[1]) continue; const xs = this.xPx(ax, fs_); ctx.strokeStyle = T.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(xs + .5, r.y); ctx.lineTo(xs + .5, r.y + r.h); ctx.stroke(); }
+        if (f >= ax.xlim[0]) { ctx.strokeStyle = T.acc || '#2b6cb0'; ctx.setLineDash([]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + .5, r.y); ctx.lineTo(x + .5, r.y + r.h); ctx.stroke(); ctx.fillStyle = T.acc || '#2b6cb0'; ctx.save(); ctx.translate(x - 3, r.y + 4); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(k + '× ' + fmtHz(f), 0, 0); ctx.restore(); }
+        if (hm.fm > 0) for (let m = 1; m <= hm.nsb; m++) for (const sg of [-1, 1]) { const fs_ = f + sg * m * hm.fm; if (fs_ <= 0 || fs_ < ax.xlim[0] || fs_ > ax.xlim[1]) continue; const xs = this.xPx(ax, fs_); ctx.strokeStyle = T.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(xs + .5, r.y); ctx.lineTo(xs + .5, r.y + r.h); ctx.stroke(); ctx.save(); ctx.setLineDash([]); ctx.fillStyle = T.muted; ctx.font = '9px sans-serif'; ctx.translate(xs - 2, r.y + 4); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(fmtHz(fs_), 0, 0); ctx.restore(); }
       }
       ctx.restore();
     }
@@ -2574,7 +2576,13 @@ function buildTraces() {
   return r;
 }
 function applyXlim() { const ax = activeAxes(); if (!ax) return; S.plot.setXlim(ax, num('xmin'), num('xmax')); S.plot.invalidate(); syncLimits(); }
-function clearPlot() { S.plot.axes.slice().forEach(a => S.plot.removeAxes(a)); S.plot.active = null; S.colorIdx = 0; refreshAll(); }
+function clearPlot() {
+  S.plot.axes.slice().forEach(a => S.plot.removeAxes(a)); S.plot.active = null; S.colorIdx = 0;
+  if (S.specPlot) { S.specPlot.axes.slice().forEach(a => S.specPlot.removeAxes(a)); S.specPlot.active = null; S.specPlot.harm = null; S.specPlot.invalidate(); }   // spektrum görünümü de temizlenir
+  if (S.specView && S.specView.spec) { S.specView.spec = null; S.specView.rebuild && S.specView.rebuild(); S.specView.dirty = true; }
+  for (const id of ['spInfo', 'ocInfo', 'srInfo', 'frInfo']) { const e = $('#' + id); if (e && e.textContent) e.textContent = ''; }
+  if (S.view !== 'time') switchView('time'); refreshAll();
+}
 function applyFs() { const tr = activeTrace(); const v = num('fsIn'); if (!tr || !(v > 0)) return; tr.ch.setFs(v); S.plot.fitAll(true); refreshAll(); toast('Örnekleme frekansı güncellendi'); }
 function refreshAll() { refreshAxesUI(); refreshTraceInfo(); updateStats(); S.plot.invalidate(); if (typeof refreshCalcUI === 'function') refreshCalcUI(); }
 function refreshAxesUI() {
@@ -2728,7 +2736,7 @@ async function computeSpectrum(only) {
     }
     $('#spInfo').textContent = info.join('\n'); $('#spInfo').style.whiteSpace = 'pre-line';
     if (!sa.traces.length) { P.removeAxes(sa); return; }
-    P.fitAll(); if (sa.xlog) sa.xlim[0] = Math.max(sa.xlim[0], sa.traces[0].x[1] || 1e-3); switchView('spec');
+    P.fitAll(); if (sa.xlog) sa.xlim[0] = Math.max(sa.xlim[0], sa.traces[0].x[1] || 1e-3); harmRefresh(); switchView('spec');
   });
 }
 function findPeaks(f, y, n) {
@@ -3590,7 +3598,10 @@ function buildOv(P, ov) {
     if (i > 0 && main) bar.append(mk('merge', 'Bir üstteki alt grafikle birleştir (aynı eksen)', () => mergeUp(P, ax)));
     ov.append(bar); const part = {ax, bar, upd() { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; }}; ov._parts.push(part);
     if (P.legend && ax.traces.length) {
-      const lg = h('div', {class: 'lgd', 'aria-label': 'Lejant'}), rows = [];
+      const lg = h('div', {class: 'lgd', 'aria-label': 'Lejant'}), rows = [], grip = h('div', {class: 'lgrip', title: 'Tutup sürükleyerek taşı · çift tık: varsayılan yer'}, '⋯');
+      lg.append(grip);
+      grip.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); grip.setPointerCapture(e.pointerId); const lp = ax.lgPos || {dx: 0, dy: 0}, x0 = e.clientX - lp.dx, y0 = e.clientY - lp.dy; grip.onpointermove = ev => { ax.lgPos = {dx: ev.clientX - x0, dy: ev.clientY - y0}; part.upd(); P.invalidate(); }; grip.onpointerup = () => { grip.onpointermove = grip.onpointerup = null; }; };
+      grip.ondblclick = () => { ax.lgPos = null; part.upd(); P.invalidate(); };
       ax.traces.forEach((tr, k) => {
         const ex = h('span', {class: 'ex'}), x = h('button', {class: 'ib x', title: 'İzi kaldır', 'aria-label': 'İzi kaldır'}); x.innerHTML = ic('close', 10);
         const row = h('div', {class: 'lrow' + (tr.visible ? '' : ' off') + (P.active === ax && k === (ax.active || 0) ? ' cur' : ''), draggable: main ? 'true' : null, tabindex: 0, title: 'Tıkla: göster/gizle · Sağ tık: seçenekler' + (main ? ' · Sürükle: başka alt grafiğe taşı' : '')}, h('span', {class: 'sw', style: 'background:' + tr.color}), h('span', {class: 'nm'}, tr.label), ex, x);
@@ -3602,7 +3613,7 @@ function buildOv(P, ov) {
         lg.append(row); rows.push({tr, ex});
       });
       ov.append(lg); part.lg = lg; part.rows = rows;
-      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; lg.style.right = (P.W - r.x - r.w + 8) + 'px'; lg.style.top = r.y + 6 + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px';
+      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; const lp = ax.lgPos || {dx: 0, dy: 0}, lw = lg.offsetWidth || 120, lh = lg.offsetHeight || 40, right = Math.max(P.W - r.x - r.w - 0, Math.min(P.W - r.x - lw, P.W - r.x - r.w + 8 - lp.dx)), top = Math.max(r.y, Math.min(r.y + r.h - lh, r.y + 6 + lp.dy)); lg.style.right = right + 'px'; lg.style.top = top + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px';
         for (const q of rows) { const t = q.tr.visible ? P.legendExtra(q.tr, ax) : ''; if (q.ex._t !== t) { q.ex._t = t; q.ex.textContent = t; } } };
     }
     if (i < n - 1) {
@@ -4069,6 +4080,7 @@ function extraAnalysisCards() {
     card('Harmonik / yan-band imleçleri',
       fr('Temel f0 (Hz)', numIn('hmF0', 100)), fr('Harmonik sayısı', numIn('hmN', 10, {min: 1, max: 100, step: 1})),
       fr('Yan-band aralığı (Hz)', numIn('hmFm', 0, {min: 0})), fr('Yan-band sayısı', numIn('hmNs', 2, {min: 1, max: 10, step: 1})),
+      chkIn('hmAuto', 'Yeni spektrumda f0’ı en yüksek tepeden otomatik güncelle', true),
       h('div', {class: 'btns'}, btn('Çiz', applyHarm, 'primary'), btn('En yüksek tepeden f0 al', pickHarm), btn('Kaldır', () => { S.specPlot.harm = null; S.specPlot.invalidate(); })),
       h('div', {class: 'note'}, 'Spektrum görünümüne k×f0 çizgileri (ve ± m×aralık yan-bantları) çizer; PNG/SVG çıktısına da girer. Yan-band aralığı için ör. devir/dişli frekansı girilir.')),
     card('FRF (iki kanallı, H1/H2 + koherans)',
@@ -4143,12 +4155,15 @@ async function computeFRF() {
   });
 }
 
-function applyHarm() { const P = S.specPlot, f0 = num('hmF0'); if (!(f0 > 0)) return toast('f0 > 0 olmalı'); P.harm = {f0, n: Math.max(1, num('hmN') | 0), fm: Math.max(0, num('hmFm') || 0), nsb: Math.max(1, num('hmNs') | 0)}; P.invalidate(); switchView('spec'); }
-function pickHarm() {
-  const P = S.specPlot, ax = P.axes[0], t = ax && ax.traces.find(x => x.visible && x.x); if (!t) return toast('Önce bir spektrum hesaplayın');
+function applyHarm(keepView) { const P = S.specPlot, f0 = num('hmF0'); if (!(f0 > 0)) return toast('f0 > 0 olmalı'); P.harm = {f0, n: Math.max(1, num('hmN') | 0), fm: Math.max(0, num('hmFm') || 0), nsb: Math.max(1, num('hmNs') | 0)}; P.invalidate(); if (keepView !== false) switchView('spec'); }
+function peakF0() {
+  const P = S.specPlot, ax = P.axes[0], t = ax && ax.traces.find(x => x.visible && x.x); if (!t) return 0;
   let m = -1, v = -Infinity; for (let i = 1; i < t.x.length; i++) { if (t.x[i] < ax.xlim[0] || t.x[i] > ax.xlim[1]) continue; if (t.y[i] > v) { v = t.y[i]; m = i; } }
-  if (m < 0) return; $('#hmF0').value = (+t.x[m].toPrecision(6)); applyHarm();
+  return m < 0 ? 0 : +t.x[m].toPrecision(6);
 }
+function pickHarm() { const f = peakF0(); if (!f) return toast('Önce bir spektrum hesaplayın'); $('#hmF0').value = f; applyHarm(); }
+// Yeni spektrum hesaplandığında harmonik çizgiler yeni veriye göre güncellenir
+function harmRefresh() { const P = S.specPlot; if (!P.harm || !$('#hmAuto') || !ck('hmAuto')) { if (P.harm) P.invalidate(); return; } const f = peakF0(); if (f) { $('#hmF0').value = f; applyHarm(false); } }
 
 /* ===== Rapor: kapak, üst/alt bilgili A4 sayfalar, içindekiler, şekil/tablo/not; PDF (yazdır) veya HTML ===== */
 const REP = {items: [], meta: null, cls: ['TASNİF DIŞI', 'HİZMETE ÖZEL', 'ÖZEL', 'GİZLİ', 'ÇOK GİZLİ']};

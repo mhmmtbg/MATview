@@ -19,6 +19,7 @@ function extraAnalysisCards() {
     card('Harmonik / yan-band imleçleri',
       fr('Temel f0 (Hz)', numIn('hmF0', 100)), fr('Harmonik sayısı', numIn('hmN', 10, {min: 1, max: 100, step: 1})),
       fr('Yan-band aralığı (Hz)', numIn('hmFm', 0, {min: 0})), fr('Yan-band sayısı', numIn('hmNs', 2, {min: 1, max: 10, step: 1})),
+      chkIn('hmAuto', 'Yeni spektrumda f0’ı en yüksek tepeden otomatik güncelle', true),
       h('div', {class: 'btns'}, btn('Çiz', applyHarm, 'primary'), btn('En yüksek tepeden f0 al', pickHarm), btn('Kaldır', () => { S.specPlot.harm = null; S.specPlot.invalidate(); })),
       h('div', {class: 'note'}, 'Spektrum görünümüne k×f0 çizgileri (ve ± m×aralık yan-bantları) çizer; PNG/SVG çıktısına da girer. Yan-band aralığı için ör. devir/dişli frekansı girilir.')),
     card('FRF (iki kanallı, H1/H2 + koherans)',
@@ -93,9 +94,12 @@ async function computeFRF() {
   });
 }
 
-function applyHarm() { const P = S.specPlot, f0 = num('hmF0'); if (!(f0 > 0)) return toast('f0 > 0 olmalı'); P.harm = {f0, n: Math.max(1, num('hmN') | 0), fm: Math.max(0, num('hmFm') || 0), nsb: Math.max(1, num('hmNs') | 0)}; P.invalidate(); switchView('spec'); }
-function pickHarm() {
-  const P = S.specPlot, ax = P.axes[0], t = ax && ax.traces.find(x => x.visible && x.x); if (!t) return toast('Önce bir spektrum hesaplayın');
+function applyHarm(keepView) { const P = S.specPlot, f0 = num('hmF0'); if (!(f0 > 0)) return toast('f0 > 0 olmalı'); P.harm = {f0, n: Math.max(1, num('hmN') | 0), fm: Math.max(0, num('hmFm') || 0), nsb: Math.max(1, num('hmNs') | 0)}; P.invalidate(); if (keepView !== false) switchView('spec'); }
+function peakF0() {
+  const P = S.specPlot, ax = P.axes[0], t = ax && ax.traces.find(x => x.visible && x.x); if (!t) return 0;
   let m = -1, v = -Infinity; for (let i = 1; i < t.x.length; i++) { if (t.x[i] < ax.xlim[0] || t.x[i] > ax.xlim[1]) continue; if (t.y[i] > v) { v = t.y[i]; m = i; } }
-  if (m < 0) return; $('#hmF0').value = (+t.x[m].toPrecision(6)); applyHarm();
+  return m < 0 ? 0 : +t.x[m].toPrecision(6);
 }
+function pickHarm() { const f = peakF0(); if (!f) return toast('Önce bir spektrum hesaplayın'); $('#hmF0').value = f; applyHarm(); }
+// Yeni spektrum hesaplandığında harmonik çizgiler yeni veriye göre güncellenir
+function harmRefresh() { const P = S.specPlot; if (!P.harm || !$('#hmAuto') || !ck('hmAuto')) { if (P.harm) P.invalidate(); return; } const f = peakF0(); if (f) { $('#hmF0').value = f; applyHarm(false); } }

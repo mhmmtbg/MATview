@@ -122,7 +122,10 @@ function buildOv(P, ov) {
     if (i > 0 && main) bar.append(mk('merge', 'Bir üstteki alt grafikle birleştir (aynı eksen)', () => mergeUp(P, ax)));
     ov.append(bar); const part = {ax, bar, upd() { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; }}; ov._parts.push(part);
     if (P.legend && ax.traces.length) {
-      const lg = h('div', {class: 'lgd', 'aria-label': 'Lejant'}), rows = [];
+      const lg = h('div', {class: 'lgd', 'aria-label': 'Lejant'}), rows = [], grip = h('div', {class: 'lgrip', title: 'Tutup sürükleyerek taşı · çift tık: varsayılan yer'}, '⋯');
+      lg.append(grip);
+      grip.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); grip.setPointerCapture(e.pointerId); const lp = ax.lgPos || {dx: 0, dy: 0}, x0 = e.clientX - lp.dx, y0 = e.clientY - lp.dy; grip.onpointermove = ev => { ax.lgPos = {dx: ev.clientX - x0, dy: ev.clientY - y0}; part.upd(); P.invalidate(); }; grip.onpointerup = () => { grip.onpointermove = grip.onpointerup = null; }; };
+      grip.ondblclick = () => { ax.lgPos = null; part.upd(); P.invalidate(); };
       ax.traces.forEach((tr, k) => {
         const ex = h('span', {class: 'ex'}), x = h('button', {class: 'ib x', title: 'İzi kaldır', 'aria-label': 'İzi kaldır'}); x.innerHTML = ic('close', 10);
         const row = h('div', {class: 'lrow' + (tr.visible ? '' : ' off') + (P.active === ax && k === (ax.active || 0) ? ' cur' : ''), draggable: main ? 'true' : null, tabindex: 0, title: 'Tıkla: göster/gizle · Sağ tık: seçenekler' + (main ? ' · Sürükle: başka alt grafiğe taşı' : '')}, h('span', {class: 'sw', style: 'background:' + tr.color}), h('span', {class: 'nm'}, tr.label), ex, x);
@@ -134,7 +137,7 @@ function buildOv(P, ov) {
         lg.append(row); rows.push({tr, ex});
       });
       ov.append(lg); part.lg = lg; part.rows = rows;
-      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; lg.style.right = (P.W - r.x - r.w + 8) + 'px'; lg.style.top = r.y + 6 + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px';
+      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; const lp = ax.lgPos || {dx: 0, dy: 0}, lw = lg.offsetWidth || 120, lh = lg.offsetHeight || 40, right = Math.max(P.W - r.x - r.w - 0, Math.min(P.W - r.x - lw, P.W - r.x - r.w + 8 - lp.dx)), top = Math.max(r.y, Math.min(r.y + r.h - lh, r.y + 6 + lp.dy)); lg.style.right = right + 'px'; lg.style.top = top + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px';
         for (const q of rows) { const t = q.tr.visible ? P.legendExtra(q.tr, ax) : ''; if (q.ex._t !== t) { q.ex._t = t; q.ex.textContent = t; } } };
     }
     if (i < n - 1) {

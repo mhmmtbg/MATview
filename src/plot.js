@@ -77,6 +77,7 @@ class SvgCtx {
   toString() { const close = '</g>'.repeat(this.open); return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${this.W}" height="${this.H}" viewBox="0 0 ${this.W} ${this.H}">\n${this.o.join('\n')}${close}\n</svg>\n`; }
 }
 
+const fmtHz = f => (f >= 1000 ? (f / 1000).toPrecision(4).replace(/\.?0+$/, '') + ' kHz' : (+f.toPrecision(5)) + ' Hz');
 class Plot {
   constructor(canvas, opts = {}) {
     this.cv = canvas; this.opts = opts; this.mode = 'pan';
@@ -245,7 +246,7 @@ class Plot {
       const vis = ax.traces.filter(t => t.visible); if (vis.length) {
         ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const lbl = new Map(vis.map(t => [t, t.label + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
-        const bw = wmax + 34, bh = vis.length * 16 + 6, bx = r.x + r.w - bw - 6, by = r.y + 6;
+        const bw = wmax + 34, bh = vis.length * 16 + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx = Math.max(r.x, Math.min(r.x + r.w - bw, r.x + r.w - bw - 6 + lp.dx)), by = Math.max(r.y, Math.min(r.y + r.h - bh, r.y + 6 + lp.dy));
         ctx.globalAlpha = .92; ctx.fillStyle = T.box; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1;
         ctx.strokeStyle = T.grid; ctx.strokeRect(bx + .5, by + .5, bw, bh);
         vis.forEach((t, i) => { const y = by + 11 + i * 16; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
@@ -280,8 +281,8 @@ class Plot {
       const r = ax.rect, hm = this.harm; ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
       for (let k = 1; k <= hm.n; k++) {
         const f = k * hm.f0, x = this.xPx(ax, f); if (f > ax.xlim[1]) break;
-        if (f >= ax.xlim[0]) { ctx.strokeStyle = T.acc || '#2b6cb0'; ctx.setLineDash([]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + .5, r.y); ctx.lineTo(x + .5, r.y + r.h); ctx.stroke(); ctx.fillStyle = T.acc || '#2b6cb0'; ctx.fillText(k + '×', x, r.y + 11); }
-        if (hm.fm > 0) for (let m = 1; m <= hm.nsb; m++) for (const sg of [-1, 1]) { const fs_ = f + sg * m * hm.fm; if (fs_ <= 0 || fs_ < ax.xlim[0] || fs_ > ax.xlim[1]) continue; const xs = this.xPx(ax, fs_); ctx.strokeStyle = T.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(xs + .5, r.y); ctx.lineTo(xs + .5, r.y + r.h); ctx.stroke(); }
+        if (f >= ax.xlim[0]) { ctx.strokeStyle = T.acc || '#2b6cb0'; ctx.setLineDash([]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + .5, r.y); ctx.lineTo(x + .5, r.y + r.h); ctx.stroke(); ctx.fillStyle = T.acc || '#2b6cb0'; ctx.save(); ctx.translate(x - 3, r.y + 4); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(k + '× ' + fmtHz(f), 0, 0); ctx.restore(); }
+        if (hm.fm > 0) for (let m = 1; m <= hm.nsb; m++) for (const sg of [-1, 1]) { const fs_ = f + sg * m * hm.fm; if (fs_ <= 0 || fs_ < ax.xlim[0] || fs_ > ax.xlim[1]) continue; const xs = this.xPx(ax, fs_); ctx.strokeStyle = T.muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(xs + .5, r.y); ctx.lineTo(xs + .5, r.y + r.h); ctx.stroke(); ctx.save(); ctx.setLineDash([]); ctx.fillStyle = T.muted; ctx.font = '9px sans-serif'; ctx.translate(xs - 2, r.y + 4); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(fmtHz(fs_), 0, 0); ctx.restore(); }
       }
       ctx.restore();
     }

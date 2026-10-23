@@ -37,7 +37,13 @@ function buildTraces() {
   return r;
 }
 function applyXlim() { const ax = activeAxes(); if (!ax) return; S.plot.setXlim(ax, num('xmin'), num('xmax')); S.plot.invalidate(); syncLimits(); }
-function clearPlot() { S.plot.axes.slice().forEach(a => S.plot.removeAxes(a)); S.plot.active = null; S.colorIdx = 0; refreshAll(); }
+function clearPlot() {
+  S.plot.axes.slice().forEach(a => S.plot.removeAxes(a)); S.plot.active = null; S.colorIdx = 0;
+  if (S.specPlot) { S.specPlot.axes.slice().forEach(a => S.specPlot.removeAxes(a)); S.specPlot.active = null; S.specPlot.harm = null; S.specPlot.invalidate(); }   // spektrum görünümü de temizlenir
+  if (S.specView && S.specView.spec) { S.specView.spec = null; S.specView.rebuild && S.specView.rebuild(); S.specView.dirty = true; }
+  for (const id of ['spInfo', 'ocInfo', 'srInfo', 'frInfo']) { const e = $('#' + id); if (e && e.textContent) e.textContent = ''; }
+  if (S.view !== 'time') switchView('time'); refreshAll();
+}
 function applyFs() { const tr = activeTrace(); const v = num('fsIn'); if (!tr || !(v > 0)) return; tr.ch.setFs(v); S.plot.fitAll(true); refreshAll(); toast('Örnekleme frekansı güncellendi'); }
 function refreshAll() { refreshAxesUI(); refreshTraceInfo(); updateStats(); S.plot.invalidate(); if (typeof refreshCalcUI === 'function') refreshCalcUI(); }
 function refreshAxesUI() {
@@ -191,7 +197,7 @@ async function computeSpectrum(only) {
     }
     $('#spInfo').textContent = info.join('\n'); $('#spInfo').style.whiteSpace = 'pre-line';
     if (!sa.traces.length) { P.removeAxes(sa); return; }
-    P.fitAll(); if (sa.xlog) sa.xlim[0] = Math.max(sa.xlim[0], sa.traces[0].x[1] || 1e-3); switchView('spec');
+    P.fitAll(); if (sa.xlog) sa.xlim[0] = Math.max(sa.xlim[0], sa.traces[0].x[1] || 1e-3); harmRefresh(); switchView('spec');
   });
 }
 function findPeaks(f, y, n) {
