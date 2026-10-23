@@ -94,7 +94,7 @@ function renderTree() {
     if (fop) grp.append(body); box.append(grp);
   }
   if (!S.files.length) box.append(h('div', {class: 'note', style: 'padding:14px'}, 'Henüz dosya yok. "Dosya aç…" düğmesini kullanın veya .mat dosyalarını pencereye sürükleyin.'));
-  if (typeof syncFeatUI === 'function' && S.xyPlot) syncFeatUI();
+  if (typeof syncFeatUI === 'function' && S.xyPlot) syncFeatUI(); if (typeof syncWelcome === 'function') syncWelcome();
   for (const x of box.querySelectorAll('.tbody')) if (scs[x.dataset.f]) x.scrollTop = scs[x.dataset.f]; updateSelInfo();
 }
 const hl = label => { const q = S.q, i = q ? String(label).toLowerCase().indexOf(q) : -1; return i < 0 ? [label] : [label.slice(0, i), h('mark', null, label.slice(i, i + q.length)), label.slice(i + q.length)]; };

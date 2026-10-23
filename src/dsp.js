@@ -403,6 +403,31 @@ const DSP = (() => {
     return {rate: fmt.rate, channels: out, bits: fmt.bits, float: ft === 3};
   }
 
+  // ---- Rezonans (mod) tespiti: FRF'nin Re/Im değerlerinden |H| tepeleri, yarı-güç bant genişliği ile sönüm ----
+  // opt: promDb (en az tepe belirginliği, dB), fmin, fmax, max (en çok tepe sayısı)
+  function resonances(f, re, im, opt = {}) {
+    const n = f.length, mag = new Float64Array(n), promDb = opt.promDb ?? 3, fmin = opt.fmin ?? -Infinity, fmax = opt.fmax ?? Infinity;
+    for (let i = 0; i < n; i++) mag[i] = Math.hypot(re[i], im[i]);
+    const cand = []; for (let i = 1; i < n - 1; i++) if (mag[i] > mag[i - 1] && mag[i] >= mag[i + 1] && f[i] >= fmin && f[i] <= fmax && isFinite(mag[i])) cand.push(i);
+    const out = [], ratio = 10 ** (promDb / 20);
+    for (const i of cand) {
+      let lm = mag[i], j = i; while (j > 0 && mag[j - 1] < mag[i]) { j--; if (mag[j] < lm) lm = mag[j]; }
+      let rm = mag[i], k = i; while (k < n - 1 && mag[k + 1] < mag[i]) { k++; if (mag[k] < rm) rm = mag[k]; }
+      const base = Math.max(lm, rm); if (!(mag[i] >= ratio * Math.max(base, 1e-300))) continue;
+      // parabolik ara değer (tepe frekansı ve genliği)
+      const a = mag[i - 1], b = mag[i], c = mag[i + 1], den = a - 2 * b + c, d = den !== 0 ? 0.5 * (a - c) / den : 0, df = f[i + 1] - f[i];
+      const fn = f[i] + d * df, pk = b - 0.25 * (a - c) * d, half = pk / Math.SQRT2;
+      let f1 = NaN, f2 = NaN;
+      for (let q = i; q > 0; q--) if (mag[q - 1] < half) { f1 = f[q - 1] + (half - mag[q - 1]) / (mag[q] - mag[q - 1]) * (f[q] - f[q - 1]); break; }
+      for (let q = i; q < n - 1; q++) if (mag[q + 1] < half) { f2 = f[q] + (mag[q] - half) / (mag[q] - mag[q + 1]) * (f[q + 1] - f[q]); break; }
+      const bw = isFinite(f1) && isFinite(f2) ? f2 - f1 : isFinite(f1) ? 2 * (fn - f1) : isFinite(f2) ? 2 * (f2 - fn) : NaN, zeta = bw / (2 * fn);
+      let imx = i, lo = isFinite(f1) ? f1 : f[Math.max(0, i - 3)], hi = isFinite(f2) ? f2 : f[Math.min(n - 1, i + 3)];
+      for (let q = 0; q < n; q++) if (f[q] >= lo && f[q] <= hi && Math.abs(im[q]) > Math.abs(im[imx])) imx = q;
+      out.push({i, fn, mag: pk, re: re[i], im: im[i], phase: Math.atan2(im[i], re[i]) * 180 / Math.PI, f1, f2, bw, zeta, q: zeta > 0 ? 1 / (2 * zeta) : NaN, fnIm: f[imx], prom: mag[i] / Math.max(base, 1e-300)});
+    }
+    out.sort((x, y) => y.mag - x.mag); const mx = opt.max || 20; const top = out.slice(0, mx); top.sort((x, y) => x.fn - y.fn); return top;
+  }
+
   // ---- 1/3 oktav (ve 1/1 oktav) bant seviyeleri: PSD'nin bantlar üzerinden integrali ----
   function wA(f) { const f2 = f * f, r = 12194 ** 2 * f2 * f2 / ((f2 + 20.6 ** 2) * Math.sqrt((f2 + 107.7 ** 2) * (f2 + 737.9 ** 2)) * (f2 + 12194 ** 2)); return 20 * Math.log10(r) + 2.0; }
   function wC(f) { const f2 = f * f, r = 12194 ** 2 * f2 / ((f2 + 20.6 ** 2) * (f2 + 12194 ** 2)); return 20 * Math.log10(r) + 0.06; }
@@ -461,6 +486,6 @@ const DSP = (() => {
     return {f, h1, h2, phase: ph, coh, nseg, nfft, df: fs / nfft};
   }
 
-  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, parseWav, srs, srsFreqs, frf, wA, wC};
+  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC};
 })();
 if (typeof module !== 'undefined') module.exports = DSP;

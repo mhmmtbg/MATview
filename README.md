@@ -85,3 +85,6 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 ## MAT dışa aktarma ve Word raporu
 - **MAT**: soldaki ağaçta binary dosya adına / alt sisteme / kanala sağ tıklayın ya da Çıktı sekmesindeki "MAT dışa aktarma" kartını kullanın. Seçenekler: tek alt sistem (ham bayt matrisi uint8 kare×bayt + o alt sisteme ait çözülmüş alanlar, isteğe bağlı bayt aralığı "1-100, 250"), tüm binary tek .mat, her alt sistem ayrı .mat (tek .zip), seçilen kanallar (Ctrl/Shift ile) tek .mat. Büyük dosyada ham bayt parça parça okunur. Açık grafiğin CSV/MAT çıktısı Çıktı sekmesinde durur. Kod: `src/app10.js`, test: `test/pw_mat.py`.
 - **Word**: rapor önizlemesindeki "Word (.docx) kaydet" (kapak, üst/alt bilgi ve sayfa no alanları, içindekiler, şekil/tablo/not). İçindekiler sayfa numaraları Word'de F9 ile güncellenir. Kod: `src/app11.js`, test: `test/pw_docx.py`.
+
+## Rezonans analizi (Re/Im)
+UNV sekmesi → "Rezonans analizi": kompleks FRF kanalının Re/Im değerlerinden |H| tepelerini (parabolik ara değer), yarı-güç bant genişliğinden sönümü (ζ, Q), tepedeki fazı ve Im tepe frekansını bulur; |H|/Faz/Re-Im grafiklerini Spektrum görünümüne, Nyquist'i Dağılım görünümüne çizer; tablo rapora eklenebilir veya kopyalanır. Sentetik örnek: `ornek/ornek_frf.unv` (`test/make_frf_unv.py`), testler: `test/t_an.js`, `test/pw_rez.py`.

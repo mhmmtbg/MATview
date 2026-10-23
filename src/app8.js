@@ -103,3 +103,43 @@ function peakF0() {
 function pickHarm() { const f = peakF0(); if (!f) return toast('Önce bir spektrum hesaplayın'); $('#hmF0').value = f; applyHarm(); }
 // Yeni spektrum hesaplandığında harmonik çizgiler yeni veriye göre güncellenir
 function harmRefresh() { const P = S.specPlot; if (!P.harm || !$('#hmAuto') || !ck('hmAuto')) { if (P.harm) P.invalidate(); return; } const f = peakF0(); if (f) { $('#hmF0').value = f; applyHarm(false); } }
+
+/* ---------- Rezonans analizi: Re/Im (kompleks FRF) -> |H|, faz, Re/Im, Nyquist, mod tablosu ---------- */
+let _rzKey = '', _rzRes = null;
+function resonanceCard() {
+  setTimeout(refreshRezPick);
+  return card('Rezonans analizi (Re / Im)',
+    h('div', {class: 'note'}, 'Kompleks FRF kanalının (UNV: Genlik/Faz/Re/Im) Re ve Im değerlerinden rezonans tepelerini bulur; yarı-güç bant genişliğinden sönümü hesaplar ve |H|, faz, Re/Im ve Nyquist grafiklerini çizer.'),
+    fr('Kanal (Re+Im çifti)', h('select', {id: 'rzPair'})),
+    fr('Belirginlik (dB)', numIn('rzProm', 3, {min: 0.5, step: 0.5})), fr('f min / f max (Hz)', numIn('rzF1', ''), numIn('rzF2', '')), fr('En çok tepe', numIn('rzMax', 12, {min: 1, max: 50, step: 1})),
+    h('div', {class: 'btns'}, btn('Rezonansları bul ve çiz', computeResonance, 'primary'), btn('Rapora tablo ekle', rezToReport), btn('Tabloyu kopyala', rezCopy)),
+    h('div', {id: 'rzTab'}));
+}
+function rezPairs() {
+  const out = []; for (const f of S.files) { if (!f.unv) continue; const m = new Map(); for (const c of f.channels) { if (!c.spec || (c.spec.sub !== 're' && c.spec.sub !== 'im')) continue; if (!m.has(c.spec.idx)) m.set(c.spec.idx, {}); m.get(c.spec.idx)[c.spec.sub] = c; }
+    for (const [idx, p] of m) if (p.re && p.im) out.push({key: f.id + '|' + idx, label: f.name + ' · ' + p.re.name.replace(/ \(Re\)$/, ''), re: p.re, im: p.im}); }
+  return out;
+}
+function refreshRezPick() { const sel = $('#rzPair'); if (!sel) return; const ps = rezPairs(), key = ps.map(p => p.key).join(','); if (key === _rzKey) return; _rzKey = key; const v = sel.value; sel.replaceChildren(...(ps.length ? ps.map(p => h('option', {value: p.key}, p.label)) : [h('option', {value: ''}, 'Kompleks UNV kanalı yok')])); if (v) sel.value = v; }
+async function computeResonance() {
+  refreshRezPick(); const p = rezPairs().find(x => x.key === $('#rzPair').value); if (!p) return toast('Önce Re ve Im içeren (kompleks) bir UNV kanalı açın');
+  const x = p.re.spec.x, re = p.re.data, im = p.im.data; if (!x || x.length !== re.length) return toast('Frekans ekseni bulunamadı');
+  const f1 = parseFloat($('#rzF1').value), f2 = parseFloat($('#rzF2').value), rs = DSP.resonances(x, re, im, {promDb: num('rzProm'), fmin: isFinite(f1) ? f1 : -Infinity, fmax: isFinite(f2) ? f2 : Infinity, max: num('rzMax') | 0 || 12});
+  _rzRes = {rs, name: p.label};
+  const P = S.specPlot; P.axes.slice().forEach(a => P.removeAxes(a)); P.harm = null; const mag = Float64Array.from(re, (v, i) => Math.hypot(v, im[i])), ph = Float64Array.from(re, (v, i) => Math.atan2(im[i], v) * 180 / Math.PI), u = p.re.unit || '', nm = p.re.name.replace(/ \(Re\)$/, '');
+  const xl = x[0] > 0 && x[x.length - 1] / x[0] > 20;
+  const aM = P.addAxes({xlog: xl, ylog: true, title: 'Rezonans analizi — ' + nm}), aP = P.addAxes({xlog: xl, ylog: false, title: ''}), aR = P.addAxes({xlog: xl, ylog: false, title: ''});
+  aM.hw = 2; aM.ylabel = '|H|' + (u ? ' (' + u + ')' : ''); aP.ylabel = 'Faz (°)'; aR.ylabel = 'Re / Im'; aR.xlabel = 'Frekans (Hz)';
+  const T = (y, label, color, extra) => Object.assign({kind: 'xy', x, y, label, color, width: 1.3, visible: true, raw: y, scale: 'frf', srcKind: 'frf'}, extra || {});
+  aM.traces.push(T(mag, '|H|', '#2b6cb0', {peaks: rs.map(r => ({i: r.i, x: r.fn, y: r.mag}))})); aP.traces.push(T(ph, 'Faz', '#2f855a')); aR.traces.push(T(re, 'Re', '#2b6cb0'), T(im, 'Im', '#c05621'));
+  const N = S.xyPlot; N.axes.slice().forEach(a => N.removeAxes(a)); S.xyKeep = true; syncFeatUI();
+  const nx = N.addAxes({xlabel: 'Re' + (u ? ' (' + u + ')' : ''), ylabel: 'Im' + (u ? ' (' + u + ')' : ''), title: 'Nyquist — ' + nm});
+  nx.traces.push({kind: 'xy', x: re, y: im, label: 'Nyquist', color: '#2b6cb0', width: 1.2, visible: true, marker: true, msize: 2.2, alpha: 0.9, raw: im, scale: 'frf', srcKind: 'frf'}, {kind: 'xy', x: Float64Array.from(rs, r => r.re), y: Float64Array.from(rs, r => r.im), label: 'Rezonanslar', color: '#c05621', width: 1, visible: true, marker: true, msize: 7, alpha: 1, raw: im, scale: 'frf', srcKind: 'frf'});
+  P.fitAll(); N.fitAll(); for (const q of P.axes) if (q.xlog && q.xlim[0] <= 0) q.xlim[0] = x.find(v => v > 0) || 1e-3; P.invalidate(); N.invalidate(); syncWelcome(); switchView('spec');
+  const fmt = v => isFinite(v) ? fmtNum(v, 5) : '–', rows = rs.map((r, k) => [k + 1, fmt(r.fn), fmt(r.mag), fmt(r.zeta * 100), fmt(r.q), fmt(r.phase), fmt(r.f1), fmt(r.f2), fmt(r.fnIm)]);
+  _rzRes.head = ['#', 'fn (Hz)', '|H|', 'ζ (%)', 'Q', 'Faz (°)', 'f1 (Hz)', 'f2 (Hz)', 'f(Im pik) (Hz)']; _rzRes.rows = rows;
+  const tb = $('#rzTab'); tb.replaceChildren(rs.length ? h('div', {style: 'overflow:auto;max-height:260px'}, h('table', {class: 'ftab'}, h('thead', null, h('tr', null, _rzRes.head.map(t => h('th', null, t)))), h('tbody', null, rows.map(r => h('tr', null, r.map(c => h('td', null, String(c)))))))) : h('div', {class: 'note'}, 'Belirgin rezonans bulunamadı; belirginlik eşiğini düşürün.'));
+  toast(rs.length + ' rezonans bulundu · Nyquist: “Dağılım” görünümü', 5000);
+}
+function rezToReport() { if (!_rzRes || !_rzRes.rows.length) return toast('Önce rezonansları hesaplayın'); REP.items.push({type: 'table', title: 'Rezonans (mod) tablosu — ' + _rzRes.name, head: _rzRes.head, rows: _rzRes.rows, note: 'fn: |H| tepe frekansı (parabolik ara değer); ζ: yarı-güç (−3 dB) bant genişliğinden, ζ ≈ (f2−f1)/(2·fn); Q = 1/(2ζ).'}); repRefreshList(); toast('Rapora eklendi'); }
+async function rezCopy() { if (!_rzRes || !_rzRes.rows.length) return toast('Önce rezonansları hesaplayın'); try { await navigator.clipboard.writeText([_rzRes.head, ..._rzRes.rows].map(r => r.join('\t')).join('\n')); toast('Tablo panoya kopyalandı'); } catch (e) { toast('Kopyalanamadı: ' + e.message); } }

@@ -31,3 +31,11 @@ const dl = 5; for (let i = 0; i < M; i++) yout[i] = i >= dl ? xin[i - dl] : 0; r
   const b = new ArrayBuffer(44 + 16), dv = new DataView(b), wr = (o, s) => [...s].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0))); wr(0, 'RIFF'); dv.setUint32(4, 52, true); wr(8, 'WAVE'); wr(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 3, true); dv.setUint16(22, 2, true); dv.setUint32(24, 1000, true); dv.setUint32(28, 8000, true); dv.setUint16(32, 8, true); dv.setUint16(34, 32, true); wr(36, 'data'); dv.setUint32(40, 16, true);
   [0.25, -0.5, 0.75, 1].forEach((v, i) => dv.setFloat32(44 + i * 4, v, true)); const f = DSP.parseWav(new Uint8Array(b)); assert.deepStrictEqual(Array.from(f.channels[1]), [-0.5, 1]); assert.strictEqual(f.float, true);
   console.log('t_an OK'); })();
+// Rezonans: iki SDOF mod (100 Hz ζ=0.02, 250 Hz ζ=0.05), Re/Im'den
+{ const f = Float64Array.from({length: 2001}, (_, i) => i * 0.25), re = new Float64Array(2001), im = new Float64Array(2001);
+  const modes = [[100, 0.02, 1], [250, 0.05, 0.6]];
+  for (let i = 0; i < f.length; i++) { let hr = 0, hi = 0; for (const [fn, z, A] of modes) { const r = f[i] / fn, d = (1 - r * r) ** 2 + (2 * z * r) ** 2; hr += A * (1 - r * r) / d; hi += A * (-2 * z * r) / d; } re[i] = hr; im[i] = hi; }
+  const rs = require('../src/dsp.js').resonances(f, re, im, {promDb: 3}); assert.strictEqual(rs.length, 2, 'mod sayısı ' + rs.length);
+  assert(Math.abs(rs[0].fn - 100) < 0.5 && Math.abs(rs[1].fn - 250) < 1.0, 'fn ' + rs.map(r => r.fn));
+  assert(Math.abs(rs[0].zeta - 0.02) < 0.002 && Math.abs(rs[1].zeta - 0.05) < 0.006, 'zeta ' + rs.map(r => r.zeta));
+  assert(rs[0].phase < -60 && rs[0].phase > -120, 'faz ' + rs[0].phase); console.log('rezonans OK'); }

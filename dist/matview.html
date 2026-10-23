@@ -1271,6 +1271,31 @@ const DSP = (() => {
     return {rate: fmt.rate, channels: out, bits: fmt.bits, float: ft === 3};
   }
 
+  // ---- Rezonans (mod) tespiti: FRF'nin Re/Im değerlerinden |H| tepeleri, yarı-güç bant genişliği ile sönüm ----
+  // opt: promDb (en az tepe belirginliği, dB), fmin, fmax, max (en çok tepe sayısı)
+  function resonances(f, re, im, opt = {}) {
+    const n = f.length, mag = new Float64Array(n), promDb = opt.promDb ?? 3, fmin = opt.fmin ?? -Infinity, fmax = opt.fmax ?? Infinity;
+    for (let i = 0; i < n; i++) mag[i] = Math.hypot(re[i], im[i]);
+    const cand = []; for (let i = 1; i < n - 1; i++) if (mag[i] > mag[i - 1] && mag[i] >= mag[i + 1] && f[i] >= fmin && f[i] <= fmax && isFinite(mag[i])) cand.push(i);
+    const out = [], ratio = 10 ** (promDb / 20);
+    for (const i of cand) {
+      let lm = mag[i], j = i; while (j > 0 && mag[j - 1] < mag[i]) { j--; if (mag[j] < lm) lm = mag[j]; }
+      let rm = mag[i], k = i; while (k < n - 1 && mag[k + 1] < mag[i]) { k++; if (mag[k] < rm) rm = mag[k]; }
+      const base = Math.max(lm, rm); if (!(mag[i] >= ratio * Math.max(base, 1e-300))) continue;
+      // parabolik ara değer (tepe frekansı ve genliği)
+      const a = mag[i - 1], b = mag[i], c = mag[i + 1], den = a - 2 * b + c, d = den !== 0 ? 0.5 * (a - c) / den : 0, df = f[i + 1] - f[i];
+      const fn = f[i] + d * df, pk = b - 0.25 * (a - c) * d, half = pk / Math.SQRT2;
+      let f1 = NaN, f2 = NaN;
+      for (let q = i; q > 0; q--) if (mag[q - 1] < half) { f1 = f[q - 1] + (half - mag[q - 1]) / (mag[q] - mag[q - 1]) * (f[q] - f[q - 1]); break; }
+      for (let q = i; q < n - 1; q++) if (mag[q + 1] < half) { f2 = f[q] + (mag[q] - half) / (mag[q] - mag[q + 1]) * (f[q + 1] - f[q]); break; }
+      const bw = isFinite(f1) && isFinite(f2) ? f2 - f1 : isFinite(f1) ? 2 * (fn - f1) : isFinite(f2) ? 2 * (f2 - fn) : NaN, zeta = bw / (2 * fn);
+      let imx = i, lo = isFinite(f1) ? f1 : f[Math.max(0, i - 3)], hi = isFinite(f2) ? f2 : f[Math.min(n - 1, i + 3)];
+      for (let q = 0; q < n; q++) if (f[q] >= lo && f[q] <= hi && Math.abs(im[q]) > Math.abs(im[imx])) imx = q;
+      out.push({i, fn, mag: pk, re: re[i], im: im[i], phase: Math.atan2(im[i], re[i]) * 180 / Math.PI, f1, f2, bw, zeta, q: zeta > 0 ? 1 / (2 * zeta) : NaN, fnIm: f[imx], prom: mag[i] / Math.max(base, 1e-300)});
+    }
+    out.sort((x, y) => y.mag - x.mag); const mx = opt.max || 20; const top = out.slice(0, mx); top.sort((x, y) => x.fn - y.fn); return top;
+  }
+
   // ---- 1/3 oktav (ve 1/1 oktav) bant seviyeleri: PSD'nin bantlar üzerinden integrali ----
   function wA(f) { const f2 = f * f, r = 12194 ** 2 * f2 * f2 / ((f2 + 20.6 ** 2) * Math.sqrt((f2 + 107.7 ** 2) * (f2 + 737.9 ** 2)) * (f2 + 12194 ** 2)); return 20 * Math.log10(r) + 2.0; }
   function wC(f) { const f2 = f * f, r = 12194 ** 2 * f2 / ((f2 + 20.6 ** 2) * (f2 + 12194 ** 2)); return 20 * Math.log10(r) + 0.06; }
@@ -1329,7 +1354,7 @@ const DSP = (() => {
     return {f, h1, h2, phase: ph, coh, nseg, nfft, df: fs / nfft};
   }
 
-  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, parseWav, srs, srsFreqs, frf, wA, wC};
+  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC};
 })();
 
 /* MATLAB tarzı ifade ayrıştırıcı: kanal adları, + - * / ^, fonksiyonlar */
@@ -2391,7 +2416,7 @@ function renderTree() {
     if (fop) grp.append(body); box.append(grp);
   }
   if (!S.files.length) box.append(h('div', {class: 'note', style: 'padding:14px'}, 'Henüz dosya yok. "Dosya aç…" düğmesini kullanın veya .mat dosyalarını pencereye sürükleyin.'));
-  if (typeof syncFeatUI === 'function' && S.xyPlot) syncFeatUI();
+  if (typeof syncFeatUI === 'function' && S.xyPlot) syncFeatUI(); if (typeof syncWelcome === 'function') syncWelcome();
   for (const x of box.querySelectorAll('.tbody')) if (scs[x.dataset.f]) x.scrollTop = scs[x.dataset.f]; updateSelInfo();
 }
 const hl = label => { const q = S.q, i = q ? String(label).toLowerCase().indexOf(q) : -1; return i < 0 ? [label] : [label.slice(0, i), h('mark', null, label.slice(i, i + q.length)), label.slice(i + q.length)]; };
@@ -2581,6 +2606,7 @@ function clearPlot() {
   if (S.specPlot) { S.specPlot.axes.slice().forEach(a => S.specPlot.removeAxes(a)); S.specPlot.active = null; S.specPlot.harm = null; S.specPlot.invalidate(); }   // spektrum görünümü de temizlenir
   if (S.specView && S.specView.spec) { S.specView.spec = null; S.specView.rebuild && S.specView.rebuild(); S.specView.dirty = true; }
   for (const id of ['spInfo', 'ocInfo', 'srInfo', 'frInfo']) { const e = $('#' + id); if (e && e.textContent) e.textContent = ''; }
+  if (S.xyKeep) { S.xyKeep = false; S.xyPlot.axes.slice().forEach(a => S.xyPlot.removeAxes(a)); S.xyPlot.invalidate(); if (typeof syncFeatUI === 'function') syncFeatUI(); }
   if (S.view !== 'time') switchView('time'); refreshAll();
 }
 function applyFs() { const tr = activeTrace(); const v = num('fsIn'); if (!tr || !(v > 0)) return; tr.ch.setFs(v); S.plot.fitAll(true); refreshAll(); toast('Örnekleme frekansı güncellendi'); }
@@ -3105,7 +3131,7 @@ function init() {
     else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
-  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); refreshFrfPick(); refreshMatCard(); }, 1500);
+  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); refreshFrfPick(); refreshMatCard(); refreshRezPick(); }, 1500);
   initUX(); syncFeatUI(); startupFiles();
 }
 async function startupFiles() {
@@ -3469,6 +3495,7 @@ function buildUnv() {
   const r = h('div');
   r.append(card('UNV dosyaları', h('div', {class: 'note'}, 'UNV (dataset 58) dosyasını "Dosya aç…" ile veya pencereye sürükleyerek açın. Kanal sayısı dosyadan okunur; kompleks kanallar Genlik/Faz/Re/Im olarak gelir. Kanalları soldan çift tıklayarak spektrum grafiğine ekleyin.'),
     h('div', {class: 'btns'}, btn('Kanal tablosu…', unvTableDialog, 'primary'), btn('Spektrum grafiğini temizle', specClear), btn('Excel\'e aktar', unvExcel))));
+  r.append(resonanceCard());
   r.append(card('Profiller', h('div', {class: 'btns', style: 'margin-top:0'}, btn('+ Profil ekle…', () => profDialog(null), 'primary')), h('div', {id: 'profBox'}, profList()),
     h('div', {class: 'note'}, 'Profil log-log eksende çizilir (± tolerans kesikli). "≈" ile spektrum grafiğindeki ölçümler profille karşılaştırılır. Profiller bu bilgisayardaki tarayıcı deposunda saklanır. Welch spektrumuyla karşılaştırmak için Analiz sekmesinde "PSD" ve Y ekseni "Logaritmik" seçin.')));
   return r;
@@ -3650,7 +3677,7 @@ function showDZ() {
 function hideDZ() { const d = $('#dz'); if (d) d.remove(); }
 
 /* ---------- karşılama, menüler, kısayollar ---------- */
-function syncWelcome() { const w = $('#welcome'); if (w) w.classList.toggle('hidden', !(S.view === 'time' && !S.files.length && !S.plot.axes.length)); }
+function syncWelcome() { const w = $('#welcome'); if (w) w.classList.toggle('hidden', !(!S.files.length && !S.plot.axes.length && !(S.specPlot && S.specPlot.axes.length))); }
 function closeMenus() { for (const m of document.querySelectorAll('.ddm')) m.classList.add('hidden'); $('#ctxm').classList.add('hidden'); }
 function shortcutsDialog() {
   const rows = [['Delete', 'Seçili noktaları sil'], ['Ctrl+Z / Ctrl+Y', 'Geri al / yinele (nokta silme)'], ['P · Z · C · B · L', 'Gez · Yakınlaştır · İmleç · Kutu · Kement'], ['+ / −', 'Yakınlaş / uzaklaş'], ['Home', 'Tümünü sığdır'],
@@ -3944,8 +3971,8 @@ function tableImport(T) {
 function featFile() { return S.feat && S.files.find(x => x.id === S.feat.fid && x.feature); }
 function syncFeatUI() {
   const has = S.files.some(f => f.feature), tabb = document.querySelector('#rtabs button[data-t=feat]'), vt = document.querySelector('#viewtabs button[data-v=xy]');
-  if (tabb) tabb.classList.toggle('hidden', !has); if (vt) vt.classList.toggle('hidden', !has);
-  if (!has && S.view === 'xy') switchView('time'); if (!has && S.tab === 'feat') setTab('traces');
+  const vis = has || S.xyKeep; if (tabb) tabb.classList.toggle('hidden', !has); if (vt) vt.classList.toggle('hidden', !vis);
+  if (!vis && S.view === 'xy') switchView('time'); if (!has && S.tab === 'feat') setTab('traces');
   if (has && !featFile()) { const f = S.files.find(x => x.feature); S.feat = {fid: f.id, x: f.cols[0].name, ys: new Set([f.cols[Math.min(1, f.cols.length - 1)].name]), type: 'scatter', fit: 'none', deg: 2, resid: false, color: '', bins: 0}; }
   refreshFeatUI();
 }
@@ -4164,6 +4191,46 @@ function peakF0() {
 function pickHarm() { const f = peakF0(); if (!f) return toast('Önce bir spektrum hesaplayın'); $('#hmF0').value = f; applyHarm(); }
 // Yeni spektrum hesaplandığında harmonik çizgiler yeni veriye göre güncellenir
 function harmRefresh() { const P = S.specPlot; if (!P.harm || !$('#hmAuto') || !ck('hmAuto')) { if (P.harm) P.invalidate(); return; } const f = peakF0(); if (f) { $('#hmF0').value = f; applyHarm(false); } }
+
+/* ---------- Rezonans analizi: Re/Im (kompleks FRF) -> |H|, faz, Re/Im, Nyquist, mod tablosu ---------- */
+let _rzKey = '', _rzRes = null;
+function resonanceCard() {
+  setTimeout(refreshRezPick);
+  return card('Rezonans analizi (Re / Im)',
+    h('div', {class: 'note'}, 'Kompleks FRF kanalının (UNV: Genlik/Faz/Re/Im) Re ve Im değerlerinden rezonans tepelerini bulur; yarı-güç bant genişliğinden sönümü hesaplar ve |H|, faz, Re/Im ve Nyquist grafiklerini çizer.'),
+    fr('Kanal (Re+Im çifti)', h('select', {id: 'rzPair'})),
+    fr('Belirginlik (dB)', numIn('rzProm', 3, {min: 0.5, step: 0.5})), fr('f min / f max (Hz)', numIn('rzF1', ''), numIn('rzF2', '')), fr('En çok tepe', numIn('rzMax', 12, {min: 1, max: 50, step: 1})),
+    h('div', {class: 'btns'}, btn('Rezonansları bul ve çiz', computeResonance, 'primary'), btn('Rapora tablo ekle', rezToReport), btn('Tabloyu kopyala', rezCopy)),
+    h('div', {id: 'rzTab'}));
+}
+function rezPairs() {
+  const out = []; for (const f of S.files) { if (!f.unv) continue; const m = new Map(); for (const c of f.channels) { if (!c.spec || (c.spec.sub !== 're' && c.spec.sub !== 'im')) continue; if (!m.has(c.spec.idx)) m.set(c.spec.idx, {}); m.get(c.spec.idx)[c.spec.sub] = c; }
+    for (const [idx, p] of m) if (p.re && p.im) out.push({key: f.id + '|' + idx, label: f.name + ' · ' + p.re.name.replace(/ \(Re\)$/, ''), re: p.re, im: p.im}); }
+  return out;
+}
+function refreshRezPick() { const sel = $('#rzPair'); if (!sel) return; const ps = rezPairs(), key = ps.map(p => p.key).join(','); if (key === _rzKey) return; _rzKey = key; const v = sel.value; sel.replaceChildren(...(ps.length ? ps.map(p => h('option', {value: p.key}, p.label)) : [h('option', {value: ''}, 'Kompleks UNV kanalı yok')])); if (v) sel.value = v; }
+async function computeResonance() {
+  refreshRezPick(); const p = rezPairs().find(x => x.key === $('#rzPair').value); if (!p) return toast('Önce Re ve Im içeren (kompleks) bir UNV kanalı açın');
+  const x = p.re.spec.x, re = p.re.data, im = p.im.data; if (!x || x.length !== re.length) return toast('Frekans ekseni bulunamadı');
+  const f1 = parseFloat($('#rzF1').value), f2 = parseFloat($('#rzF2').value), rs = DSP.resonances(x, re, im, {promDb: num('rzProm'), fmin: isFinite(f1) ? f1 : -Infinity, fmax: isFinite(f2) ? f2 : Infinity, max: num('rzMax') | 0 || 12});
+  _rzRes = {rs, name: p.label};
+  const P = S.specPlot; P.axes.slice().forEach(a => P.removeAxes(a)); P.harm = null; const mag = Float64Array.from(re, (v, i) => Math.hypot(v, im[i])), ph = Float64Array.from(re, (v, i) => Math.atan2(im[i], v) * 180 / Math.PI), u = p.re.unit || '', nm = p.re.name.replace(/ \(Re\)$/, '');
+  const xl = x[0] > 0 && x[x.length - 1] / x[0] > 20;
+  const aM = P.addAxes({xlog: xl, ylog: true, title: 'Rezonans analizi — ' + nm}), aP = P.addAxes({xlog: xl, ylog: false, title: ''}), aR = P.addAxes({xlog: xl, ylog: false, title: ''});
+  aM.hw = 2; aM.ylabel = '|H|' + (u ? ' (' + u + ')' : ''); aP.ylabel = 'Faz (°)'; aR.ylabel = 'Re / Im'; aR.xlabel = 'Frekans (Hz)';
+  const T = (y, label, color, extra) => Object.assign({kind: 'xy', x, y, label, color, width: 1.3, visible: true, raw: y, scale: 'frf', srcKind: 'frf'}, extra || {});
+  aM.traces.push(T(mag, '|H|', '#2b6cb0', {peaks: rs.map(r => ({i: r.i, x: r.fn, y: r.mag}))})); aP.traces.push(T(ph, 'Faz', '#2f855a')); aR.traces.push(T(re, 'Re', '#2b6cb0'), T(im, 'Im', '#c05621'));
+  const N = S.xyPlot; N.axes.slice().forEach(a => N.removeAxes(a)); S.xyKeep = true; syncFeatUI();
+  const nx = N.addAxes({xlabel: 'Re' + (u ? ' (' + u + ')' : ''), ylabel: 'Im' + (u ? ' (' + u + ')' : ''), title: 'Nyquist — ' + nm});
+  nx.traces.push({kind: 'xy', x: re, y: im, label: 'Nyquist', color: '#2b6cb0', width: 1.2, visible: true, marker: true, msize: 2.2, alpha: 0.9, raw: im, scale: 'frf', srcKind: 'frf'}, {kind: 'xy', x: Float64Array.from(rs, r => r.re), y: Float64Array.from(rs, r => r.im), label: 'Rezonanslar', color: '#c05621', width: 1, visible: true, marker: true, msize: 7, alpha: 1, raw: im, scale: 'frf', srcKind: 'frf'});
+  P.fitAll(); N.fitAll(); for (const q of P.axes) if (q.xlog && q.xlim[0] <= 0) q.xlim[0] = x.find(v => v > 0) || 1e-3; P.invalidate(); N.invalidate(); syncWelcome(); switchView('spec');
+  const fmt = v => isFinite(v) ? fmtNum(v, 5) : '–', rows = rs.map((r, k) => [k + 1, fmt(r.fn), fmt(r.mag), fmt(r.zeta * 100), fmt(r.q), fmt(r.phase), fmt(r.f1), fmt(r.f2), fmt(r.fnIm)]);
+  _rzRes.head = ['#', 'fn (Hz)', '|H|', 'ζ (%)', 'Q', 'Faz (°)', 'f1 (Hz)', 'f2 (Hz)', 'f(Im pik) (Hz)']; _rzRes.rows = rows;
+  const tb = $('#rzTab'); tb.replaceChildren(rs.length ? h('div', {style: 'overflow:auto;max-height:260px'}, h('table', {class: 'ftab'}, h('thead', null, h('tr', null, _rzRes.head.map(t => h('th', null, t)))), h('tbody', null, rows.map(r => h('tr', null, r.map(c => h('td', null, String(c)))))))) : h('div', {class: 'note'}, 'Belirgin rezonans bulunamadı; belirginlik eşiğini düşürün.'));
+  toast(rs.length + ' rezonans bulundu · Nyquist: “Dağılım” görünümü', 5000);
+}
+function rezToReport() { if (!_rzRes || !_rzRes.rows.length) return toast('Önce rezonansları hesaplayın'); REP.items.push({type: 'table', title: 'Rezonans (mod) tablosu — ' + _rzRes.name, head: _rzRes.head, rows: _rzRes.rows, note: 'fn: |H| tepe frekansı (parabolik ara değer); ζ: yarı-güç (−3 dB) bant genişliğinden, ζ ≈ (f2−f1)/(2·fn); Q = 1/(2ζ).'}); repRefreshList(); toast('Rapora eklendi'); }
+async function rezCopy() { if (!_rzRes || !_rzRes.rows.length) return toast('Önce rezonansları hesaplayın'); try { await navigator.clipboard.writeText([_rzRes.head, ..._rzRes.rows].map(r => r.join('\t')).join('\n')); toast('Tablo panoya kopyalandı'); } catch (e) { toast('Kopyalanamadı: ' + e.message); } }
 
 /* ===== Rapor: kapak, üst/alt bilgili A4 sayfalar, içindekiler, şekil/tablo/not; PDF (yazdır) veya HTML ===== */
 const REP = {items: [], meta: null, cls: ['TASNİF DIŞI', 'HİZMETE ÖZEL', 'ÖZEL', 'GİZLİ', 'ÇOK GİZLİ']};

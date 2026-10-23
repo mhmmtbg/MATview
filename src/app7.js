@@ -129,8 +129,8 @@ function tableImport(T) {
 function featFile() { return S.feat && S.files.find(x => x.id === S.feat.fid && x.feature); }
 function syncFeatUI() {
   const has = S.files.some(f => f.feature), tabb = document.querySelector('#rtabs button[data-t=feat]'), vt = document.querySelector('#viewtabs button[data-v=xy]');
-  if (tabb) tabb.classList.toggle('hidden', !has); if (vt) vt.classList.toggle('hidden', !has);
-  if (!has && S.view === 'xy') switchView('time'); if (!has && S.tab === 'feat') setTab('traces');
+  const vis = has || S.xyKeep; if (tabb) tabb.classList.toggle('hidden', !has); if (vt) vt.classList.toggle('hidden', !vis);
+  if (!vis && S.view === 'xy') switchView('time'); if (!has && S.tab === 'feat') setTab('traces');
   if (has && !featFile()) { const f = S.files.find(x => x.feature); S.feat = {fid: f.id, x: f.cols[0].name, ys: new Set([f.cols[Math.min(1, f.cols.length - 1)].name]), type: 'scatter', fit: 'none', deg: 2, resid: false, color: '', bins: 0}; }
   refreshFeatUI();
 }

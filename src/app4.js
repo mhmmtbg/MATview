@@ -214,6 +214,7 @@ function buildUnv() {
   const r = h('div');
   r.append(card('UNV dosyaları', h('div', {class: 'note'}, 'UNV (dataset 58) dosyasını "Dosya aç…" ile veya pencereye sürükleyerek açın. Kanal sayısı dosyadan okunur; kompleks kanallar Genlik/Faz/Re/Im olarak gelir. Kanalları soldan çift tıklayarak spektrum grafiğine ekleyin.'),
     h('div', {class: 'btns'}, btn('Kanal tablosu…', unvTableDialog, 'primary'), btn('Spektrum grafiğini temizle', specClear), btn('Excel\'e aktar', unvExcel))));
+  r.append(resonanceCard());
   r.append(card('Profiller', h('div', {class: 'btns', style: 'margin-top:0'}, btn('+ Profil ekle…', () => profDialog(null), 'primary')), h('div', {id: 'profBox'}, profList()),
     h('div', {class: 'note'}, 'Profil log-log eksende çizilir (± tolerans kesikli). "≈" ile spektrum grafiğindeki ölçümler profille karşılaştırılır. Profiller bu bilgisayardaki tarayıcı deposunda saklanır. Welch spektrumuyla karşılaştırmak için Analiz sekmesinde "PSD" ve Y ekseni "Logaritmik" seçin.')));
   return r;
