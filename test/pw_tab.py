@@ -16,7 +16,7 @@ async def main():
         print('axes', await pg.evaluate("S.plot.axes.map(a=>a.traces.map(t=>t.label+':'+t.ch.fs+':'+t.ch.unit+':'+t.ch.kind))"))
         await pg.screenshot(path=SHOT + '2_time.png')
         # formül sekmesi: integral ve kayan RMS
-        await pg.click('#rtabs [data-t=expr]'); await pg.select_option('#qOp', 'int'); await pg.click('button:has-text("Hesapla ve ekle")'); await pg.wait_for_timeout(600)
+        await pg.click('#rtabs [data-t=expr]'); await pg.evaluate("document.querySelectorAll('#rbody .card.collapsed>h4').forEach(h=>h.click())");  await pg.select_option('#qOp', 'int'); await pg.click('button:has-text("Hesapla ve ekle")'); await pg.wait_for_timeout(600)
         print('after int:', await pg.evaluate("S.plot.axes.map(a=>a.traces.map(t=>t.label+'|'+t.ch.unit))"), await pg.inner_text('#qMsg'))
         await pg.select_option('#qOp', 'mrms'); await pg.click('button:has-text("Hesapla ve ekle")'); await pg.wait_for_timeout(600)
         await pg.fill('#exprIn', 'zscore(' + (await pg.evaluate("S.plot.axes[0].traces[0].ch.name")) + ')'); await pg.click('button:has-text("Hesapla ve grafiğe ekle")'); await pg.wait_for_timeout(500)
@@ -35,7 +35,7 @@ async def main():
         print('dialog2:', (await pg.inner_text('#mbody'))[:200].replace('\n', ' | ')); await pg.screenshot(path=SHOT + '6_dialog2.png')
         await pg.click('#mfoot button.primary'); await pg.wait_for_timeout(800)
         print('view', await pg.evaluate("S.view"), 'tab', await pg.evaluate("S.tab"))
-        await pg.select_option('#featBody select >> nth=3', 'linear'); await pg.click('#featBody button:has-text("Çiz")'); await pg.wait_for_timeout(500)
+        await pg.evaluate("document.querySelectorAll('#rbody .card.collapsed>h4').forEach(h=>h.click())"); await pg.select_option('#featBody select >> nth=3', 'linear'); await pg.click('#featBody button:has-text("Çiz")'); await pg.wait_for_timeout(500)
         print('info:', await pg.inner_text('#featInfo')); await pg.screenshot(path=SHOT + '7_feat.png')
         await pg.click('button:has-text("Korelasyon matrisi")'); await pg.wait_for_timeout(300); await pg.screenshot(path=SHOT + '8_corr.png'); await pg.click('#mclose')
         # akordeon: iki dosya

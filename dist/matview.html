@@ -3510,8 +3510,9 @@ function decorate(root) {
   for (const h4 of root.querySelectorAll('.card>h4:not([data-cz])')) {
     h4.dataset.cz = 1; const card = h4.parentElement, key = h4.textContent.replace(/\s+/g, ' ').trim().slice(0, 40), car = h('span', {class: 'cz'}, '▾');
     h4.prepend(car); h4.tabIndex = 0; h4.setAttribute('role', 'button');
-    const apply = () => { const c = S.collapsed.has(key); card.classList.toggle('collapsed', c); car.textContent = c ? '▸' : '▾'; h4.setAttribute('aria-expanded', !c); };
-    const tog = e => { if (e.target.closest('button,input,select')) return; S.collapsed.has(key) ? S.collapsed.delete(key) : S.collapsed.add(key); try { localStorage.setItem('mv.collapsed', JSON.stringify([...S.collapsed])); } catch (_) {} apply(); };
+    const rp = !!card.closest('#rbody'), isC = () => rp ? !S.opened.has(key) : S.collapsed.has(key);   // sağ panelde kartlar varsayılan katlı; açılanlar hatırlanır
+    const apply = () => { const c = isC(); card.classList.toggle('collapsed', c); car.textContent = c ? '▸' : '▾'; h4.setAttribute('aria-expanded', !c); };
+    const tog = e => { if (e.target.closest('button,input,select')) return; if (rp) { S.opened.has(key) ? S.opened.delete(key) : S.opened.add(key); try { localStorage.setItem('mv.opened', JSON.stringify([...S.opened])); } catch (_) {} } else { S.collapsed.has(key) ? S.collapsed.delete(key) : S.collapsed.add(key); try { localStorage.setItem('mv.collapsed', JSON.stringify([...S.collapsed])); } catch (_) {} } apply(); };
     h4.onclick = tog; h4.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(e); } }; apply();
   }
 }
@@ -3649,6 +3650,7 @@ function shortcutsDialog() {
 function updDblBtn() { const b = $('#btnDbl'); if (!b) return; const s = b.querySelector('.lbltxt') || (() => { const t = h('span', {class: 'lbltxt'}); b.append(t); b.childNodes.forEach(c => { if (c.nodeType === 3) c.remove(); }); return t; })(); s.textContent = 'Çift tık: ' + (S.pref.dbl === 'same' ? 'aktif grafiğe ekle' : 'yeni alt grafik'); }
 function initUX() {
   try { S.collapsed = new Set(JSON.parse(localStorage.getItem('mv.collapsed') || '[]')); } catch (_) { S.collapsed = new Set(); }
+  try { S.opened = new Set(JSON.parse(localStorage.getItem('mv.opened') || '[]')); } catch (_) { S.opened = new Set(); }
   try { S.pref.dbl = localStorage.getItem('mv.dbl') || 'new'; } catch (_) {}
   const od = S.plot.onDraw; S.plot.onDraw = () => { od(); syncOverlay(S.plot); syncWelcome(); };
   S.specPlot.onDraw = () => syncOverlay(S.specPlot); S.xyPlot.onDraw = () => syncOverlay(S.xyPlot);
