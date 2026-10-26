@@ -7,15 +7,16 @@ const num = id => parseFloat($('#' + id).value), sv = id => $('#' + id).value, c
 const card = (title, ...c) => h('div', {class: 'card'}, h('h4', null, title), ...c);
 const btn = (t, fn, cls, id) => h('button', {class: cls || '', onclick: fn, id}, t);
 
-const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'Formül'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['feat', 'Veri'], ['qual', 'Kalite'], ['test', 'Test'], ['output', 'Çıktı']];
+const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'Formül'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['feat', 'Veri'], ['qual', 'Kalite'], ['test', 'Test'], ['tools', 'Araçlar'], ['output', 'Çıktı']];
 function buildRight() {
   const tabs = $('#rtabs'), body = $('#rbody'); tabs.replaceChildren(); body.replaceChildren(); S.panels = {};
-  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, qual: buildQual, test: buildTest, output: buildOutput};
+  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, qual: buildQual, test: buildTest, tools: buildTools, output: buildOutput};
   for (const [k, t] of TABS) {
     tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => setTab(k)}, h('span', {class: 'tl'}, t)));
     const p = builders[k](); p.id = 'p-' + k; if (k !== S.tab) p.classList.add('hidden'); body.append(p); S.panels[k] = p;
   }
 }
+function buildTools() { const r = h('div'); for (const c of toolsCards()) r.append(c); if (typeof extraToolCards === 'function') for (const c of extraToolCards()) r.append(c); return r; }
 function setTab(k) { S.tab = k; for (const b of $('#rtabs').children) b.classList.toggle('on', b.dataset.t === k); for (const t in S.panels) S.panels[t].classList.toggle('hidden', t !== k); }
 
 /* ---------- İzler ---------- */
@@ -477,7 +478,7 @@ function matWrite(vars) {
 }
 function rle(del) { const out = []; let s = -1; for (let i = 0; i < del.length; i++) { if (del[i]) { if (s < 0) s = i; } else if (s >= 0) { out.push([s, i]); s = -1; } } if (s >= 0) out.push([s, del.length]); return out; }
 async function saveSession() {
-  const o = {app: 'MATView', v: 1, linkX: S.plot.linkX, files: S.files.map(f => f.name), axes: S.plot.axes.map(ax => ({title: ax.title, ylabel: ax.ylabel, xlim: ax.xlim, ylim: ax.ylim, yAuto: ax.yAuto, ylog: ax.ylog, traces: ax.traces.map(t => ({name: t.ch.name, color: t.color, width: t.width, visible: t.visible}))})), deletions: {}, timing: S.files.map(f => ({name: f.name, Tpkt: f.Tpkt, baseFs: f.baseFs}))};
+  const o = {app: 'MATView', v: 1, notes: S.notes, linkX: S.plot.linkX, files: S.files.map(f => f.name), axes: S.plot.axes.map(ax => ({title: ax.title, ylabel: ax.ylabel, xlim: ax.xlim, ylim: ax.ylim, yAuto: ax.yAuto, ylog: ax.ylog, traces: ax.traces.map(t => ({name: t.ch.name, color: t.color, width: t.width, visible: t.visible}))})), deletions: {}, timing: S.files.map(f => ({name: f.name, Tpkt: f.Tpkt, baseFs: f.baseFs}))};
   for (const f of allFiles()) for (const c of f.channels) if (c.delCount) o.deletions[c.name] = rle(c.del);
   await saveBlob(new Blob([JSON.stringify(o)], {type: 'application/json'}), 'oturum.json');
 }
@@ -485,7 +486,7 @@ async function loadSession(file) {
   const o = JSON.parse(await file.text()); let miss = 0;
   await busy('Oturum yükleniyor…', async () => {
     for (const t of o.timing || []) { const f = S.files.find(x => x.name === t.name); if (f) { f.Tpkt = t.Tpkt; f.baseFs = t.baseFs; applyTiming(f); } }
-    clearPlot(); S.plot.linkX = o.linkX !== false;
+    clearPlot(); S.plot.linkX = o.linkX !== false; if (o.notes) { S.notes = o.notes; if (typeof noteSave === 'function') noteSave(); S.plot.notes = S.notes; }
     for (const a of o.axes) {
       const ax = S.plot.addAxes({title: a.title, ylabel: a.ylabel, ylim: a.ylim, yAuto: a.yAuto, ylog: a.ylog, xlim: a.xlim});
       for (const t of a.traces) { let c = null; for (const f of allFiles()) for (const cc of f.channels) if (cc.name === t.name) c = cc; if (!c) { miss++; continue; } await ensureLoaded(c); ax.traces.push({kind: 'ts', ch: c, label: c.name, color: t.color, width: t.width, visible: t.visible}); }
@@ -532,7 +533,7 @@ function applyTheme(t) { document.documentElement.dataset.theme = t; try { local
 function init() {
   let th = 'light'; try { th = localStorage.getItem('matview-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) {}
   document.documentElement.dataset.theme = th;
-  S.plot = new Plot($('#cv-time'), {onDraw: syncLimits, onChange: onPlotChange, onSelect, onHover: onHover1, xName: 't'});
+  S.plot = new Plot($('#cv-time'), {onDraw: syncLimits, onChange: onPlotChange, onSelect, onHover: onHover1, xName: 't'}); S.plot.notes = S.notes;
   S.plot.selectionTargets = ax => ck('applyAll') ? ax.traces.filter(t => t.visible) : ax.traces.length ? [ax.traces[Math.min(ax.active || 0, ax.traces.length - 1)]] : [];
   S.specPlot = new Plot($('#cv-spec'), {xlabel: 'Frekans (Hz)', xName: 'f', emptyText: 'Spektrum için sağdaki "Analiz" sekmesinden "Spektrumu hesapla"ya basın',
     onHover: p => { $('#hoverinfo').textContent = p ? `f = ${fmtNum(p.x, 7)} Hz    y = ${fmtNum(p.y, 6)}` : ''; }});

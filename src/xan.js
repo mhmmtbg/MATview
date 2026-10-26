@@ -106,4 +106,4 @@ function rawView(on) {
 }
 function historyCard() { return card('Silme geçmişi ve ham veri', h('div', {class: 'note'}, 'Silme işlemleri özgün veriyi değiştirmez; maske olarak uygulanır. Geçmişi inceleyebilir, kanal başına geri alabilir veya ham veriyi geçici olarak görebilirsiniz. MAT dışa aktarımına işlem günlüğü eklenir.'),
   chkIn('mxLog', 'MAT dışa aktarımına işlem günlüğünü ekle (MATView_islem_gunlugu)', true), h('div', {class: 'btns'}, btn('Silme geçmişi…', delHistoryDialog), btn('Ham veri görünümü', () => rawView(!S.rawOn), '', 'rawBtn'))); }
-function extraTestCards() { return [ctCard(), atCard()]; }
+function extraTestCards() { return [ctCard(), atCard(), shockCard(), thermalCard()]; }

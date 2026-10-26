@@ -184,7 +184,7 @@ class Plot {
     this.layout(W, H);
     for (const ax of this.axes) { this.autoY(ax); this.drawAxes(ctx, ax, T, forExport); }
     if (!forExport && this.hoverX != null && this.axes.length > 1 && this.linkX) { ctx.save(); ctx.strokeStyle = T.muted; ctx.setLineDash([2, 3]); for (const ax of this.axes) { const x = this.xPx(ax, this.hoverX), r = ax.rect; if (x >= r.x && x <= r.x + r.w) { ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, r.y); ctx.lineTo(Math.round(x) + .5, r.y + r.h); ctx.stroke(); } } ctx.restore(); }
-    if (!forExport) { this.drawOverlay(ctx, T); }
+    this.drawOverlay(ctx, T, forExport);
   }
   autoY(ax) {
     if (!ax.yAuto) return;
@@ -254,8 +254,9 @@ class Plot {
     }
     ctx.restore();
   }
-  drawOverlay(ctx, T) {
+  drawOverlay(ctx, T, forExport) {
     // seçim kutusu / kement / yakınlaştırma çerçevesi
+    if (!forExport) {
     if (this.drag && this.drag.kind === 'rubber') {
       const d = this.drag; ctx.save(); ctx.strokeStyle = d.mode === 'zoom' ? T.fg : T.sel; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
       ctx.strokeRect(Math.min(d.x0, d.x1) + .5, Math.min(d.y0, d.y1) + .5, Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0)); ctx.restore();
@@ -276,7 +277,11 @@ class Plot {
       }
       ctx.restore();
     }
+    }
     for (const b of this.bands || []) for (const ax of this.axes) { const r = ax.rect; const x0 = Math.max(r.x, this.xPx(ax, b.x0)), x1 = Math.min(r.x + r.w, this.xPx(ax, b.x1)); if (x1 > x0) { ctx.save(); ctx.globalAlpha = .13; ctx.fillStyle = b.color || '#2aa198'; ctx.fillRect(x0, r.y, x1 - x0, r.h); ctx.restore(); } }
+    for (const nt of this.notes || []) this.axes.forEach((ax, ai) => { const r = ax.rect, x0 = this.xPx(ax, nt.t0); if (!(x0 >= r.x - 1 && x0 <= r.x + r.w + 1)) return; ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); ctx.strokeStyle = nt.color || '#b45309'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(x0, r.y); ctx.lineTo(x0, r.y + r.h); ctx.stroke(); if (nt.t1 > nt.t0) { const x1 = Math.min(r.x + r.w, this.xPx(ax, nt.t1)); ctx.setLineDash([]); ctx.globalAlpha = .1; ctx.fillStyle = nt.color || '#b45309'; ctx.fillRect(x0, r.y, Math.max(1, x1 - x0), r.h); ctx.globalAlpha = 1; }
+      if (ai === 0) { ctx.setLineDash([]); ctx.font = '10px sans-serif'; ctx.fillStyle = nt.color || '#b45309'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(nt.text, x0 + 3, r.y + 2); } ctx.restore(); });
     if (this.harm && this.harm.f0 > 0) for (const ax of this.axes) {   // harmonik ve yan-band imleçleri
       const r = ax.rect, hm = this.harm; ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
       for (let k = 1; k <= hm.n; k++) {
