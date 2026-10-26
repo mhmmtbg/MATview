@@ -26,10 +26,11 @@ const DSP = (() => {
       }
     }
   }
+  // Spektral analiz için periyodik (DFT-even) pencere: scipy.signal.get_window(fftbins=True) ve MATLAB pwelch ile aynı
   function window(type, n) {
     const w = new Float64Array(n);
     for (let i = 0; i < n; i++) {
-      const x = i / (n - 1);
+      const x = i / n;
       switch (type) {
         case 'hann': w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * x); break;
         case 'hamming': w[i] = 0.54 - 0.46 * Math.cos(2 * Math.PI * x); break;
@@ -83,8 +84,20 @@ const DSP = (() => {
       else if (opt.scale === 'rms') { y[k] = Math.sqrt(p) * (k === 0 || k === nb - 1 ? 1 : Math.SQRT2) / s1; }
       else { y[k] = p / (fs * s2) * (k === 0 || k === nb - 1 ? 1 : 2); }                           // birim²/Hz
     }
-    return {f, y, nseg, nfft, df: fs / nfft};
+    // Doğruluk bilgileri: ENBW, etkin ortalama sayısı ve serbestlik derecesi (Welch, örtüşmeli pencere korelasyonu ile)
+    const enbw = fs * s2 / (s1 * s1); let K = nseg, ro = 0;
+    if (nseg > 1) { let wa = 0; for (let m = 1; m * hop < nfft; m++) { let c = 0; for (let i = 0; i + m * hop < nfft; i++) c += w[i] * w[i + m * hop]; const r = c / s2; if (r < 1e-6) break; wa += 2 * r * r * (1 - m / nseg); } ro = wa; K = nseg / (1 + wa); }
+    return {f, y, nseg, nfft, df: fs / nfft, enbw, keff: K, dof: 2 * K, hop, s1, s2};
   }
+  // Ki-kare kuantili (Wilson–Hilferty) ve Welch PSD için %güven aralığı çarpanları [alt, üst]
+  function chi2q(p, k) { const z = normQ(p), a = 2 / (9 * k); return k * Math.pow(1 - a + z * Math.sqrt(a), 3); }
+  function normQ(p) { // Acklam yaklaşımı
+    const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239], b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572],
+      c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783], d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+    const pl = 0.02425; let q, r; if (p < pl) { q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+    if (p > 1 - pl) return -normQ(1 - p); q = p - 0.5; r = q * q; return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+  }
+  function psdCI(dof, conf) { conf = conf || 0.95; const lo = dof / chi2q(1 - (1 - conf) / 2, dof), hi = dof / chi2q((1 - conf) / 2, dof); return [lo, hi]; }
 
   // Spektrogram: dB, kare sayısı en fazla maxFrames
   function spectrogram(x, fs, opt) {
@@ -486,6 +499,6 @@ const DSP = (() => {
     return {f, h1, h2, phase: ph, coh, nseg, nfft, df: fs / nfft};
   }
 
-  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC};
+  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC};
 })();
 if (typeof module !== 'undefined') module.exports = DSP;

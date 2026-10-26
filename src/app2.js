@@ -7,10 +7,10 @@ const num = id => parseFloat($('#' + id).value), sv = id => $('#' + id).value, c
 const card = (title, ...c) => h('div', {class: 'card'}, h('h4', null, title), ...c);
 const btn = (t, fn, cls, id) => h('button', {class: cls || '', onclick: fn, id}, t);
 
-const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'Formül'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['feat', 'Veri'], ['output', 'Çıktı']];
+const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'Formül'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['feat', 'Veri'], ['qual', 'Kalite'], ['output', 'Çıktı']];
 function buildRight() {
   const tabs = $('#rtabs'), body = $('#rbody'); tabs.replaceChildren(); body.replaceChildren(); S.panels = {};
-  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, output: buildOutput};
+  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, qual: buildQual, output: buildOutput};
   for (const [k, t] of TABS) {
     tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => setTab(k)}, h('span', {class: 'tl'}, t)));
     const p = builders[k](); p.id = 'p-' + k; if (k !== S.tab) p.classList.add('hidden'); body.append(p); S.panels[k] = p;
@@ -151,7 +151,7 @@ function buildAnalyze() {
     fr('Kapsam', selIn('spScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
     fr('Y ekseni', selIn('spY', [['log', 'Logaritmik (g²/Hz)'], ['lin', 'Lineer'], ['db', 'dB']], 'log')),
     fr('X ekseni', selIn('spX', [['log', 'Logaritmik'], ['lin', 'Lineer']], 'log')),
-    chkIn('spPeak', 'En yüksek 3 tepeyi işaretle', true),
+    chkIn('spPeak', 'En yüksek 3 tepeyi işaretle', true), chkIn('spCI', '%95 güven aralığını (kesikli) çiz', false),
     h('div', {class: 'btns'}, btn('Spektrumu hesapla', computeSpectrum, 'primary')),
     h('div', {id: 'spInfo', class: 'note'}, 'Aktif alt grafikteki görünür tüm izler için hesaplanır.')));
   r.append(lvCard());
@@ -194,7 +194,9 @@ async function computeSpectrum(only) {
       const sd = DSP.stats(seg, null, 0, seg.length); if (!(sd.std > 1e-9 * (Math.abs(sd.mean) + 1e-12))) toast('Uyarı: ' + tr.label + ' seçili aralıkta sabit (değişmiyor), spektrum anlamsız.', 6000);
       const t = {kind: 'xy', x: res.f, y, label: tr.label, color: tr.color, width: 1, visible: true, raw: res.y, scale: o.scale, df: res.df, srcKind: ch.kind};
       if (ck('spPeak')) t.peaks = findPeaks(res.f, y, 3);
-      sa.traces.push(t); info.push(`${tr.label}: Δf=${fmtNum(res.df, 4)} Hz, ${res.nseg} bölüt`); prog(++k / list.length);
+      sa.traces.push(t); const ci = DSP.psdCI(res.dof, 0.95), pw = o.scale === 'psd' ? 1 : 0.5, cl = Math.pow(ci[0], pw), ch_ = Math.pow(ci[1], pw);
+      t.ci = {dof: res.dof, lo: cl, hi: ch_}; if (ck('spCI')) for (const [nm, fct] of [['−%95', cl], ['+%95', ch_]]) sa.traces.push({kind: 'xy', x: res.f, y: ys === 'db' ? y.map(v => v + (o.scale === 'psd' ? 10 : 20) * Math.log10(fct)) : y.map(v => v * fct), label: tr.label + ' ' + nm, color: tr.color, width: 1, dash: [4, 4], visible: true, raw: res.y, scale: o.scale, df: res.df, srcKind: ch.kind, noLegend: true});
+      info.push(`${tr.label}: Δf=${fmtNum(res.df, 4)} Hz · ENBW=${fmtNum(res.enbw, 4)} Hz · ${res.nseg} bölüt (etkin ${fmtNum(res.keff, 3)}) · sd=${fmtNum(res.dof, 3)} · %95 aralık ${(10 * Math.log10(ci[0])).toFixed(2)}/+${(10 * Math.log10(ci[1])).toFixed(2)} dB`); (S.methodLog = S.methodLog || []).push({t: Date.now(), op: 'spectrum', label: tr.label, nfft: res.nfft, win: o.win, overlap: o.overlap, scale: o.scale, nseg: res.nseg, dof: res.dof, df: res.df, enbw: res.enbw, del: ch.delCount || 0}); prog(++k / list.length);
     }
     $('#spInfo').textContent = info.join('\n'); $('#spInfo').style.whiteSpace = 'pre-line';
     if (!sa.traces.length) { P.removeAxes(sa); return; }

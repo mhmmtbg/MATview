@@ -18,6 +18,7 @@ const IC = {
   undo: '<path d="M5 3L2 6l3 3M2 6h7a4 4 0 010 8H6"/>',
   feat: '<path d="M2 3h12v10H2zM2 7h12M6 3v10"/>',
   expr: '<path d="M10 2.5C7 2.5 8 6 7 8s-1 5.5-4 5.5M4 7h6"/>', output: '<path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/>',
+  qual: '<path d="M8 1.5l5.5 2v4.2c0 3.2-2.3 5.6-5.5 6.8-3.2-1.2-5.5-3.6-5.5-6.8V3.5zM5.5 8l2 2 3.5-4"/>', test: '<path d="M3 14V2M3 2.5h9l-2 3 2 3H3"/>', tools: '<path d="M10.5 2a3 3 0 00-2.7 4.2L2.5 11.5a1.5 1.5 0 002 2l5.3-5.3A3 3 0 1010.5 2z"/>',
   sgram: '<path d="M2 2h12v12H2zM2 6h12M2 10h12M6 2v12M10 2v12M8 8h2v2H8z"/>',
   vib: '<path d="M1 8l2-4 2 8 2-8 2 8 2-8 2 4"/>', temp: '<path d="M7 9.5V3a1 1 0 012 0v6.5a2.5 2.5 0 11-2 0z"/>', press: '<path d="M2 11a6 6 0 1112 0zM8 11l3-5"/>',
   strain: '<path d="M2 8h12M2 5v6M14 5v6M5 6.5l1 3 2-3 1 3 1-3"/>', volt: '<path d="M9 1.5L4 9h4l-1 5.5L12 7H8z"/>', curr: '<path d="M2 8h12M10 5l3 3-3 3"/>',
@@ -127,6 +128,7 @@ function buildOv(P, ov) {
       grip.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); grip.setPointerCapture(e.pointerId); const lp = ax.lgPos || {dx: 0, dy: 0}, x0 = e.clientX - lp.dx, y0 = e.clientY - lp.dy; grip.onpointermove = ev => { ax.lgPos = {dx: ev.clientX - x0, dy: ev.clientY - y0}; part.upd(); P.invalidate(); }; grip.onpointerup = () => { grip.onpointermove = grip.onpointerup = null; }; };
       grip.ondblclick = () => { ax.lgPos = null; part.upd(); P.invalidate(); };
       ax.traces.forEach((tr, k) => {
+        if (tr.noLegend) return;
         const ex = h('span', {class: 'ex'}), x = h('button', {class: 'ib x', title: 'İzi kaldır', 'aria-label': 'İzi kaldır'}); x.innerHTML = ic('close', 10);
         const row = h('div', {class: 'lrow' + (tr.visible ? '' : ' off') + (P.active === ax && k === (ax.active || 0) ? ' cur' : ''), draggable: main ? 'true' : null, tabindex: 0, title: 'Tıkla: göster/gizle · Sağ tık: seçenekler' + (main ? ' · Sürükle: başka alt grafiğe taşı' : '')}, h('span', {class: 'sw', style: 'background:' + tr.color}), h('span', {class: 'nm'}, tr.label), ex, x);
         row.onclick = e => { if (e.target.closest('.x')) return; tr.visible = !tr.visible; ax.active = k; P.active = ax; P.invalidate(); afterStruct(P); };

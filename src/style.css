@@ -155,3 +155,5 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
 .repBar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)}
 .repItem{display:flex;align-items:center;gap:4px;margin:3px 0}.repItem input{flex:1;min-width:0}.repNote{width:100%;margin-bottom:4px}
 .lgrip{cursor:move;text-align:center;line-height:8px;height:10px;color:var(--muted);user-select:none;touch-action:none}
+table.tbl{border-collapse:collapse;width:100%;font-size:12px}table.tbl th,table.tbl td{border-bottom:1px solid var(--border);padding:3px 6px;text-align:left;white-space:nowrap}table.tbl th{position:sticky;top:0;background:var(--panel,var(--bg));font-weight:600}
+table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{color:inherit;text-decoration:underline}

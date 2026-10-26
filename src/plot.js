@@ -243,7 +243,7 @@ class Plot {
     if (ax.ylabel) { ctx.save(); ctx.translate(13, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ax.ylabel, 0, 0); ctx.restore(); }
     // gösterge
     if (this.legend && (forExport || !this.domLegend)) {
-      const vis = ax.traces.filter(t => t.visible); if (vis.length) {
+      const vis = ax.traces.filter(t => t.visible && !t.noLegend); if (vis.length) {
         ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const lbl = new Map(vis.map(t => [t, t.label + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
         const bw = wmax + 34, bh = vis.length * 16 + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx = Math.max(r.x, Math.min(r.x + r.w - bw, r.x + r.w - bw - 6 + lp.dx)), by = Math.max(r.y, Math.min(r.y + r.h - bh, r.y + 6 + lp.dy));

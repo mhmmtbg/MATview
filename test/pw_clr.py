@@ -1,6 +1,13 @@
 import asyncio, os
 from playwright.async_api import async_playwright
 ROOT = os.path.dirname(os.path.abspath(__file__)) + '/../'
+import numpy as np, wave
+def make_wav(p):
+    t = np.arange(16000 * 2) / 16000; x = np.stack([0.4 * np.sin(2 * np.pi * 440 * t) + 0.02 * np.random.default_rng(1).normal(0, 1, len(t)), 0.3 * np.sin(2 * np.pi * 880 * t)], 1).astype('<f4')
+    import struct
+    with open(p, 'wb') as f:
+        d = x.tobytes(); f.write(b'RIFF' + struct.pack('<I', 36 + len(d)) + b'WAVEfmt ' + struct.pack('<IHHIIHH', 16, 3, 2, 16000, 16000 * 8, 8, 32) + b'data' + struct.pack('<I', len(d)) + d)
+make_wav('/tmp/test_f32.wav')
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(args=['--no-sandbox']); pg = await b.new_page(viewport={'width': 1500, 'height': 950}); errs = []

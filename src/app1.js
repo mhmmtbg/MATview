@@ -138,8 +138,10 @@ async function openFiles(files) {
       toast(file.name + ': ' + f.channels.length + ' kanal');
     });
   }
-  renderChips(); renderTree();
+  renderChips(); renderTree(); if (typeof qualAuto === 'function') qualAuto(S.files.filter(f => !_seenFiles.has(f)));
+  S.files.forEach(f => _seenFiles.add(f));
 }
+const _seenFiles = new Set();
 function closeFile(f) {
   for (const ax of [...S.plot.axes]) { ax.traces = ax.traces.filter(t => t.ch.file !== f); if (!ax.traces.length) S.plot.removeAxes(ax); }
   S.undo = S.undo.filter(g => g.every(e => e.ch.file !== f)); S.redo = [];

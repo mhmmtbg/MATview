@@ -1,5 +1,6 @@
 const MAT=require('../src/mat.js'); const fs=require('fs');
-const dir=os.environ.get('MATVIEW_TEST_DATA','./testdata/');
+const dir=process.env.MATVIEW_TEST_DATA||'';
+if(!dir||!fs.existsSync(dir)){console.log('MATVIEW_TEST_DATA yok — atlandı');process.exit(0);}
 (async()=>{
  for (const f of fs.readdirSync(dir)){
   const b=fs.readFileSync(dir+f); const file={arrayBuffer:async()=>b.buffer.slice(b.byteOffset,b.byteOffset+b.length)};

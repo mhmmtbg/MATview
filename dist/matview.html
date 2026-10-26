@@ -161,6 +161,8 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
 .repBar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)}
 .repItem{display:flex;align-items:center;gap:4px;margin:3px 0}.repItem input{flex:1;min-width:0}.repNote{width:100%;margin-bottom:4px}
 .lgrip{cursor:move;text-align:center;line-height:8px;height:10px;color:var(--muted);user-select:none;touch-action:none}
+table.tbl{border-collapse:collapse;width:100%;font-size:12px}table.tbl th,table.tbl td{border-bottom:1px solid var(--border);padding:3px 6px;text-align:left;white-space:nowrap}table.tbl th{position:sticky;top:0;background:var(--panel,var(--bg));font-weight:600}
+table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{color:inherit;text-decoration:underline}
 </style>
 </head>
 <body>
@@ -1011,10 +1013,11 @@ const DSP = (() => {
       }
     }
   }
+  // Spektral analiz için periyodik (DFT-even) pencere: scipy.signal.get_window(fftbins=True) ve MATLAB pwelch ile aynı
   function window(type, n) {
     const w = new Float64Array(n);
     for (let i = 0; i < n; i++) {
-      const x = i / (n - 1);
+      const x = i / n;
       switch (type) {
         case 'hann': w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * x); break;
         case 'hamming': w[i] = 0.54 - 0.46 * Math.cos(2 * Math.PI * x); break;
@@ -1068,8 +1071,20 @@ const DSP = (() => {
       else if (opt.scale === 'rms') { y[k] = Math.sqrt(p) * (k === 0 || k === nb - 1 ? 1 : Math.SQRT2) / s1; }
       else { y[k] = p / (fs * s2) * (k === 0 || k === nb - 1 ? 1 : 2); }                           // birim²/Hz
     }
-    return {f, y, nseg, nfft, df: fs / nfft};
+    // Doğruluk bilgileri: ENBW, etkin ortalama sayısı ve serbestlik derecesi (Welch, örtüşmeli pencere korelasyonu ile)
+    const enbw = fs * s2 / (s1 * s1); let K = nseg, ro = 0;
+    if (nseg > 1) { let wa = 0; for (let m = 1; m * hop < nfft; m++) { let c = 0; for (let i = 0; i + m * hop < nfft; i++) c += w[i] * w[i + m * hop]; const r = c / s2; if (r < 1e-6) break; wa += 2 * r * r * (1 - m / nseg); } ro = wa; K = nseg / (1 + wa); }
+    return {f, y, nseg, nfft, df: fs / nfft, enbw, keff: K, dof: 2 * K, hop, s1, s2};
   }
+  // Ki-kare kuantili (Wilson–Hilferty) ve Welch PSD için %güven aralığı çarpanları [alt, üst]
+  function chi2q(p, k) { const z = normQ(p), a = 2 / (9 * k); return k * Math.pow(1 - a + z * Math.sqrt(a), 3); }
+  function normQ(p) { // Acklam yaklaşımı
+    const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239], b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572],
+      c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783], d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+    const pl = 0.02425; let q, r; if (p < pl) { q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+    if (p > 1 - pl) return -normQ(1 - p); q = p - 0.5; r = q * q; return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+  }
+  function psdCI(dof, conf) { conf = conf || 0.95; const lo = dof / chi2q(1 - (1 - conf) / 2, dof), hi = dof / chi2q((1 - conf) / 2, dof); return [lo, hi]; }
 
   // Spektrogram: dB, kare sayısı en fazla maxFrames
   function spectrogram(x, fs, opt) {
@@ -1471,7 +1486,7 @@ const DSP = (() => {
     return {f, h1, h2, phase: ph, coh, nseg, nfft, df: fs / nfft};
   }
 
-  return {noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC};
+  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC};
 })();
 
 /* MATLAB tarzı ifade ayrıştırıcı: kanal adları, + - * / ^, fonksiyonlar */
@@ -1856,7 +1871,7 @@ class Plot {
     if (ax.ylabel) { ctx.save(); ctx.translate(13, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ax.ylabel, 0, 0); ctx.restore(); }
     // gösterge
     if (this.legend && (forExport || !this.domLegend)) {
-      const vis = ax.traces.filter(t => t.visible); if (vis.length) {
+      const vis = ax.traces.filter(t => t.visible && !t.noLegend); if (vis.length) {
         ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const lbl = new Map(vis.map(t => [t, t.label + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
         const bw = wmax + 34, bh = vis.length * 16 + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx = Math.max(r.x, Math.min(r.x + r.w - bw, r.x + r.w - bw - 6 + lp.dx)), by = Math.max(r.y, Math.min(r.y + r.h - bh, r.y + 6 + lp.dy));
@@ -2577,8 +2592,10 @@ async function openFiles(files) {
       toast(file.name + ': ' + f.channels.length + ' kanal');
     });
   }
-  renderChips(); renderTree();
+  renderChips(); renderTree(); if (typeof qualAuto === 'function') qualAuto(S.files.filter(f => !_seenFiles.has(f)));
+  S.files.forEach(f => _seenFiles.add(f));
 }
+const _seenFiles = new Set();
 function closeFile(f) {
   for (const ax of [...S.plot.axes]) { ax.traces = ax.traces.filter(t => t.ch.file !== f); if (!ax.traces.length) S.plot.removeAxes(ax); }
   S.undo = S.undo.filter(g => g.every(e => e.ch.file !== f)); S.redo = [];
@@ -2688,10 +2705,10 @@ const num = id => parseFloat($('#' + id).value), sv = id => $('#' + id).value, c
 const card = (title, ...c) => h('div', {class: 'card'}, h('h4', null, title), ...c);
 const btn = (t, fn, cls, id) => h('button', {class: cls || '', onclick: fn, id}, t);
 
-const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'Formül'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['feat', 'Veri'], ['output', 'Çıktı']];
+const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'Formül'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['feat', 'Veri'], ['qual', 'Kalite'], ['output', 'Çıktı']];
 function buildRight() {
   const tabs = $('#rtabs'), body = $('#rbody'); tabs.replaceChildren(); body.replaceChildren(); S.panels = {};
-  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, output: buildOutput};
+  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, qual: buildQual, output: buildOutput};
   for (const [k, t] of TABS) {
     tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => setTab(k)}, h('span', {class: 'tl'}, t)));
     const p = builders[k](); p.id = 'p-' + k; if (k !== S.tab) p.classList.add('hidden'); body.append(p); S.panels[k] = p;
@@ -2832,7 +2849,7 @@ function buildAnalyze() {
     fr('Kapsam', selIn('spScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
     fr('Y ekseni', selIn('spY', [['log', 'Logaritmik (g²/Hz)'], ['lin', 'Lineer'], ['db', 'dB']], 'log')),
     fr('X ekseni', selIn('spX', [['log', 'Logaritmik'], ['lin', 'Lineer']], 'log')),
-    chkIn('spPeak', 'En yüksek 3 tepeyi işaretle', true),
+    chkIn('spPeak', 'En yüksek 3 tepeyi işaretle', true), chkIn('spCI', '%95 güven aralığını (kesikli) çiz', false),
     h('div', {class: 'btns'}, btn('Spektrumu hesapla', computeSpectrum, 'primary')),
     h('div', {id: 'spInfo', class: 'note'}, 'Aktif alt grafikteki görünür tüm izler için hesaplanır.')));
   r.append(lvCard());
@@ -2875,7 +2892,9 @@ async function computeSpectrum(only) {
       const sd = DSP.stats(seg, null, 0, seg.length); if (!(sd.std > 1e-9 * (Math.abs(sd.mean) + 1e-12))) toast('Uyarı: ' + tr.label + ' seçili aralıkta sabit (değişmiyor), spektrum anlamsız.', 6000);
       const t = {kind: 'xy', x: res.f, y, label: tr.label, color: tr.color, width: 1, visible: true, raw: res.y, scale: o.scale, df: res.df, srcKind: ch.kind};
       if (ck('spPeak')) t.peaks = findPeaks(res.f, y, 3);
-      sa.traces.push(t); info.push(`${tr.label}: Δf=${fmtNum(res.df, 4)} Hz, ${res.nseg} bölüt`); prog(++k / list.length);
+      sa.traces.push(t); const ci = DSP.psdCI(res.dof, 0.95), pw = o.scale === 'psd' ? 1 : 0.5, cl = Math.pow(ci[0], pw), ch_ = Math.pow(ci[1], pw);
+      t.ci = {dof: res.dof, lo: cl, hi: ch_}; if (ck('spCI')) for (const [nm, fct] of [['−%95', cl], ['+%95', ch_]]) sa.traces.push({kind: 'xy', x: res.f, y: ys === 'db' ? y.map(v => v + (o.scale === 'psd' ? 10 : 20) * Math.log10(fct)) : y.map(v => v * fct), label: tr.label + ' ' + nm, color: tr.color, width: 1, dash: [4, 4], visible: true, raw: res.y, scale: o.scale, df: res.df, srcKind: ch.kind, noLegend: true});
+      info.push(`${tr.label}: Δf=${fmtNum(res.df, 4)} Hz · ENBW=${fmtNum(res.enbw, 4)} Hz · ${res.nseg} bölüt (etkin ${fmtNum(res.keff, 3)}) · sd=${fmtNum(res.dof, 3)} · %95 aralık ${(10 * Math.log10(ci[0])).toFixed(2)}/+${(10 * Math.log10(ci[1])).toFixed(2)} dB`); (S.methodLog = S.methodLog || []).push({t: Date.now(), op: 'spectrum', label: tr.label, nfft: res.nfft, win: o.win, overlap: o.overlap, scale: o.scale, nseg: res.nseg, dof: res.dof, df: res.df, enbw: res.enbw, del: ch.delCount || 0}); prog(++k / list.length);
     }
     $('#spInfo').textContent = info.join('\n'); $('#spInfo').style.whiteSpace = 'pre-line';
     if (!sa.traces.length) { P.removeAxes(sa); return; }
@@ -3638,6 +3657,7 @@ const IC = {
   undo: '<path d="M5 3L2 6l3 3M2 6h7a4 4 0 010 8H6"/>',
   feat: '<path d="M2 3h12v10H2zM2 7h12M6 3v10"/>',
   expr: '<path d="M10 2.5C7 2.5 8 6 7 8s-1 5.5-4 5.5M4 7h6"/>', output: '<path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/>',
+  qual: '<path d="M8 1.5l5.5 2v4.2c0 3.2-2.3 5.6-5.5 6.8-3.2-1.2-5.5-3.6-5.5-6.8V3.5zM5.5 8l2 2 3.5-4"/>', test: '<path d="M3 14V2M3 2.5h9l-2 3 2 3H3"/>', tools: '<path d="M10.5 2a3 3 0 00-2.7 4.2L2.5 11.5a1.5 1.5 0 002 2l5.3-5.3A3 3 0 1010.5 2z"/>',
   sgram: '<path d="M2 2h12v12H2zM2 6h12M2 10h12M6 2v12M10 2v12M8 8h2v2H8z"/>',
   vib: '<path d="M1 8l2-4 2 8 2-8 2 8 2-8 2 4"/>', temp: '<path d="M7 9.5V3a1 1 0 012 0v6.5a2.5 2.5 0 11-2 0z"/>', press: '<path d="M2 11a6 6 0 1112 0zM8 11l3-5"/>',
   strain: '<path d="M2 8h12M2 5v6M14 5v6M5 6.5l1 3 2-3 1 3 1-3"/>', volt: '<path d="M9 1.5L4 9h4l-1 5.5L12 7H8z"/>', curr: '<path d="M2 8h12M10 5l3 3-3 3"/>',
@@ -3747,6 +3767,7 @@ function buildOv(P, ov) {
       grip.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); grip.setPointerCapture(e.pointerId); const lp = ax.lgPos || {dx: 0, dy: 0}, x0 = e.clientX - lp.dx, y0 = e.clientY - lp.dy; grip.onpointermove = ev => { ax.lgPos = {dx: ev.clientX - x0, dy: ev.clientY - y0}; part.upd(); P.invalidate(); }; grip.onpointerup = () => { grip.onpointermove = grip.onpointerup = null; }; };
       grip.ondblclick = () => { ax.lgPos = null; part.upd(); P.invalidate(); };
       ax.traces.forEach((tr, k) => {
+        if (tr.noLegend) return;
         const ex = h('span', {class: 'ex'}), x = h('button', {class: 'ib x', title: 'İzi kaldır', 'aria-label': 'İzi kaldır'}); x.innerHTML = ic('close', 10);
         const row = h('div', {class: 'lrow' + (tr.visible ? '' : ' off') + (P.active === ax && k === (ax.active || 0) ? ' cur' : ''), draggable: main ? 'true' : null, tabindex: 0, title: 'Tıkla: göster/gizle · Sağ tık: seçenekler' + (main ? ' · Sürükle: başka alt grafiğe taşı' : '')}, h('span', {class: 'sw', style: 'background:' + tr.color}), h('span', {class: 'nm'}, tr.label), ex, x);
         row.onclick = e => { if (e.target.closest('.x')) return; tr.visible = !tr.visible; ax.active = k; P.active = ax; P.invalidate(); afterStruct(P); };
@@ -4747,6 +4768,101 @@ async function repDocx(m) {
   return XLSX.zip([...files, ...media], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 }
 async function repDocxSave() { const m = repMeta(); try { const b = await repDocx(m); await saveBlob(b, sanitizeName(m.docNo || m.title || 'rapor') + '_' + sanitizeName(m.rev || 'A') + '.docx'); } catch (e) { toast('Word çıktısı hatası: ' + e.message, 8000); } }
+
+/* ===== Faz 1: Veri kalitesi (A1) ===== */
+// Kanal kümesi seçici (Kalite / Test / Araçlar sekmelerinde ortak): traces = grafikteki izler, sel = soldaki seçim, all = tüm açık dosyalar
+function chsByScope(sc) {
+  const out = []; const add = c => { if (c && !out.includes(c)) out.push(c); };
+  if (sc === 'traces') { for (const ax of S.plot.axes) for (const t of ax.traces) if (t.ch) add(t.ch); }
+  else if (sc === 'sel') { for (const c of chsFromSel()) add(c); }
+  else for (const f of allFiles()) for (const c of f.channels) add(c);
+  return out;
+}
+const tblEl = (head, rows, cls) => h('table', {class: 'tbl ' + (cls || '')}, h('thead', null, h('tr', null, ...head.map(x => h('th', null, x)))), h('tbody', null, ...rows.map(r => h('tr', {class: r.cls || ''}, ...(r.cells || r).map(c => c instanceof Node ? h('td', null, c) : h('td', null, String(c)))))));
+const QCFG = (() => { let c = {clip: 0.1, jump: 8, stuck: 1, lost: 0}; try { Object.assign(c, JSON.parse(localStorage.getItem('mv.qcfg') || '{}')); } catch (_) {} return c; })();
+function qualCfgSave() { try { localStorage.setItem('mv.qcfg', JSON.stringify(QCFG)); } catch (_) {} }
+
+// Tek kanal için kalite ölçüleri (silinen noktalar hariç tutulur)
+async function qualMetrics(ch, cfg) {
+  cfg = cfg || QCFG; await ensureLoaded(ch); const d = ch.data, del = ch.del, n = ch.n, sig = ['vib', 'ac', 'strain', 'press', 'volt', 'curr', 'pos', 'temp', 'calc', 'feat'].includes(ch.kind) || ch.kind === 'other';
+  let cnt = 0, nan = 0, inf = 0, ndel = 0, mean = 0, M2 = 0, mn = Infinity, mx = -Infinity, run = 1, runMax = 1, prev = NaN;
+  for (let i = 0; i < n; i++) {
+    if (del && del[i]) { ndel++; prev = NaN; run = 1; continue; } const v = d[i];
+    if (v !== v) { nan++; prev = NaN; run = 1; continue; } if (v === Infinity || v === -Infinity) { inf++; prev = NaN; run = 1; continue; }
+    cnt++; const dl = v - mean; mean += dl / cnt; M2 += dl * (v - mean); if (v < mn) mn = v; if (v > mx) mx = v;
+    if (v === prev) { if (++run > runMax) runMax = run; } else run = 1; prev = v;
+  }
+  const std = cnt > 1 ? Math.sqrt(M2 / (cnt - 1)) : 0, rng = mx - mn, flat = cnt > 1 && rng === 0;
+  // kırpılma: üst/alt uçta ardışık ≥3 örnek
+  let clip = 0, jumps = 0, jthr = 0;
+  if (cnt > 10 && rng > 0) {
+    // kırpılma: uç değerde yığılma — tam uç değerdeki örnek sayısı, hemen altındaki (aralığın %1'i) örneklerden çok büyükse
+    const tol = rng * 1e-9, band = rng * 0.01; let eMax = 0, nMax = 0, eMin = 0, nMin = 0, pMax = 0, pMin = 0, pv = NaN;
+    for (let i = 0; i < n; i++) { if (del && del[i]) continue; const v = d[i]; if (v !== v) continue;
+      if (mx - v <= tol) { eMax++; if (mx - pv <= tol) pMax++; } else if (mx - v <= band) nMax++; if (v - mn <= tol) { eMin++; if (pv - mn <= tol) pMin++; } else if (v - mn <= band) nMin++; pv = v; }
+    if (eMax >= 3 && eMax > 5 * nMax && pMax >= 1) clip += eMax; if (eMin >= 3 && eMin > 5 * nMin && pMin >= 1) clip += eMin; // ardışık uç örnek şartı: periyodik sinyallerin tam tepe değerine denk gelmesini ayıklar
+    // sıçrama: ardışık fark, MAD tabanlı eşik
+    const step = Math.max(1, Math.floor(n / 20000)), df = []; for (let i = 1; i < n; i += step) { if (del && (del[i] || del[i - 1])) continue; const a = d[i], b = d[i - 1]; if (isFinite(a) && isFinite(b)) df.push(Math.abs(a - b)); }
+    df.sort((a, b) => a - b); const mad = df.length ? df[df.length >> 1] : 0; jthr = cfg.jump * (mad / 0.6745); // |Δ| medyanı ≈ 0.6745·σΔ → σΔ ≈ medyan/0.6745
+    if (mad > 0) { let last = -9; for (let i = 1; i < n; i++) { if (del && (del[i] || del[i - 1])) continue; const a = d[i], b = d[i - 1]; if (a === a && b === b && Math.abs(a - b) > jthr) { if (i - last > 2) jumps++; last = i; } } }
+  }
+  let lost = 0, lostPct = 0, gaps = 0; if (ch.g && ch.g.length > 1) { const g = ch.g; for (let k = 1; k < g.length; k++) { const gp = g[k] - g[k - 1] - 1; if (gp > 0) { lost += gp; gaps++; } } lostPct = 100 * lost / (g[g.length - 1] - g[0] + 1); }
+  const clipPct = cnt ? 100 * clip / cnt : 0, stuckPct = cnt ? 100 * runMax / cnt : 0, flags = []; let lvl = 0;
+  const bad = t => { flags.push(t); lvl = 2; }, warn = t => { flags.push(t); lvl = Math.max(lvl, 1); };
+  if (n === 0 || cnt === 0) bad('veri yok');
+  if (nan) bad('NaN ' + nan); if (inf) bad('Inf ' + inf);
+  if (flat && ch.kind !== 'state') (ch.kind === 'other' || ch.kind === 'feat' ? warn : bad)('sabit kanal (değişmiyor)');
+  if (clipPct > cfg.clip) (clipPct > cfg.clip * 10 ? bad : warn)('kırpılma %' + clipPct.toFixed(2));
+  if (jumps) warn('sıçrama ×' + jumps);
+  if ((ch.kind === 'vib' || ch.kind === 'ac') && !flat && runMax >= 100 && stuckPct > cfg.stuck) warn('takılı değer %' + stuckPct.toFixed(1));
+  if (lost > cfg.lost) warn('kayıp paket ' + lost + ' (%' + lostPct.toFixed(3) + ')');
+  if (ndel) flags.push('silinen ' + ndel);
+  const fs = ch.fs, ratio = std > 0 ? Math.abs(mean) / std : 0;
+  return {ch, n, cnt, nan, inf, ndel, mean, std, rms: Math.sqrt(mean * mean + std * std), mn, mx, fs, dur: n / fs, clipPct, jumps, stuckPct, lost, lostPct, gaps, dcRatio: ratio, flags, lvl, flat, sig, thr: jthr};
+}
+let _qRes = [];
+async function qualRun(chs, prog) {
+  const out = []; let k = 0; for (const ch of chs) { if (S.cancel) break; try { out.push(await qualMetrics(ch)); } catch (e) { out.push({ch, flags: ['okunamadı: ' + (e.message || e)], lvl: 2, n: ch.n || 0}); } if (prog) prog(++k / chs.length); await sleep(0); }
+  return out;
+}
+function qualHead() { return ['Dosya', 'Kanal', 'Durum', 'Sorun', 'N', 'fs (Hz)', 'Süre (s)', 'Min', 'Maks', 'Ort', 'RMS', 'Std', 'DC/σ', 'Kırpılma %', 'Sıçrama', 'Kayıp paket']; }
+function qualRows(res, only) {
+  return res.filter(r => !only || r.lvl > 0).map(r => { const c = r.ch, f = x => x == null || !isFinite(x) ? '-' : fmtNum(x, 5); return [c.file ? c.file.name : '', c.name, ['Tamam', 'Uyarı', 'Hata'][r.lvl], r.flags.join('; ') || '-', r.n, r.fs ? fmtNum(r.fs, 6) : '-', r.dur ? fmtNum(r.dur, 5) : '-', f(r.mn), f(r.mx), f(r.mean), f(r.rms), f(r.std), r.dcRatio != null ? r.dcRatio.toFixed(2) : '-', r.clipPct != null ? r.clipPct.toFixed(3) : '-', r.jumps ?? '-', r.lost ?? '-']; });
+}
+function qualShow(res) {
+  _qRes = res; const only = ck('qOnly'), box = $('#qBox'); box.replaceChildren();
+  const nb = res.filter(r => r.lvl === 2).length, nw = res.filter(r => r.lvl === 1).length;
+  box.append(h('div', {class: 'note'}, `${res.length} kanal: ${res.length - nb - nw} tamam · ${nw} uyarı · ${nb} hata`));
+  const rows = res.filter(r => !only || r.lvl > 0).sort((a, b) => b.lvl - a.lvl).map(r => { const c = r.ch, nm = h('a', {href: '#', onclick: e => { e.preventDefault(); addToNewAxes([c], true); }}, c.name); return {cls: 'q' + r.lvl, cells: [c.file ? c.file.name : '', nm, ['Tamam', 'Uyarı', 'Hata'][r.lvl], r.flags.join('; ') || '-', r.n, r.fs ? fmtNum(r.fs, 5) : '-', r.rms != null ? fmtNum(r.rms, 4) : '-', r.clipPct != null ? r.clipPct.toFixed(3) : '-']}; });
+  box.append(h('div', {style: 'max-height:42vh;overflow:auto'}, tblEl(['Dosya', 'Kanal', 'Durum', 'Sorun', 'N', 'fs', 'RMS', 'Kırp.%'], rows)));
+}
+async function qualClick() {
+  QCFG.clip = num('qClip'); QCFG.jump = num('qJump'); QCFG.stuck = num('qStuck'); QCFG.lost = num('qLost'); qualCfgSave();
+  const chs = chsByScope(sv('qScope')); if (!chs.length) return toast('Bu kapsamda kanal yok');
+  await busy('Veri kalitesi denetleniyor…', async prog => { const res = await qualRun(chs, prog); qualShow(res); (S.methodLog = S.methodLog || []).push({t: Date.now(), op: 'quality', n: res.length, cfg: Object.assign({}, QCFG)}); }, {cancel: true});
+}
+function qualToReport() { if (!_qRes.length) return toast('Önce kalite kontrolü yapın'); const only = ck('qOnly'); REP.items.push({type: 'table', title: 'Veri kalitesi denetimi', head: ['Dosya', 'Kanal', 'Durum', 'Sorun', 'N', 'fs (Hz)', 'RMS', 'Kırpılma %'], rows: qualRows(_qRes, only).map(r => [r[0], r[1], r[2], r[3], r[4], r[5], r[10], r[13]]), note: `Eşikler: kırpılma > %${QCFG.clip}, sıçrama > ${QCFG.jump}σ(Δ), kayıp paket > ${QCFG.lost}. Silinen noktalar hesaba katılmaz.`}); repRefreshList(); toast('Rapora eklendi'); }
+async function qualCopy() { if (!_qRes.length) return toast('Önce kalite kontrolü yapın'); try { await navigator.clipboard.writeText([qualHead(), ...qualRows(_qRes, ck('qOnly'))].map(r => r.join('\t')).join('\n')); toast('Tablo panoya kopyalandı'); } catch (e) { toast('Kopyalanamadı: ' + e.message); } }
+function qualSelectBad() { S.selCh.clear(); for (const r of _qRes) if (r.lvl > 0) S.selCh.add(r.ch.uid); renderTree(); updateSelInfo(); toast(S.selCh.size + ' sorunlu kanal seçildi'); }
+function qualCsv() { if (!_qRes.length) return toast('Önce kalite kontrolü yapın'); const q = s => '"' + String(s).replace(/"/g, '""') + '"'; saveBlob(new Blob(['﻿' + [qualHead(), ...qualRows(_qRes, false)].map(r => r.map(q).join(';')).join('\n')], {type: 'text/csv'}), 'veri_kalitesi.csv'); }
+function buildQual() {
+  const r = h('div');
+  r.append(card('Veri kalitesi denetimi',
+    fr('Kapsam', selIn('qScope', [['traces', 'Grafikteki izler'], ['sel', 'Soldaki seçili kanallar'], ['all', 'Tüm açık dosyalar']], 'all')),
+    fr('Kırpılma sınırı (%)', numIn('qClip', QCFG.clip, {min: 0, step: 0.05})), fr('Sıçrama eşiği (× σΔ)', numIn('qJump', QCFG.jump, {min: 3, step: 1})),
+    fr('Takılı değer sınırı (%)', numIn('qStuck', QCFG.stuck, {min: 0, step: 0.5})), fr('Kayıp paket sınırı', numIn('qLost', QCFG.lost, {min: 0, step: 1})),
+    chkIn('qOnly', 'Yalnızca sorunlu kanalları göster', false), chkIn('qAuto', 'Dosya açılınca otomatik denetle (küçük dosyalar)', QCFG.auto !== false),
+    h('div', {class: 'btns'}, btn('Denetle', qualClick, 'primary'), btn('Sorunluları seç', qualSelectBad), btn('Rapora ekle', qualToReport), btn('Tabloyu kopyala', qualCopy), btn('CSV kaydet', qualCsv)),
+    h('div', {class: 'note'}, 'Kontroller: NaN/Inf, sabit kanal, kırpılma (uçta ≥3 ardışık örnek), sıçrama (ardışık fark MAD tabanlı), takılı değer, kayıp paket. Silinen noktalar dışarıda bırakılır.'),
+    h('div', {id: 'qBox'})));
+  return r;
+}
+// Dosya açılınca küçük dosyalar için otomatik denetim; yalnızca sorun varsa bildirir
+async function qualAuto(files) {
+  try { if (!files.length) return; const el = $('#qAuto'); if (el ? !el.checked : QCFG.auto === false) return; const chs = []; let tot = 0; for (const f of files) for (const c of f.channels) { tot += c.n || 0; chs.push(c); } if (!chs.length || tot > 40e6) return;
+    const res = await qualRun(chs.filter(c => c.n < 8e6), null); const bad = res.filter(r => r.lvl > 0); if (!bad.length) return; _qRes = res;
+    toast(`Veri kalitesi: ${bad.length} kanalda sorun (${bad.filter(r => r.lvl === 2).length} hata)`, 9000, {t: 'Göster', fn: () => { setTab('qual'); if ($('#qBox')) qualShow(_qRes); }}); } catch (e) { console.warn('qualAuto', e); }
+}
 
 </script>
 </body>
