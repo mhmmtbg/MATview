@@ -321,10 +321,28 @@ const MAT = (() => {
     return info;
   }
 
+  // struct / cell içindeki sayısal öğeleri düz bir listeye açar (tamamı bellekte çözülmüş bayt dizisi üzerinden)
+  function walkContainer(bytes, le, prefix, top, out, depth) {
+    if (depth > 6 || out.length > 5000) return;
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), t = readTag(dv, 0, le); if (t.type !== 14) return;
+    let o = t.data; const fl = readTag(dv, o, le), cls = dv.getUint32(fl.data, le) & 0xFF, complex = !!(dv.getUint32(fl.data, le) & 0x800); o = fl.next;
+    const dt = readTag(dv, o, le), dims = []; for (let i = 0; i < dt.size / 4; i++) dims.push(dv.getInt32(dt.data + 4 * i, le)); o = dt.next;
+    const nt = readTag(dv, o, le); o = nt.next; const count = dims.reduce((a, b) => a * b, 1);
+    if (NUMERIC.has(cls)) { if (count >= 1) out.push({name: prefix, cls, clsName: CLS[cls], dims, complex, numeric: true, count, inline: bytes, top, compressed: false}); return; }
+    const children = [];
+    if (cls === 1) { for (let k = 0; k < count; k++) { const c = readTag(dv, o, le); children.push([prefix + '{' + (k + 1) + '}', bytes.subarray(o, c.next)]); o = c.next; } }
+    else if (cls === 2) {
+      const ln = readTag(dv, o, le), L = dv.getInt32(ln.data, le); o = ln.next; const fn = readTag(dv, o, le), nf = L > 0 ? Math.floor(fn.size / L) : 0, names = [];
+      for (let i = 0; i < nf; i++) { let nm = ''; for (let j = 0; j < L; j++) { const ch = dv.getUint8(fn.data + i * L + j); if (!ch) break; nm += String.fromCharCode(ch); } names.push(nm); } o = fn.next;
+      for (let k = 0; k < count; k++) for (let i = 0; i < nf; i++) { const c = readTag(dv, o, le); children.push([prefix + (count > 1 ? '(' + (k + 1) + ')' : '') + '.' + names[i], bytes.subarray(o, c.next)]); o = c.next; }
+    } else return;
+    for (const [nm, b] of children) walkContainer(b, le, nm, top, out, depth + 1);
+  }
+
   async function open(file) {
-    const pre = new Uint8Array(await file.slice(0, 128).arrayBuffer());
+    const pre = new Uint8Array(await file.slice(0, 2048).arrayBuffer()); const hasSig = p => pre.length >= p + 4 && pre[p] === 0x89 && pre[p + 1] === 0x48 && pre[p + 2] === 0x44 && pre[p + 3] === 0x46;
     const head0 = new TextDecoder('latin1').decode(pre.subarray(0, 116));
-    if (/7\.3/.test(head0.slice(0, 40)) || (pre[0] === 0x89 && pre[1] === 0x48)) {
+    if (/7\.3/.test(head0.slice(0, 40)) || hasSig(0) || hasSig(512) || hasSig(1024)) {
       const big = file.size > 1.5e9; // çok büyük dosyalar parça parça okunur
       const m = await H5.open(file, big ? null : new Uint8Array(await file.arrayBuffer())); m.h5 = true; return m;
     }
@@ -341,10 +359,12 @@ const MAT = (() => {
         const comp = u8.subarray(t.data, t.data + t.size);
         const head = await inflate(comp, 600);
         const info = parseMatrix(head, le, false);
-        if (info) { info.compOff = t.data; info.compSize = t.size; info.compressed = true; vars.push(info); }
+        if (info) { info.compOff = t.data; info.compSize = t.size; info.compressed = true; vars.push(info);
+          if ((info.cls === 1 || info.cls === 2) && t.size < 1.2e9) { try { const full = await inflate(comp); walkContainer(full, le, info.name, info.name, vars, 0); } catch (e) { info.walkErr = String(e.message || e); } } }
       } else if (t.type === 14) {
         const info = parseMatrix(u8.subarray(o, t.next), le, false);
-        if (info) { info.off = o; info.endOff = t.next; info.compressed = false; vars.push(info); }
+        if (info) { info.off = o; info.endOff = t.next; info.compressed = false; vars.push(info);
+          if (info.cls === 1 || info.cls === 2) { try { walkContainer(u8.subarray(o, t.next), le, info.name, info.name, vars, 0); } catch (e) { info.walkErr = String(e.message || e); } } }
       }
       if (t.next <= o) break;
       o = t.next;
@@ -354,6 +374,7 @@ const MAT = (() => {
 
   async function load(m, v) {
     if (m.h5) return H5.load(m, v);
+    if (v.inline) return parseMatrix(v.inline, m.le, true).data;
     let bytes;
     if (v.compressed) bytes = await inflate(m.u8.subarray(v.compOff, v.compOff + v.compSize));
     else bytes = m.u8.subarray(v.off, v.endOff);
@@ -410,12 +431,26 @@ const H5 = (() => {
     const rootObj = await readObject(ctx, root.ohdr);
     const vars = [];
     const links = await listGroup(ctx, rootObj, root);
-    for (const [name, addr] of links) {
-      if (name === '#refs#' || name === '#subsystem#') continue;
-      let o; try { o = await readObject(ctx, addr); } catch (e) { continue; }
-      const info = describe(o, name);
-      if (info) { info.h5 = {ctx, obj: o}; vars.push(info); }
-    }
+    // iç içe grup (struct) ve başvuru (cell / struct dizisi) çözümü
+    const addNode = async (name, addr, top, depth) => {
+      let o; try { o = await readObject(ctx, addr); } catch (e) { return; }
+      const isDs = !!(msg(o, 0x01) && msg(o, 0x03) && msg(o, 0x08));
+      if (!isDs) {
+        if (depth === 0) vars.push(Object.assign(describe(o, name), {h5: {ctx, obj: o}}));
+        if (depth >= 6 || vars.length > 5000) return;
+        let kids = []; try { kids = await listGroup(ctx, o, null); } catch (e) { return; }
+        for (const [k, a] of kids) { if (k === '#refs#' || k === '#subsystem#') continue; await addNode(name + '.' + k, a, top, depth + 1); }
+        return;
+      }
+      const info = describe(o, name); info.h5 = {ctx, obj: o};
+      if (depth === 0) vars.push(info); else if (info.numeric) { info.top = top; vars.push(info); }
+      if (info.dt && info.dt.kind === 'other' && info.dt.cls === 7 && info.dt.size === 8 && info.count > 0 && info.count <= 2000 && depth < 6) {
+        let raw; try { raw = await loadBytes(null, info); } catch (e) { return; }
+        const rdv = dvOf(raw), br = info.mclass === 'cell' ? ['{', '}'] : ['(', ')'];
+        for (let i = 0; i < info.count; i++) { const a = Number(rdv.getBigUint64(i * 8, true)); if (a > 0) await addNode(name + br[0] + (i + 1) + br[1], a, top || name, depth + 1); }
+      }
+    };
+    for (const [name, addr] of links) { if (name === '#refs#' || name === '#subsystem#') continue; await addNode(name, addr, name, 0); }
     return {kind: 'h5', ctx, vars, header: 'MATLAB v7.3 (HDF5)'};
   }
 
@@ -511,12 +546,17 @@ const H5 = (() => {
     const ds = parseDataspace(dsm.data), dt = parseDatatype(dtm.data);
     const dims = ds.dims.slice().reverse(); const count = dims.reduce((a, b) => a * b, 1);
     const numeric = !!dt && dt.kind === 'num' && !empty && (mclass === '' || (CLASSES[mclass] >= 6 && mclass !== 'char'));
-    return {name, cls: CLASSES[mclass] || 6, clsName: mclass || 'double', dims: empty ? [0, 0] : dims, numeric, count: empty ? 0 : count, dt};
+    return {name, cls: CLASSES[mclass] || 6, clsName: mclass || 'double', mclass, dims: empty ? [0, 0] : dims, numeric, count: empty ? 0 : count, dt};
   }
 
   // ---- veri yükleme ----
   async function inflate(u8) { return MATinflate(u8); }
   async function load(h5, v) {
+    const out = await loadBytes(h5, v); const dt = v.dt;
+    if (dt.be) throw new Error('Big-endian HDF5 verisi desteklenmiyor');
+    return bytesToF64(out, dt, v.count);
+  }
+  async function loadBytes(h5, v) {
     const {ctx, obj} = v.h5, {r, so, sl} = ctx; const dt = v.dt; const lay = msg(obj, 0x08).data, ldv = dvOf(lay);
     const nbytes = v.count * dt.size, out = new Uint8Array(nbytes); const ver = lay[0];
     if (ver !== 3) throw new Error('Desteklenmeyen veri düzeni sürümü: ' + ver + ' (v7.3 dosyayı -v7 ile yeniden kaydedin)');
@@ -539,8 +579,7 @@ const H5 = (() => {
         copyChunk(out, buf, ddims, cdims, ch.off, esz, dstrides, cstrides);
       }
     } else throw new Error('Desteklenmeyen düzen sınıfı: ' + cls);
-    if (dt.be) throw new Error('Big-endian HDF5 verisi desteklenmiyor');
-    return bytesToF64(out, dt, v.count);
+    return out;
   }
   function msgDims(o) { return parseDataspace(msg(o, 0x01).data).dims; }
   function parseFilters(d) {
@@ -831,49 +870,85 @@ const UNV = (() => {
     if (unit.toUpperCase() === 'NONE') unit = ''; if (label.toUpperCase() === 'NONE') label = '';
     return {label, unit};
   }
+  // 11 satırlık ASCII başlık (kayıtlar 1-11): lines[j..j+10]
+  function head(lines, j) {
+    const id = [0, 1, 2, 3, 4].map(k => (lines[j + k] || '').trim()), r6 = rec6(lines[j + 5] || ''), r7 = (lines[j + 6] || '').trim().split(/\s+/).filter(Boolean);
+    const ordType = r7.length > 0 ? intOr(r7[0], 2) : 2, npts = r7.length > 1 ? intOr(r7[1], 0) : 0, spacing = r7.length > 2 ? intOr(r7[2], 1) : 1;
+    const xmin = r7.length > 3 ? (tf(r7[3]) ?? 0) : 0, dx = r7.length > 4 ? (tf(r7[4]) ?? 1) : 1, zval = r7.length > 5 ? (tf(r7[5]) ?? 0) : 0;
+    return {id, r6, ordType, npts, spacing, xmin, dx, zval, absc: axis(lines[j + 7] || ''), ordn: axis(lines[j + 8] || ''), ordd: axis(lines[j + 9] || '')};
+  }
+  function body(M, vals, source) {
+    const {ordType, npts, spacing, xmin, dx} = M, cx = ordType === 5 || ordType === 6; let x = [], y = [], yim = [];
+    if (spacing === 1) {
+      if (cx) for (let m = 0; m + 1 < vals.length; m += 2) { y.push(vals[m]); yim.push(vals[m + 1]); } else y = Array.from(vals);
+      if (npts) { y = y.slice(0, npts); yim = yim.slice(0, npts); }
+      for (let m = 0; m < y.length; m++) x.push(xmin + m * dx);
+    } else {
+      if (cx) for (let m = 0; m + 2 < vals.length; m += 3) { x.push(vals[m]); y.push(vals[m + 1]); yim.push(vals[m + 2]); }
+      else for (let m = 0; m + 1 < vals.length; m += 2) { x.push(vals[m]); y.push(vals[m + 1]); }
+      if (npts) { x = x.slice(0, npts); y = y.slice(0, npts); yim = yim.slice(0, npts); }
+    }
+    let unit = M.ordn.unit; if (M.ordd.unit) unit = unit ? unit + '/' + M.ordd.unit : '1/' + M.ordd.unit;
+    return Object.assign({source: source || '', id1: M.id[0], id2: M.id[1], id3: M.id[2], id4: M.id[3], id5: M.id[4], ord_type: ordType, is_complex: cx, npts: y.length, spacing, xmin, dx, zval: M.zval,
+      x: Float64Array.from(x), y: Float64Array.from(y), y_im: Float64Array.from(yim), x_unit: M.absc.unit, y_unit: unit}, M.r6);
+  }
   function parse(text, source) {
     const lines = text.split(/\r?\n/), n = lines.length, funcs = []; let i = 0, bin58 = 0;
     while (i < n) {
       if (lines[i].trim() !== '-1') { i++; continue; }
       const nx = (lines[i + 1] || '').trim();
-      if (nx === '58b') { bin58++; i++; continue; }
+      if (/^58b/.test(nx)) { bin58++; i++; continue; }
       if (nx !== '58') { i++; continue; }
       const j = i + 2; if (j + 10 >= n) break;
-      const id = [0, 1, 2, 3, 4].map(k => lines[j + k].trim()), r6 = rec6(lines[j + 5]), r7 = lines[j + 6].trim().split(/\s+/).filter(Boolean);
-      const ordType = r7.length > 0 ? intOr(r7[0], 2) : 2, npts = r7.length > 1 ? intOr(r7[1], 0) : 0, spacing = r7.length > 2 ? intOr(r7[2], 1) : 1;
-      const xmin = r7.length > 3 ? (tf(r7[3]) ?? 0) : 0, dx = r7.length > 4 ? (tf(r7[4]) ?? 1) : 1, zval = r7.length > 5 ? (tf(r7[5]) ?? 0) : 0;
-      const absc = axis(lines[j + 7]), ordn = axis(lines[j + 8]), ordd = axis(lines[j + 9]);
+      const M = head(lines, j);
       let k = j + 11; const dl = []; while (k < n && lines[k].trim() !== '-1') dl.push(lines[k++]);
-      const vals = numbers(dl, (ordType === 4 || ordType === 6) ? 20 : 13), cx = ordType === 5 || ordType === 6;
-      let x = [], y = [], yim = [];
-      if (spacing === 1) {
-        if (cx) for (let m = 0; m + 1 < vals.length; m += 2) { y.push(vals[m]); yim.push(vals[m + 1]); } else y = vals;
-        if (npts) { y = y.slice(0, npts); yim = yim.slice(0, npts); }
-        for (let m = 0; m < y.length; m++) x.push(xmin + m * dx);
-      } else {
-        if (cx) for (let m = 0; m + 2 < vals.length; m += 3) { x.push(vals[m]); y.push(vals[m + 1]); yim.push(vals[m + 2]); }
-        else for (let m = 0; m + 1 < vals.length; m += 2) { x.push(vals[m]); y.push(vals[m + 1]); }
-        if (npts) { x = x.slice(0, npts); y = y.slice(0, npts); yim = yim.slice(0, npts); }
-      }
-      let unit = ordn.unit; if (ordd.unit) unit = unit ? unit + '/' + ordd.unit : '1/' + ordd.unit;
-      funcs.push(Object.assign({source: source || '', id1: id[0], id2: id[1], id3: id[2], id4: id[3], id5: id[4], ord_type: ordType, is_complex: cx, npts: y.length, spacing, xmin, dx, zval,
-        x: Float64Array.from(x), y: Float64Array.from(y), y_im: Float64Array.from(yim), x_unit: absc.unit, y_unit: unit}, r6));
+      funcs.push(body(M, numbers(dl, (M.ordType === 4 || M.ordType === 6) ? 20 : 13), source));
       i = k + 1;
     }
     funcs.bin58 = bin58; return funcs;
   }
+  // Bayt düzeyinde okuyucu: ASCII 58 ve ikili 58b veri kümeleri (karışık dosyalar dahil)
+  function parseBytes(u8, source) {
+    const L = u8.length, td = new TextDecoder('utf-8'), funcs = []; let pos = 0; funcs.bin58 = 0; funcs.warn = [];
+    const lineAt = p => { let e = p; while (e < L && u8[e] !== 10) e++; return {s: td.decode(u8.subarray(p, e)).replace(/\r$/, ''), next: e + 1}; };
+    while (pos < L) {
+      const a = lineAt(pos); if (a.s.trim() !== '-1') { pos = a.next; continue; }
+      const b = lineAt(a.next), bt = b.s.trim();
+      if (/^58b/.test(bt)) {
+        const tok = bt.slice(3).trim().split(/\s+/).map(Number), bo = tok[0], fp = tok[1], nl = tok[2] || 11, nbytes = tok[3] || 0; let p = b.next; const hl = [];
+        for (let k = 0; k < nl; k++) { const ln = lineAt(p); hl.push(ln.s); p = ln.next; }
+        const M = head(hl, 0), sz = (M.ordType === 4 || M.ordType === 6) ? 8 : 4; funcs.bin58++;
+        // bayt sayısı: başlıktaki değer; tutarsızsa (bazı yazılımlar karmaşık veride eksik yazar) kayıt 7'den beklenen
+        const perPt = (M.ordType === 5 || M.ordType === 6 ? 2 : 1) + (M.spacing === 1 ? 0 : 1), expN = M.npts * perPt * sz;
+        const endsOk = q => { if (q > L) return false; let r = q; while (r < L && (u8[r] === 10 || u8[r] === 13) && r - q < 2) r++; return lineAt(r).s.trim() === '-1'; };
+        let nb = nbytes; if (!endsOk(p + nb) && expN && endsOk(p + expN)) { funcs.warn.push('İkili 58b: başlıktaki bayt sayısı tutarsız, kayıt 7\'den hesaplandı'); nb = expN; }
+        if (p + nb > L) { funcs.warn.push('İkili 58b: veri dosyada eksik (kesilmiş dosya?)'); break; }
+        if (fp !== 2) { funcs.warn.push('İkili 58b: IEEE dışı kayan nokta biçimi (' + fp + ') desteklenmiyor'); pos = p + nb; continue; }
+        const cnt = Math.floor(nb / sz), dv = new DataView(u8.buffer, u8.byteOffset + p, cnt * sz), le = bo === 1, vals = new Float64Array(cnt);
+        if (sz === 8) for (let q = 0; q < cnt; q++) vals[q] = dv.getFloat64(q * 8, le); else for (let q = 0; q < cnt; q++) vals[q] = dv.getFloat32(q * 4, le);
+        funcs.push(body(M, vals, source)); pos = p + nb; continue;
+      }
+      if (bt === '58') {
+        let p = b.next; for (;;) { if (p >= L) break; const ln = lineAt(p); if (ln.s.trim() === '-1') break; p = ln.next; }
+        const chunk = td.decode(u8.subarray(pos, p)) + '\n    -1\n'; for (const f of parse(chunk, source)) funcs.push(f); pos = p; continue;
+      }
+      pos = a.next;
+    }
+    return funcs;
+  }
   const chanName = (f, idx) => { const base = f.id1 || `${f.resp_name} N${f.resp_node} ${DIRECTION[f.resp_dir] ?? ''}`; return (String(idx).padStart(2, '0') + ' | ' + (base.trim() || 'Kanal')).slice(0, 110); };
   const isPsd = f => !f.is_complex && [2, 9, 10].includes(f.func_type) && f.spacing === 1;
   const grms = f => isPsd(f) ? Math.sqrt(f.y.reduce((a, b) => a + b, 0) * f.dx) : null;
-  return {FUNC_TYPE, DIRECTION, ORD_TYPE, parse, chanName, isPsd, grms};
+  return {FUNC_TYPE, DIRECTION, ORD_TYPE, parse, parseBytes, chanName, isPsd, grms};
 })();
 
 /* NI TDMS okuyucu (kurulumsuz). Desteklenen: çok segmentli dosyalar, interleaved / ardışık ham veri,
-   big-endian, sayısal tipler, string, zaman damgası, özellikler. DAQmx ham verisi desteklenmez. */
+   big-endian, sayısal tipler, string, zaman damgası, özellikler, DAQmx ham veri (format değiştiren / sayısal hat ölçekleyiciler) ve NI ölçekleme
+   (Linear, Polynomial, Table, Add/Subtract). RTD / Strain / Thermistor / Thermocouple ölçekleri desteklenmez (ham değer + uyarı). */
 const TDMS = (() => {
   const SZ = {1: 1, 2: 2, 3: 4, 4: 8, 5: 1, 6: 2, 7: 4, 8: 8, 9: 4, 10: 8, 0x19: 4, 0x1A: 8, 0x21: 1, 0x44: 16};
   const TNAME = {1: 'i8', 2: 'i16', 3: 'i32', 4: 'i64', 5: 'u8', 6: 'u16', 7: 'u32', 8: 'u64', 9: 'f32', 10: 'f64', 0x19: 'f32', 0x1A: 'f64', 0x20: 'string', 0x21: 'bool', 0x44: 'time'};
-  const EPOCH = Date.UTC(1904, 0, 1);
+  const EPOCH = Date.UTC(1904, 0, 1), RAW = 0xFFFFFFFF, DQT = {0: 5, 1: 1, 2: 6, 3: 2, 4: 7, 5: 3, 6: 8, 7: 4, 8: 9, 9: 10};   // DAQmx ölçekleyici tipi → TDMS tipi
   function rd(dv, o, t, le) {
     switch (t) {
       case 1: return dv.getInt8(o); case 2: return dv.getInt16(o, le); case 3: return dv.getInt32(o, le);
@@ -884,6 +959,39 @@ const TDMS = (() => {
       case 0x44: { const fr = Number(dv.getBigUint64(o + (le ? 0 : 8), le)) / 18446744073709551616, s = Number(dv.getBigInt64(o + (le ? 8 : 0), le)); return EPOCH + (s + fr) * 1000; }
     }
     throw new Error('Desteklenmeyen TDMS veri tipi: 0x' + t.toString(16));
+  }
+  // NI ölçekleme özellikleri (NI_Scale[n]_...) → ölçek zinciri
+  function getScales(props) {
+    let num = props['NI_Number_Of_Scales']; if (num == null) { let mx = -1; for (const k in props) { const m = /^NI_Scale\[(\d+)\]_/.exec(k); if (m) mx = Math.max(mx, +m[1]); } num = mx + 1; }
+    num = +num; if (!num) return null; if (props['NI_Scaling_Status'] === 'scaled') return null;
+    const sc = [];
+    for (let i = 0; i < num; i++) {
+      const pre = 'NI_Scale[' + i + ']_', ty = props[pre + 'Scale_Type'], src = n => props[pre + n + '_Input_Source'] != null ? +props[pre + n + '_Input_Source'] : RAW;
+      if (ty == null) sc.push({k: 'daq', id: i});
+      else if (ty === 'Polynomial') { const n = props[pre + 'Polynomial_Coefficients_Size'] != null ? +props[pre + 'Polynomial_Coefficients_Size'] : 4, co = []; for (let j = 0; j < n; j++) co.push(+props[pre + 'Polynomial_Coefficients[' + j + ']']); sc.push({k: 'poly', co, src: src('Polynomial')}); }
+      else if (ty === 'Linear') sc.push({k: 'lin', m: +props[pre + 'Linear_Slope'], b: +props[pre + 'Linear_Y_Intercept'], src: src('Linear')});
+      else if (ty === 'AdvancedAPI') sc.push({k: 'noop', src: src('AdvancedAPI')});
+      else if (ty === 'Add' || ty === 'Subtract') sc.push({k: ty, l: +props[pre + ty + '_Left_Operand_Input_Source'], r: +props[pre + ty + '_Right_Operand_Input_Source']});
+      else if (ty === 'Table') {
+        const n = +props[pre + 'Table_Pre_Scaled_Values_Size'], xs = [], ys = []; for (let j = 0; j < n; j++) { xs.push(+props[pre + 'Table_Pre_Scaled_Values[' + j + ']']); ys.push(+props[pre + 'Table_Scaled_Values[' + j + ']']); }
+        if (xs.length > 1 && xs[1] < xs[0]) { xs.reverse(); ys.reverse(); } sc.push({k: 'table', xs, ys, src: src('Table')});
+      } else return {unsupported: ty};
+    }
+    return sc;
+  }
+  function applyScales(sc, w) {
+    const ev = i => {
+      if (i === RAW) return w.arr; const s = sc[i]; if (!s) throw new Error('ölçek ' + i + ' yok');
+      if (s.k === 'daq') return (w.sc && w.sc.get(s.id)) || w.arr;
+      if (s.k === 'Add' || s.k === 'Subtract') { const L = ev(s.l), R = ev(s.r), y = new Float64Array(L.length); for (let q = 0; q < y.length; q++) y[q] = s.k === 'Add' ? L[q] + R[q] : R[q] - L[q]; return y; }
+      const x = ev(s.src), y = new Float64Array(x.length);
+      if (s.k === 'noop') { for (let q = 0; q < y.length; q++) y[q] = x[q]; }
+      else if (s.k === 'lin') { for (let q = 0; q < y.length; q++) y[q] = x[q] * s.m + s.b; }
+      else if (s.k === 'poly') { const co = s.co; for (let q = 0; q < y.length; q++) { let r = 0; for (let j = co.length - 1; j >= 0; j--) r = r * x[q] + co[j]; y[q] = r; } }
+      else if (s.k === 'table') { const xs = s.xs, ys = s.ys, n = xs.length; for (let q = 0; q < y.length; q++) { const v = x[q]; if (v <= xs[0]) y[q] = ys[0]; else if (v >= xs[n - 1]) y[q] = ys[n - 1]; else { let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xs[m] <= v) lo = m; else hi = m; } y[q] = ys[lo] + (ys[hi] - ys[lo]) * (v - xs[lo]) / (xs[hi] - xs[lo]); } } }
+      return y;
+    };
+    return ev(sc.length - 1);
   }
   function parse(u8) {
     const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), N = u8.length, u8d = new TextDecoder('utf-8', {fatal: true}), ansi = new TextDecoder('windows-1254'), dec = {decode: b => { try { return u8d.decode(b); } catch (e) { return ansi.decode(b); } }};
@@ -907,7 +1015,16 @@ const TDMS = (() => {
           const ri = dv.getUint32(p, LE); p += 4;
           if (ri === 0xFFFFFFFF) { active = active.filter(a => a !== o); }
           else if (ri === 0) { if (!o.idx) throw new Error('TDMS: önceki indeks yok ' + path); if (!active.includes(o)) active.push(o); }
-          else if (ri === 0x69120000 || ri === 0x69130000) throw new Error('DAQmx ham verisi içeren TDMS dosyaları desteklenmiyor');
+          else if (ri === 0x1269 || ri === 0x126A) {   // DAQmx: 0x1269 format değiştiren, 0x126A sayısal hat ölçekleyici
+            const dig = ri === 0x126A; p += 8; const nv = Number(dv.getBigUint64(p, LE)); p += 8; const ns = dv.getUint32(p, LE); p += 4; const scalers = [];
+            for (let k = 0; k < ns; k++) {
+              const t = dv.getUint32(p, LE), buf = dv.getUint32(p + 4, LE), off = dv.getUint32(p + 8, LE), id = dv.getUint32(p + (dig ? 13 : 16), LE); p += dig ? 17 : 20;
+              if (!(t in DQT)) throw new Error('DAQmx: desteklenmeyen ham veri tipi ' + t + ' (' + path + ')');
+              scalers.push({t: DQT[t], buf, off: dig ? off >> 3 : off, bit: dig ? off & 7 : -1, id});
+            }
+            const nw = dv.getUint32(p, LE); p += 4; const widths = []; for (let k = 0; k < nw; k++) { widths.push(dv.getUint32(p, LE)); p += 4; }
+            o.idx = {dt: 10, nv, tb: 0, daq: {scalers, widths}}; if (!active.includes(o)) active.push(o);
+          }
           else {
             const dt = dv.getUint32(p, LE); p += 4; p += 4; const nv = Number(dv.getBigUint64(p, LE)); p += 8; let tb = 0;
             if (dt === 0x20) { tb = Number(dv.getBigUint64(p, LE)); p += 8; }
@@ -931,7 +1048,14 @@ const TDMS = (() => {
     // Segment verisini kanallara aktar (iki geçiş: toplam say, doldur)
     const info = new Map();
     for (const s of segs) {
-      let chunk = 0; for (const a of s.act) chunk += a.idx.dt === 0x20 ? a.idx.tb : a.idx.nv * SZ[a.idx.dt];
+      const nd = s.act.filter(a => a.idx.daq).length; let chunk = 0;
+      if (nd && nd !== s.act.length) { warn.push('DAQmx ve normal ham veri aynı segmentte; segment atlandı'); continue; }
+      if (nd) {
+        const dims = s.act[0].idx.daq.widths.map(w => [0, w]); let bad = false;
+        for (const a of s.act) for (const sk of a.idx.daq.scalers) { if (sk.buf >= dims.length) { bad = true; break; } dims[sk.buf][0] = Math.max(dims[sk.buf][0], a.idx.nv); }
+        if (bad) { warn.push('DAQmx tampon indeksi geçersiz; segment atlandı'); continue; }
+        s.daq = true; s.dims = dims; for (const [n, w] of dims) chunk += n * w;
+      } else for (const a of s.act) chunk += a.idx.dt === 0x20 ? a.idx.tb : a.idx.nv * SZ[a.idx.dt];
       if (!chunk) continue; s.chunk = chunk; s.nch = Math.floor((s.end - s.at) / chunk);
       if (s.nch < (s.end - s.at) / chunk && s.end - s.at > 0 && s.nch === 0) warn.push('Kısmi veri bloğu atlandı');
       for (const a of s.act) a.o.total += a.idx.nv * s.nch;
@@ -939,13 +1063,24 @@ const TDMS = (() => {
     const out = new Map();
     for (const o of order) if (o.idx || o.total) {
       const dt = o.idx && o.idx.dt; let arr;
-      if (dt === 0x20) arr = new Array(o.total); else arr = (dt === 1 || dt === 2 || dt === 5 || dt === 6 || dt === 9 || dt === 0x19 || dt === 0x21) ? new Float32Array(o.total) : new Float64Array(o.total);
-      out.set(o, {arr, fill: 0});
+      if (o.idx && o.idx.daq) arr = new Float64Array(o.total); else if (dt === 0x20) arr = new Array(o.total); else arr = (dt === 1 || dt === 2 || dt === 5 || dt === 6 || dt === 9 || dt === 0x19 || dt === 0x21) ? new Float32Array(o.total) : new Float64Array(o.total);
+      const wr = {arr, fill: 0}; if (o.idx && o.idx.daq) { wr.sc = new Map(); o.idx.daq.scalers.forEach((k, i) => wr.sc.set(k.id, i ? new Float64Array(o.total) : arr)); } out.set(o, wr);
     }
     for (const s of segs) {
       if (!s.chunk) continue;
       for (let c = 0; c < s.nch; c++) {
         let base = s.at + c * s.chunk;
+        if (s.daq) {
+          for (let b = 0; b < s.dims.length; b++) {
+            const [nb, wd] = s.dims[b];
+            for (const a of s.act) { const w = out.get(a.o), n = a.idx.nv;
+              for (const sk of a.idx.daq.scalers) { if (sk.buf !== b) continue; const dst = w.sc.get(sk.id); if (!dst) continue; const o0 = base + sk.off;
+                if (sk.bit >= 0) for (let i = 0; i < n; i++) dst[w.fill + i] = (rd(dv, o0 + i * wd, sk.t, s.LE) >> sk.bit) & 1; else for (let i = 0; i < n; i++) dst[w.fill + i] = rd(dv, o0 + i * wd, sk.t, s.LE); } }
+            base += nb * wd;
+          }
+          for (const a of s.act) out.get(a.o).fill += a.idx.nv;
+          continue;
+        }
         if (s.inter && s.act.every(a => a.idx.dt !== 0x20)) {
           const nv = s.act[0].idx.nv, stride = s.act.reduce((q, a) => q + SZ[a.idx.dt], 0);
           for (let i = 0; i < nv; i++) { let q = base + i * stride; for (const a of s.act) { const w = out.get(a.o); w.arr[w.fill++] = rd(dv, q, a.idx.dt, s.LE); q += SZ[a.idx.dt]; } }
@@ -969,7 +1104,7 @@ const TDMS = (() => {
     // Yol → grup/kanal
     const unq = s => s.replace(/^'|'$/g, '').replace(/''/g, "'");
     const parsePath = p => { const m = p.match(/'((?:[^']|'')*)'/g) || []; return m.map(unq); };
-    const root = {props: {}}, groups = new Map();
+    const root = {props: {}}, groups = new Map(), scaleJobs = [];
     for (const o of order) {
       const pp = parsePath(o.path);
       if (pp.length === 0) root.props = o.props;
@@ -977,8 +1112,15 @@ const TDMS = (() => {
       else {
         const g = groups.get(pp[0]) || {name: pp[0], props: {}, channels: []}; groups.set(pp[0], g);
         const w = out.get(o), dt = o.idx && o.idx.dt;
-        g.channels.push({name: pp[1], props: o.props, dtype: dt ? TNAME[dt] : '', n: w ? w.arr.length : 0, data: w ? w.arr : (dt === 0x20 ? [] : new Float32Array(0))});
+        const rec = {name: pp[1], props: o.props, dtype: dt ? TNAME[dt] : '', n: w ? w.arr.length : 0, data: w ? w.arr : (dt === 0x20 ? [] : new Float32Array(0))};
+        g.channels.push(rec); if (w && dt !== 0x20) scaleJobs.push({rec, w, g});
       }
+    }
+    for (const {rec, w, g} of scaleJobs) {
+      const sc = [rec.props, g.props, root.props].map(getScales).find(x => x);
+      if (!sc) continue;
+      if (sc.unsupported) { const m = 'Ölçek türü desteklenmiyor (' + sc.unsupported + '): ' + rec.name + ' ham değerle bırakıldı'; if (!warn.includes(m)) warn.push(m); continue; }
+      try { rec.data = applyScales(sc, w); rec.dtype = 'f64'; rec.scaled = true; rec.n = rec.data.length; } catch (e) { warn.push('Ölçekleme hatası (' + rec.name + '): ' + e.message); }
     }
     return {props: root.props, groups: [...groups.values()], warn};
   }
@@ -2415,9 +2557,9 @@ async function importFile(file, onProgress) {
   f.baseN = baseN;
   for (let vi = 0; vi < mat.vars.length; vi++) {
     const v = mat.vars[vi]; if (!v.numeric || v.count < 2) continue;
-    const full = v.name, m = DEV_RE.exec(full);
+    const full = v.name, m = v.top ? null : DEV_RE.exec(full);
     let pre, dev, rest;
-    if (m) { pre = m[1]; dev = 'anak' + m[2] + '_' + m[3]; rest = m[4]; } else { const k = full.indexOf('_'); pre = k > 0 ? full.slice(0, k) : full; dev = pre; rest = k > 0 ? full.slice(k + 1) : full; }
+    if (v.top) { pre = v.top; dev = v.top; rest = full.slice(v.top.length + 1) || full; } else if (m) { pre = m[1]; dev = 'anak' + m[2] + '_' + m[3]; rest = m[4]; } else { const k = full.indexOf('_'); pre = k > 0 ? full.slice(0, k) : full; dev = pre; rest = k > 0 ? full.slice(k + 1) : full; }
     const dims = v.dims, vec = dims.length === 2 && Math.min(dims[0], dims[1]) === 1;
     const mk = (nm, restN, n, extra) => {
       const base = restN.replace(/_(X|Y|Z|\d+)$/, ''), comp = restN === base ? '' : restN.slice(base.length + 1);
@@ -3431,8 +3573,9 @@ function saveProfiles() { try { localStorage.setItem(PROFKEY, JSON.stringify(S.p
 /* ---------- UNV ---------- */
 async function unvOpen(file) {
   await busy('UNV okunuyor: ' + file.name, async () => {
-    const funcs = UNV.parse(await file.text(), file.name);
-    if (!funcs.length) throw new Error(funcs.bin58 ? 'Dosya binary UNV (58b); yalnızca ASCII UNV desteklenir.' : 'Dosyada dataset 58 bulunamadı (ASCII UNV olmalı).');
+    const funcs = UNV.parseBytes(new Uint8Array(await file.arrayBuffer()), file.name);
+    if (funcs.warn && funcs.warn.length) toast(funcs.warn.join(' · '), 9000);
+    if (!funcs.length) throw new Error(funcs.bin58 ? 'İkili UNV (58b) veri kümesi okunamadı.' : 'Dosyada dataset 58 bulunamadı.');
     const f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: 1, baseFs: 1, cnts: {}, gcache: {}, baseN: 0, unv: true, funcs};
     funcs.forEach((u, k) => {
       const idx = k + 1, nm = UNV.chanName(u, idx), dev = UNV.FUNC_TYPE[u.func_type] || ('Tip ' + u.func_type);

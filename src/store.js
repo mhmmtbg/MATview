@@ -105,9 +105,9 @@ async function importFile(file, onProgress) {
   f.baseN = baseN;
   for (let vi = 0; vi < mat.vars.length; vi++) {
     const v = mat.vars[vi]; if (!v.numeric || v.count < 2) continue;
-    const full = v.name, m = DEV_RE.exec(full);
+    const full = v.name, m = v.top ? null : DEV_RE.exec(full);
     let pre, dev, rest;
-    if (m) { pre = m[1]; dev = 'anak' + m[2] + '_' + m[3]; rest = m[4]; } else { const k = full.indexOf('_'); pre = k > 0 ? full.slice(0, k) : full; dev = pre; rest = k > 0 ? full.slice(k + 1) : full; }
+    if (v.top) { pre = v.top; dev = v.top; rest = full.slice(v.top.length + 1) || full; } else if (m) { pre = m[1]; dev = 'anak' + m[2] + '_' + m[3]; rest = m[4]; } else { const k = full.indexOf('_'); pre = k > 0 ? full.slice(0, k) : full; dev = pre; rest = k > 0 ? full.slice(k + 1) : full; }
     const dims = v.dims, vec = dims.length === 2 && Math.min(dims[0], dims[1]) === 1;
     const mk = (nm, restN, n, extra) => {
       const base = restN.replace(/_(X|Y|Z|\d+)$/, ''), comp = restN === base ? '' : restN.slice(base.length + 1);

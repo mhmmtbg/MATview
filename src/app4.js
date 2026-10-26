@@ -6,8 +6,9 @@ function saveProfiles() { try { localStorage.setItem(PROFKEY, JSON.stringify(S.p
 /* ---------- UNV ---------- */
 async function unvOpen(file) {
   await busy('UNV okunuyor: ' + file.name, async () => {
-    const funcs = UNV.parse(await file.text(), file.name);
-    if (!funcs.length) throw new Error(funcs.bin58 ? 'Dosya binary UNV (58b); yalnızca ASCII UNV desteklenir.' : 'Dosyada dataset 58 bulunamadı (ASCII UNV olmalı).');
+    const funcs = UNV.parseBytes(new Uint8Array(await file.arrayBuffer()), file.name);
+    if (funcs.warn && funcs.warn.length) toast(funcs.warn.join(' · '), 9000);
+    if (!funcs.length) throw new Error(funcs.bin58 ? 'İkili UNV (58b) veri kümesi okunamadı.' : 'Dosyada dataset 58 bulunamadı.');
     const f = {id: 'f' + (importFile.seq++), name: file.name, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: 1, baseFs: 1, cnts: {}, gcache: {}, baseN: 0, unv: true, funcs};
     funcs.forEach((u, k) => {
       const idx = k + 1, nm = UNV.chanName(u, idx), dev = UNV.FUNC_TYPE[u.func_type] || ('Tip ' + u.func_type);

@@ -43,12 +43,26 @@ const H5 = (() => {
     const rootObj = await readObject(ctx, root.ohdr);
     const vars = [];
     const links = await listGroup(ctx, rootObj, root);
-    for (const [name, addr] of links) {
-      if (name === '#refs#' || name === '#subsystem#') continue;
-      let o; try { o = await readObject(ctx, addr); } catch (e) { continue; }
-      const info = describe(o, name);
-      if (info) { info.h5 = {ctx, obj: o}; vars.push(info); }
-    }
+    // iç içe grup (struct) ve başvuru (cell / struct dizisi) çözümü
+    const addNode = async (name, addr, top, depth) => {
+      let o; try { o = await readObject(ctx, addr); } catch (e) { return; }
+      const isDs = !!(msg(o, 0x01) && msg(o, 0x03) && msg(o, 0x08));
+      if (!isDs) {
+        if (depth === 0) vars.push(Object.assign(describe(o, name), {h5: {ctx, obj: o}}));
+        if (depth >= 6 || vars.length > 5000) return;
+        let kids = []; try { kids = await listGroup(ctx, o, null); } catch (e) { return; }
+        for (const [k, a] of kids) { if (k === '#refs#' || k === '#subsystem#') continue; await addNode(name + '.' + k, a, top, depth + 1); }
+        return;
+      }
+      const info = describe(o, name); info.h5 = {ctx, obj: o};
+      if (depth === 0) vars.push(info); else if (info.numeric) { info.top = top; vars.push(info); }
+      if (info.dt && info.dt.kind === 'other' && info.dt.cls === 7 && info.dt.size === 8 && info.count > 0 && info.count <= 2000 && depth < 6) {
+        let raw; try { raw = await loadBytes(null, info); } catch (e) { return; }
+        const rdv = dvOf(raw), br = info.mclass === 'cell' ? ['{', '}'] : ['(', ')'];
+        for (let i = 0; i < info.count; i++) { const a = Number(rdv.getBigUint64(i * 8, true)); if (a > 0) await addNode(name + br[0] + (i + 1) + br[1], a, top || name, depth + 1); }
+      }
+    };
+    for (const [name, addr] of links) { if (name === '#refs#' || name === '#subsystem#') continue; await addNode(name, addr, name, 0); }
     return {kind: 'h5', ctx, vars, header: 'MATLAB v7.3 (HDF5)'};
   }
 
@@ -144,12 +158,17 @@ const H5 = (() => {
     const ds = parseDataspace(dsm.data), dt = parseDatatype(dtm.data);
     const dims = ds.dims.slice().reverse(); const count = dims.reduce((a, b) => a * b, 1);
     const numeric = !!dt && dt.kind === 'num' && !empty && (mclass === '' || (CLASSES[mclass] >= 6 && mclass !== 'char'));
-    return {name, cls: CLASSES[mclass] || 6, clsName: mclass || 'double', dims: empty ? [0, 0] : dims, numeric, count: empty ? 0 : count, dt};
+    return {name, cls: CLASSES[mclass] || 6, clsName: mclass || 'double', mclass, dims: empty ? [0, 0] : dims, numeric, count: empty ? 0 : count, dt};
   }
 
   // ---- veri yükleme ----
   async function inflate(u8) { return MATinflate(u8); }
   async function load(h5, v) {
+    const out = await loadBytes(h5, v); const dt = v.dt;
+    if (dt.be) throw new Error('Big-endian HDF5 verisi desteklenmiyor');
+    return bytesToF64(out, dt, v.count);
+  }
+  async function loadBytes(h5, v) {
     const {ctx, obj} = v.h5, {r, so, sl} = ctx; const dt = v.dt; const lay = msg(obj, 0x08).data, ldv = dvOf(lay);
     const nbytes = v.count * dt.size, out = new Uint8Array(nbytes); const ver = lay[0];
     if (ver !== 3) throw new Error('Desteklenmeyen veri düzeni sürümü: ' + ver + ' (v7.3 dosyayı -v7 ile yeniden kaydedin)');
@@ -172,8 +191,7 @@ const H5 = (() => {
         copyChunk(out, buf, ddims, cdims, ch.off, esz, dstrides, cstrides);
       }
     } else throw new Error('Desteklenmeyen düzen sınıfı: ' + cls);
-    if (dt.be) throw new Error('Big-endian HDF5 verisi desteklenmiyor');
-    return bytesToF64(out, dt, v.count);
+    return out;
   }
   function msgDims(o) { return parseDataspace(msg(o, 0x01).data).dims; }
   function parseFilters(d) {

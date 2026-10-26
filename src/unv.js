@@ -36,40 +36,75 @@ const UNV = (() => {
     if (unit.toUpperCase() === 'NONE') unit = ''; if (label.toUpperCase() === 'NONE') label = '';
     return {label, unit};
   }
+  // 11 satırlık ASCII başlık (kayıtlar 1-11): lines[j..j+10]
+  function head(lines, j) {
+    const id = [0, 1, 2, 3, 4].map(k => (lines[j + k] || '').trim()), r6 = rec6(lines[j + 5] || ''), r7 = (lines[j + 6] || '').trim().split(/\s+/).filter(Boolean);
+    const ordType = r7.length > 0 ? intOr(r7[0], 2) : 2, npts = r7.length > 1 ? intOr(r7[1], 0) : 0, spacing = r7.length > 2 ? intOr(r7[2], 1) : 1;
+    const xmin = r7.length > 3 ? (tf(r7[3]) ?? 0) : 0, dx = r7.length > 4 ? (tf(r7[4]) ?? 1) : 1, zval = r7.length > 5 ? (tf(r7[5]) ?? 0) : 0;
+    return {id, r6, ordType, npts, spacing, xmin, dx, zval, absc: axis(lines[j + 7] || ''), ordn: axis(lines[j + 8] || ''), ordd: axis(lines[j + 9] || '')};
+  }
+  function body(M, vals, source) {
+    const {ordType, npts, spacing, xmin, dx} = M, cx = ordType === 5 || ordType === 6; let x = [], y = [], yim = [];
+    if (spacing === 1) {
+      if (cx) for (let m = 0; m + 1 < vals.length; m += 2) { y.push(vals[m]); yim.push(vals[m + 1]); } else y = Array.from(vals);
+      if (npts) { y = y.slice(0, npts); yim = yim.slice(0, npts); }
+      for (let m = 0; m < y.length; m++) x.push(xmin + m * dx);
+    } else {
+      if (cx) for (let m = 0; m + 2 < vals.length; m += 3) { x.push(vals[m]); y.push(vals[m + 1]); yim.push(vals[m + 2]); }
+      else for (let m = 0; m + 1 < vals.length; m += 2) { x.push(vals[m]); y.push(vals[m + 1]); }
+      if (npts) { x = x.slice(0, npts); y = y.slice(0, npts); yim = yim.slice(0, npts); }
+    }
+    let unit = M.ordn.unit; if (M.ordd.unit) unit = unit ? unit + '/' + M.ordd.unit : '1/' + M.ordd.unit;
+    return Object.assign({source: source || '', id1: M.id[0], id2: M.id[1], id3: M.id[2], id4: M.id[3], id5: M.id[4], ord_type: ordType, is_complex: cx, npts: y.length, spacing, xmin, dx, zval: M.zval,
+      x: Float64Array.from(x), y: Float64Array.from(y), y_im: Float64Array.from(yim), x_unit: M.absc.unit, y_unit: unit}, M.r6);
+  }
   function parse(text, source) {
     const lines = text.split(/\r?\n/), n = lines.length, funcs = []; let i = 0, bin58 = 0;
     while (i < n) {
       if (lines[i].trim() !== '-1') { i++; continue; }
       const nx = (lines[i + 1] || '').trim();
-      if (nx === '58b') { bin58++; i++; continue; }
+      if (/^58b/.test(nx)) { bin58++; i++; continue; }
       if (nx !== '58') { i++; continue; }
       const j = i + 2; if (j + 10 >= n) break;
-      const id = [0, 1, 2, 3, 4].map(k => lines[j + k].trim()), r6 = rec6(lines[j + 5]), r7 = lines[j + 6].trim().split(/\s+/).filter(Boolean);
-      const ordType = r7.length > 0 ? intOr(r7[0], 2) : 2, npts = r7.length > 1 ? intOr(r7[1], 0) : 0, spacing = r7.length > 2 ? intOr(r7[2], 1) : 1;
-      const xmin = r7.length > 3 ? (tf(r7[3]) ?? 0) : 0, dx = r7.length > 4 ? (tf(r7[4]) ?? 1) : 1, zval = r7.length > 5 ? (tf(r7[5]) ?? 0) : 0;
-      const absc = axis(lines[j + 7]), ordn = axis(lines[j + 8]), ordd = axis(lines[j + 9]);
+      const M = head(lines, j);
       let k = j + 11; const dl = []; while (k < n && lines[k].trim() !== '-1') dl.push(lines[k++]);
-      const vals = numbers(dl, (ordType === 4 || ordType === 6) ? 20 : 13), cx = ordType === 5 || ordType === 6;
-      let x = [], y = [], yim = [];
-      if (spacing === 1) {
-        if (cx) for (let m = 0; m + 1 < vals.length; m += 2) { y.push(vals[m]); yim.push(vals[m + 1]); } else y = vals;
-        if (npts) { y = y.slice(0, npts); yim = yim.slice(0, npts); }
-        for (let m = 0; m < y.length; m++) x.push(xmin + m * dx);
-      } else {
-        if (cx) for (let m = 0; m + 2 < vals.length; m += 3) { x.push(vals[m]); y.push(vals[m + 1]); yim.push(vals[m + 2]); }
-        else for (let m = 0; m + 1 < vals.length; m += 2) { x.push(vals[m]); y.push(vals[m + 1]); }
-        if (npts) { x = x.slice(0, npts); y = y.slice(0, npts); yim = yim.slice(0, npts); }
-      }
-      let unit = ordn.unit; if (ordd.unit) unit = unit ? unit + '/' + ordd.unit : '1/' + ordd.unit;
-      funcs.push(Object.assign({source: source || '', id1: id[0], id2: id[1], id3: id[2], id4: id[3], id5: id[4], ord_type: ordType, is_complex: cx, npts: y.length, spacing, xmin, dx, zval,
-        x: Float64Array.from(x), y: Float64Array.from(y), y_im: Float64Array.from(yim), x_unit: absc.unit, y_unit: unit}, r6));
+      funcs.push(body(M, numbers(dl, (M.ordType === 4 || M.ordType === 6) ? 20 : 13), source));
       i = k + 1;
     }
     funcs.bin58 = bin58; return funcs;
   }
+  // Bayt düzeyinde okuyucu: ASCII 58 ve ikili 58b veri kümeleri (karışık dosyalar dahil)
+  function parseBytes(u8, source) {
+    const L = u8.length, td = new TextDecoder('utf-8'), funcs = []; let pos = 0; funcs.bin58 = 0; funcs.warn = [];
+    const lineAt = p => { let e = p; while (e < L && u8[e] !== 10) e++; return {s: td.decode(u8.subarray(p, e)).replace(/\r$/, ''), next: e + 1}; };
+    while (pos < L) {
+      const a = lineAt(pos); if (a.s.trim() !== '-1') { pos = a.next; continue; }
+      const b = lineAt(a.next), bt = b.s.trim();
+      if (/^58b/.test(bt)) {
+        const tok = bt.slice(3).trim().split(/\s+/).map(Number), bo = tok[0], fp = tok[1], nl = tok[2] || 11, nbytes = tok[3] || 0; let p = b.next; const hl = [];
+        for (let k = 0; k < nl; k++) { const ln = lineAt(p); hl.push(ln.s); p = ln.next; }
+        const M = head(hl, 0), sz = (M.ordType === 4 || M.ordType === 6) ? 8 : 4; funcs.bin58++;
+        // bayt sayısı: başlıktaki değer; tutarsızsa (bazı yazılımlar karmaşık veride eksik yazar) kayıt 7'den beklenen
+        const perPt = (M.ordType === 5 || M.ordType === 6 ? 2 : 1) + (M.spacing === 1 ? 0 : 1), expN = M.npts * perPt * sz;
+        const endsOk = q => { if (q > L) return false; let r = q; while (r < L && (u8[r] === 10 || u8[r] === 13) && r - q < 2) r++; return lineAt(r).s.trim() === '-1'; };
+        let nb = nbytes; if (!endsOk(p + nb) && expN && endsOk(p + expN)) { funcs.warn.push('İkili 58b: başlıktaki bayt sayısı tutarsız, kayıt 7\'den hesaplandı'); nb = expN; }
+        if (p + nb > L) { funcs.warn.push('İkili 58b: veri dosyada eksik (kesilmiş dosya?)'); break; }
+        if (fp !== 2) { funcs.warn.push('İkili 58b: IEEE dışı kayan nokta biçimi (' + fp + ') desteklenmiyor'); pos = p + nb; continue; }
+        const cnt = Math.floor(nb / sz), dv = new DataView(u8.buffer, u8.byteOffset + p, cnt * sz), le = bo === 1, vals = new Float64Array(cnt);
+        if (sz === 8) for (let q = 0; q < cnt; q++) vals[q] = dv.getFloat64(q * 8, le); else for (let q = 0; q < cnt; q++) vals[q] = dv.getFloat32(q * 4, le);
+        funcs.push(body(M, vals, source)); pos = p + nb; continue;
+      }
+      if (bt === '58') {
+        let p = b.next; for (;;) { if (p >= L) break; const ln = lineAt(p); if (ln.s.trim() === '-1') break; p = ln.next; }
+        const chunk = td.decode(u8.subarray(pos, p)) + '\n    -1\n'; for (const f of parse(chunk, source)) funcs.push(f); pos = p; continue;
+      }
+      pos = a.next;
+    }
+    return funcs;
+  }
   const chanName = (f, idx) => { const base = f.id1 || `${f.resp_name} N${f.resp_node} ${DIRECTION[f.resp_dir] ?? ''}`; return (String(idx).padStart(2, '0') + ' | ' + (base.trim() || 'Kanal')).slice(0, 110); };
   const isPsd = f => !f.is_complex && [2, 9, 10].includes(f.func_type) && f.spacing === 1;
   const grms = f => isPsd(f) ? Math.sqrt(f.y.reduce((a, b) => a + b, 0) * f.dx) : null;
-  return {FUNC_TYPE, DIRECTION, ORD_TYPE, parse, chanName, isPsd, grms};
+  return {FUNC_TYPE, DIRECTION, ORD_TYPE, parse, parseBytes, chanName, isPsd, grms};
 })();
 if (typeof module !== 'undefined') module.exports = UNV;

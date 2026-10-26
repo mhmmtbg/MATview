@@ -91,10 +91,28 @@ const MAT = (() => {
     return info;
   }
 
+  // struct / cell içindeki sayısal öğeleri düz bir listeye açar (tamamı bellekte çözülmüş bayt dizisi üzerinden)
+  function walkContainer(bytes, le, prefix, top, out, depth) {
+    if (depth > 6 || out.length > 5000) return;
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), t = readTag(dv, 0, le); if (t.type !== 14) return;
+    let o = t.data; const fl = readTag(dv, o, le), cls = dv.getUint32(fl.data, le) & 0xFF, complex = !!(dv.getUint32(fl.data, le) & 0x800); o = fl.next;
+    const dt = readTag(dv, o, le), dims = []; for (let i = 0; i < dt.size / 4; i++) dims.push(dv.getInt32(dt.data + 4 * i, le)); o = dt.next;
+    const nt = readTag(dv, o, le); o = nt.next; const count = dims.reduce((a, b) => a * b, 1);
+    if (NUMERIC.has(cls)) { if (count >= 1) out.push({name: prefix, cls, clsName: CLS[cls], dims, complex, numeric: true, count, inline: bytes, top, compressed: false}); return; }
+    const children = [];
+    if (cls === 1) { for (let k = 0; k < count; k++) { const c = readTag(dv, o, le); children.push([prefix + '{' + (k + 1) + '}', bytes.subarray(o, c.next)]); o = c.next; } }
+    else if (cls === 2) {
+      const ln = readTag(dv, o, le), L = dv.getInt32(ln.data, le); o = ln.next; const fn = readTag(dv, o, le), nf = L > 0 ? Math.floor(fn.size / L) : 0, names = [];
+      for (let i = 0; i < nf; i++) { let nm = ''; for (let j = 0; j < L; j++) { const ch = dv.getUint8(fn.data + i * L + j); if (!ch) break; nm += String.fromCharCode(ch); } names.push(nm); } o = fn.next;
+      for (let k = 0; k < count; k++) for (let i = 0; i < nf; i++) { const c = readTag(dv, o, le); children.push([prefix + (count > 1 ? '(' + (k + 1) + ')' : '') + '.' + names[i], bytes.subarray(o, c.next)]); o = c.next; }
+    } else return;
+    for (const [nm, b] of children) walkContainer(b, le, nm, top, out, depth + 1);
+  }
+
   async function open(file) {
-    const pre = new Uint8Array(await file.slice(0, 128).arrayBuffer());
+    const pre = new Uint8Array(await file.slice(0, 2048).arrayBuffer()); const hasSig = p => pre.length >= p + 4 && pre[p] === 0x89 && pre[p + 1] === 0x48 && pre[p + 2] === 0x44 && pre[p + 3] === 0x46;
     const head0 = new TextDecoder('latin1').decode(pre.subarray(0, 116));
-    if (/7\.3/.test(head0.slice(0, 40)) || (pre[0] === 0x89 && pre[1] === 0x48)) {
+    if (/7\.3/.test(head0.slice(0, 40)) || hasSig(0) || hasSig(512) || hasSig(1024)) {
       const big = file.size > 1.5e9; // çok büyük dosyalar parça parça okunur
       const m = await H5.open(file, big ? null : new Uint8Array(await file.arrayBuffer())); m.h5 = true; return m;
     }
@@ -111,10 +129,12 @@ const MAT = (() => {
         const comp = u8.subarray(t.data, t.data + t.size);
         const head = await inflate(comp, 600);
         const info = parseMatrix(head, le, false);
-        if (info) { info.compOff = t.data; info.compSize = t.size; info.compressed = true; vars.push(info); }
+        if (info) { info.compOff = t.data; info.compSize = t.size; info.compressed = true; vars.push(info);
+          if ((info.cls === 1 || info.cls === 2) && t.size < 1.2e9) { try { const full = await inflate(comp); walkContainer(full, le, info.name, info.name, vars, 0); } catch (e) { info.walkErr = String(e.message || e); } } }
       } else if (t.type === 14) {
         const info = parseMatrix(u8.subarray(o, t.next), le, false);
-        if (info) { info.off = o; info.endOff = t.next; info.compressed = false; vars.push(info); }
+        if (info) { info.off = o; info.endOff = t.next; info.compressed = false; vars.push(info);
+          if (info.cls === 1 || info.cls === 2) { try { walkContainer(u8.subarray(o, t.next), le, info.name, info.name, vars, 0); } catch (e) { info.walkErr = String(e.message || e); } } }
       }
       if (t.next <= o) break;
       o = t.next;
@@ -124,6 +144,7 @@ const MAT = (() => {
 
   async function load(m, v) {
     if (m.h5) return H5.load(m, v);
+    if (v.inline) return parseMatrix(v.inline, m.le, true).data;
     let bytes;
     if (v.compressed) bytes = await inflate(m.u8.subarray(v.compOff, v.compOff + v.compSize));
     else bytes = m.u8.subarray(v.off, v.endOff);
