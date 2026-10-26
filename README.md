@@ -89,3 +89,31 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 
 ## Rezonans analizi (Re/Im)
 UNV sekmesi → "Rezonans analizi": kompleks FRF kanalının Re/Im değerlerinden |H| tepelerini (parabolik ara değer), yarı-güç bant genişliğinden sönümü (ζ, Q), tepedeki fazı ve Im tepe frekansını bulur; |H|/Faz/Re-Im grafiklerini Spektrum görünümüne, Nyquist'i Dağılım görünümüne çizer; tablo rapora eklenebilir veya kopyalanır. Sentetik örnek: `ornek/ornek_frf.unv` (`test/make_frf_unv.py`), testler: `test/t_an.js`, `test/pw_rez.py`.
+
+## Sürüm 2.0 — test mühendisliği güncellemesi
+Sağ paneldeki **Kalite · Test · Araçlar** sekmeleri ve **Çıktı ▸ Yöntem / Silme geçmişi** kartları eklendi.
+
+- **Kalite**: kırpılma, sıçrama, kopma, sabit kanal, DC kayması taraması; kanal başına karar tablosu.
+- **Güvenilir spektrum**: Welch (periyodik Hann; scipy/MATLAB `pwelch` ile 1e-15 uyumlu), ENBW, etkin ortalama sayısı, serbestlik derecesi, ki-kare güven aralığı.
+- **Şartname uygunluğu** (Test): profil + tolerans şablonu (MIL-STD-810H Yöntem 514 ortalama/tek kanal, ISO, özel), faz/seviye tespiti, Grms ve ASD toleransı, ihlal bölgeleri, serbestlik derecesi uyarısı. Şablon değerleri yayımlanmış karşılaştırma tablolarından alınmıştır; **resmî şartnameyle doğrulayın** (SMC-S-016 şablonu yoktur, "özel" ile girin).
+- **Kontrol / cevap**: kanal adları değiştiği için rolleri (kontrol, cevap) siz atarsınız; kontrol ortalaması/zarfı, transmisibilite (H1/H2), koherans.
+- **Akustik bant tablosu** (OASPL + şartname), **şok analizi** (tepe, süre, ΔV, SRS, şekil uyumu), **termal analiz** (rampa hızı, kararlılık, profil sapması, zarf).
+- **Araçlar**: ortak ızgaraya yeniden örnekleme, kanallar arası korelasyon/gecikme, olay/anomali listesi, tonal bileşenler, notlar.
+- **Şablonlar ve toplu özet**: ayarlar + rol kalıpları şablon olarak kaydedilir/.json olarak taşınır; toplu özet açık tüm dosyalarda aynı analizi yapıp tek tabloda toplar (CSV/rapor).
+- **İzlenebilirlik**: her işlem günlüğe yazılır; rapordaki "Yöntem" metni ve MAT çıktısındaki `MATView_islem_gunlugu` buradan üretilir. Silme geçmişi ve ham veri görünümü.
+- **Altyapı**: DSP hesapları Web Worker'da (olmazsa ana iş parçacığı); hata günlüğü ve "tanı paketi" (veri içermez); `F1` yardım/kılavuz/sürüm/değişiklik; kısayollar (Ctrl+S/O/E, Ctrl+Shift+R, N).
+
+### Yeni dosya biçimleri ve doğrulama durumu
+| Biçim | Durum | Nasıl doğrulandı |
+|---|---|---|
+| TDMS (normal, çok segmentli, big-endian, string/olay) | gerçek dosya + sentetik | nptdms |
+| TDMS **DAQmx** ham veri (format değiştiren / sayısal hat ölçekleyici) + NI ölçekleme (Linear, Polynomial, Table, Add/Subtract) | **yalnız sentetik** | nptdms'in test üreticisi + nptdms okuması ile birebir. RTD/Strain/Thermistor/Thermocouple ölçekleri desteklenmez (ham değer + uyarı) |
+| MAT v5 **struct / cell / struct dizisi** (`S.alan`, `C{1}`, `T(2).v`) | **yalnız sentetik** | scipy.io.savemat |
+| MAT v7.3 iç içe grup / cell / struct dizisi (başvurular) | **yalnız sentetik** | hdf5storage + elle h5py |
+| **İkili UNV 58b** | **yalnız sentetik** | pyuff'un ikili yazıcısı (başlıktaki bayt sayısı hatalıysa kayıt 7'den hesaplanır) |
+| **MDF4** (.mf4/.mdf; DT/DZ/DL/HL, sıkıştırılmış/transpoze, sıralı ve sırasız, doğrusal/rasyonel/tablo dönüşümü) | **yalnız sentetik** | asammdf (4.00/4.10/4.20 × 3 sıkıştırma); sırasız kayıt-kimlikli dosya elle yazıldı. MDF3, VLSD/metin ve dizi/yapı kanalları desteklenmez |
+
+Gerçek dosyada sorun görürseniz `F1 ▸ Sorun bildir` ile veri içermeyen tanı paketini kaydedebilirsiniz.
+
+### Test
+`bash test/run_tests.sh` — Node birim testleri (DSP, scipy doğrulaması, MAT/HDF5/UNV/TDMS/MDF ayrıştırıcıları) ve Playwright arayüz testleri. Sentetik dosyaları üretmek için `numpy scipy h5py hdf5storage nptdms pyuff asammdf pytest` gerekir (yalnız test için).

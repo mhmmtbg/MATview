@@ -271,6 +271,30 @@ async function tdmsOpen(file) {
   });
 }
 
+async function mdfOpen(file) {
+  await busy('MDF okunuyor: ' + file.name, async () => {
+    if (file.size > 1.9e9) { toast('MDF dosyası çok büyük (>1,9 GB); tarayıcı belleğine sığmaz', 8000); return; }
+    let r; try { r = await MDF.open(await file.arrayBuffer()); } catch (e) { toast('MDF okunamadı: ' + (e.message || e), 8000); return; }
+    const f = {id: 'f' + (importFile.seq++), name: file.name, table: true, mdf: r, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: 1, baseFs: 1, cnts: {}, baseN: 0, cols: []};
+    let nch = 0, minDt = Infinity, maxN = 0, irregular = 0, notime = 0;
+    for (const g of r.groups) {
+      if (!g.channels.length) continue; let t = null; try { t = await r.time(g); } catch (e) { r.warn.push('Zaman kanalı okunamadı (' + g.name + '): ' + e.message); }
+      let n = t ? t.length : await r.count(g); if (n < 1) continue;
+      let dt = 1, t0 = 0, uniform = true; if (t && n > 1) { t0 = t[0]; dt = (t[n - 1] - t[0]) / (n - 1); if (!(dt > 0)) { dt = 1; uniform = true; } else { let mx = 0; for (let i = 0; i < n; i += Math.max(1, (n / 5000) | 0)) mx = Math.max(mx, Math.abs(t[i] - (t0 + i * dt))); uniform = mx <= 0.25 * dt; } } else notime++;
+      if (!uniform) irregular++;
+      for (const c of g.channels) {
+        const nm = g.name + '/' + c.name, unit = c.unit || '', load = async () => { const y = await r.load(c); if (uniform || !t) return y; const o = new Float64Array(n); let j = 0; for (let i = 0; i < n; i++) { const tt = t0 + i * dt; while (j < n - 2 && t[j + 1] < tt) j++; const a = t[j], b = t[j + 1], fr = b > a ? Math.max(0, Math.min(1, (tt - a) / (b - a))) : 0; o[i] = y[j] * (1 - fr) + y[j + 1] * fr; } return o; };
+        const ch = new Channel({name: nm, rest: c.name, base: c.name, comp: '', dev: g.name, kind: tdmsKind(unit), n, file: f, label: nm, varIdx: -1, unit, tbl: true, binLoad: load});
+        ch.dtS = dt; ch.t0 = t0; ch.spp = 1; ch.Tpkt = dt; f.channels.push(ch); nch++; minDt = Math.min(minDt, dt); maxN = Math.max(maxN, n);
+      }
+    }
+    if (!nch) { toast('MDF içinde okunabilir sayısal kanal bulunamadı', 6000); return; }
+    f.Tpkt = minDt; f.baseFs = 1 / minDt; f.baseN = maxN; const w = [...r.warn]; if (irregular) w.push(irregular + ' grupta zaman düzensiz: doğrusal enterpolasyonla düzgün ızgaraya alındı'); if (notime) w.push(notime + ' grupta zaman kanalı yok: 1 s/örnek varsayıldı');
+    S.files.push(f); S.fopen.add(f.id); for (const g of r.groups) S.open.add(f.id + '/' + g.name); renderChips(); renderTree(); if (!S.plot.axes.length) addToNewAxes(f.channels.slice(0, 4), false);
+    toast(`${file.name} (MDF ${r.version}): ${r.groups.length} grup · ${nch} kanal${w.length ? ' · ' + w.join('; ') : ''}`, 7000);
+  });
+}
+
 function tdmsTextDialog(name, r) {
   const body = h('div', {style: 'max-height:62vh;overflow:auto;min-width:560px'}); const csvs = [];
   for (const g of r.groups) { const cs = g.channels.filter(c => (c.dtype === 'string' || c.dtype === 'time') && c.n); if (!cs.length) continue;

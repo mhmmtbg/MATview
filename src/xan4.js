@@ -40,7 +40,8 @@ const CHANGELOG = [
     'Test mühendisliği: şartname uygunluk (MIL-STD-810 / ISO / özel tolerans şablonları), faz/seviye tespiti, kontrol kanalı rolleri, transmisibilite/FRF, akustik bant tablosu (OASPL), şok analizi (SRS, süre, ΔV, şekil), termal analiz.',
     'Araçlar: yeniden örnekleme / ortak ızgara, kanallar arası korelasyon ve gecikme, olay/anomali listesi, tonal bileşen, notlar.',
     'İzlenebilirlik: işlem günlüğü (rapor "Yöntem" metni, MAT çıktısına eklenir), silme geçmişi, ham veri görünümü.',
-    'İş akışı: analiz şablonları, toplu (çoklu dosya) özet, TDMS desteği, arka plan işçisi, hata günlüğü ve kılavuz.']},
+    'İş akışı: analiz şablonları, toplu (çoklu dosya) özet, arka plan işçisi, hata günlüğü ve kılavuz.',
+    'Yeni biçimler: TDMS (DAQmx ham veri + NI ölçekleme dahil), MAT struct/cell (v5 ve v7.3 iç içe), ikili UNV 58b, MDF4 (.mf4/.mdf). Gerçek dosyayla sınanmadı — sorun olursa Sorun bildir sekmesinden tanı paketi kaydedin.']},
   {v: '1.x', d: 'Önceki sürümler', items: ['MAT / HDF5 / UNV (58) / ikili telemetri (Excel çerçeve tanımı) / CSV-Excel / WAV okuma; zaman, spektrum, spektrogram, oktav, SRS, filtre, Hampel, temizleme; profil karşılaştırma; rapor ve PNG/SVG çıktısı.']}];
 
 /* ---------- D4: kılavuz / sürüm / sorun bildir ---------- */
