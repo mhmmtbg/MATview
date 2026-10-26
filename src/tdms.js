@@ -16,7 +16,7 @@ const TDMS = (() => {
     throw new Error('Desteklenmeyen TDMS veri tipi: 0x' + t.toString(16));
   }
   function parse(u8) {
-    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), N = u8.length, dec = new TextDecoder();
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), N = u8.length, u8d = new TextDecoder('utf-8', {fatal: true}), ansi = new TextDecoder('windows-1254'), dec = {decode: b => { try { return u8d.decode(b); } catch (e) { return ansi.decode(b); } }};
     const objs = new Map(), order = []; let active = [], segs = [], pos = 0, warn = [];
     const getObj = p => { let o = objs.get(p); if (!o) { o = {path: p, props: {}, idx: null, parts: [], total: 0}; objs.set(p, o); order.push(o); } return o; };
     while (pos + 28 <= N) {
@@ -61,7 +61,7 @@ const TDMS = (() => {
     // Segment verisini kanallara aktar (iki geçiş: toplam say, doldur)
     const info = new Map();
     for (const s of segs) {
-      let chunk = 0; for (const a of s.act) chunk += a.idx.dt === 0x20 ? a.idx.tb + 4 * a.idx.nv : a.idx.nv * SZ[a.idx.dt];
+      let chunk = 0; for (const a of s.act) chunk += a.idx.dt === 0x20 ? a.idx.tb : a.idx.nv * SZ[a.idx.dt];
       if (!chunk) continue; s.chunk = chunk; s.nch = Math.floor((s.end - s.at) / chunk);
       if (s.nch < (s.end - s.at) / chunk && s.end - s.at > 0 && s.nch === 0) warn.push('Kısmi veri bloğu atlandı');
       for (const a of s.act) a.o.total += a.idx.nv * s.nch;
@@ -84,7 +84,7 @@ const TDMS = (() => {
             const w = out.get(a.o), n = a.idx.nv, dt = a.idx.dt;
             if (dt === 0x20) {
               const offs = []; for (let i = 0; i < n; i++) offs.push(dv.getUint32(base + 4 * i, s.LE)); const sb = base + 4 * n;
-              for (let i = 0; i < n; i++) w.arr[w.fill++] = dec.decode(u8.subarray(sb + (i ? offs[i - 1] : 0), sb + offs[i])); base = sb + a.idx.tb;
+              for (let i = 0; i < n; i++) w.arr[w.fill++] = dec.decode(u8.subarray(sb + (i ? offs[i - 1] : 0), sb + offs[i])); base += a.idx.tb;
             } else {
               const sz = SZ[dt], aligned = ((s.LE === true) && (base + u8.byteOffset) % sz === 0);
               if (aligned && (dt === 9 || dt === 0x19)) { w.arr.set(new Float32Array(u8.buffer, u8.byteOffset + base, n), w.fill); w.fill += n; }

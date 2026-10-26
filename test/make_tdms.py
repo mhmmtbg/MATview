@@ -13,3 +13,8 @@ with TdmsWriter(out) as w:
         c3 = ChannelObject('Sicaklik', 'T1', (20 + t[sl]).astype(np.float64)[::100], {'unit_string': 'C', 'wf_increment': 0.05})
         c4 = ChannelObject('Sicaklik', 'sayac', np.arange(k * 20, k * 20 + 20, dtype=np.int32), {})
         w.write_segment([root, g1, g2, c1, c2, c3, c4])
+# metin (olay listesi) kanalları — ayrı dosya
+with TdmsWriter(out.replace('.tdms', '_olay.tdms')) as w:
+    w.write_segment([RootObject({'name': 'olay testi'}), GroupObject('Olay Listesi'),
+        ChannelObject('Olay Listesi', 'Zaman', np.array(['8:38:01 PM', '8:38:02 PM'])), ChannelObject('Olay Listesi', 'Mesaj', np.array(['Donanim hazir', 'Haberlesme Uygun']))])
+    w.write_segment([ChannelObject('Olay Listesi', 'Mesaj', np.array(['Test basladi']))])

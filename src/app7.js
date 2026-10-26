@@ -262,9 +262,21 @@ async function tdmsOpen(file) {
       const ch = new Channel({name: nm, rest: c.name, base: c.name, comp: '', dev: g.name, kind: tdmsKind(unit), n: c.n, file: f, label: nm, varIdx: -1, unit, tbl: true, binLoad: async () => data});
       ch.dtS = dt; ch.t0 = t0; ch.spp = 1; ch.Tpkt = dt; ch.data = data; f.channels.push(ch); nch++; minDt = Math.min(minDt, dt); maxN = Math.max(maxN, c.n);
     }
-    if (!nch) { toast('TDMS içinde sayısal kanal bulunamadı', 6000); return; }
+    const strs = r.groups.filter(g => g.channels.some(c => c.dtype === 'string' && c.n));
+    if (!nch) { if (strs.length) { toast(file.name + ': sayısal kanal yok, metin/olay tabloları gösteriliyor', 5000); tdmsTextDialog(file.name, r); } else toast('TDMS içinde okunabilir kanal bulunamadı', 6000); return; }
     f.Tpkt = minDt; f.baseFs = 1 / minDt; f.baseN = maxN;
     S.files.push(f); S.fopen.add(f.id); for (const g of r.groups) S.open.add(f.id + '/' + g.name); renderChips(); renderTree(); if (!S.plot.axes.length) addToNewAxes(f.channels.slice(0, 4), false);
+    if (strs.length) setTimeout(() => tdmsTextDialog(file.name, r), 300);
     toast(`${file.name}: ${r.groups.length} grup · ${nch} kanal${r.warn.length ? ' · ' + r.warn.join('; ') : ''}`, 6000);
   });
+}
+
+function tdmsTextDialog(name, r) {
+  const body = h('div', {style: 'max-height:62vh;overflow:auto;min-width:560px'}); const csvs = [];
+  for (const g of r.groups) { const cs = g.channels.filter(c => (c.dtype === 'string' || c.dtype === 'time') && c.n); if (!cs.length) continue;
+    const n = Math.max(...cs.map(c => c.n)), fm = (c, i) => { const v = c.data[i]; return v == null ? '' : c.dtype === 'time' ? new Date(v).toLocaleString('tr-TR') : String(v).replace(/[ýþðÝÞÐ]/g, m => ({'ý': 'ı', 'þ': 'ş', 'ð': 'ğ', 'Ý': 'İ', 'Þ': 'Ş', 'Ð': 'Ğ'})[m]); }; /* LabVIEW ANSI(cp1254) yazılan Türkçe karakterleri latin-1 okunmuş gelir; düzeltilir */
+    const tb = h('tbody'); for (let i = 0; i < n; i++) tb.append(h('tr', null, h('td', null, String(i + 1)), ...cs.map(c => h('td', null, fm(c, i)))));
+    body.append(h('h4', null, g.name + ' (' + n + ' satır)'), h('table', {class: 'tbl'}, h('thead', null, h('tr', null, h('th', null, '#'), ...cs.map(c => h('th', null, c.name.trim())))), tb));
+    const q = s => '"' + String(s).replace(/"/g, '""') + '"'; let t = cs.map(c => q(c.name.trim())).join(';') + '\n'; for (let i = 0; i < n; i++) t += cs.map(c => q(fm(c, i))).join(';') + '\n'; csvs.push([g.name, t]); }
+  modal('TDMS metin / olay tablosu — ' + name, body, [{t: 'CSV kaydet', fn: () => { csvs.forEach(([g, t]) => saveBlob(new Blob(['\ufeff' + t], {type: 'text/csv'}), sanitizeName(name.replace(/\.tdms$/i, '') + '_' + g) + '.csv')); return false; }}, {t: 'Kapat', primary: true}]);
 }
