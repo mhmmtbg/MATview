@@ -243,3 +243,28 @@ async function wavOpen(file) {
     toast(`${file.name}: ${w.channels.length} kanal · ${w.rate} Hz · ${w.bits} bit${w.float ? ' (float)' : ''} · ${fmtNum(n / w.rate, 5)} s`);
   });
 }
+
+/* ---------- TDMS içe aktarma ---------- */
+function tdmsKind(u) { u = String(u || '').toLowerCase(); if (/^(g|m\/s2|m\/s²)$/.test(u)) return 'vib'; if (u === 'pa') return 'ac'; if (/^(°?c|k|degc)$/.test(u)) return 'temp'; if (/^(bar|psi|kpa|mpa)$/.test(u)) return 'press'; if (/strain|µe|ue|µm\/m/.test(u)) return 'strain'; if (u === 'v' || u === 'mv') return 'volt'; if (u === 'a' || u === 'ma') return 'curr'; return 'other'; }
+async function tdmsOpen(file) {
+  await busy('TDMS okunuyor: ' + file.name, async () => {
+    let r; try { r = TDMS.parse(new Uint8Array(await file.arrayBuffer())); } catch (e) { toast('TDMS okunamadı: ' + (e.message || e), 8000); return; }
+    const f = {id: 'f' + (importFile.seq++), name: file.name, table: true, tdms: r, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: 1, baseFs: 1, cnts: {}, baseN: 0, cols: []};
+    let nch = 0, minDt = Infinity, maxN = 0;
+    for (const g of r.groups) for (const c of g.channels) {
+      if (c.dtype === 'string' || c.dtype === 'time' || !c.n) continue;
+      const nm = g.name + '/' + c.name, unit = String(c.props.unit_string || ''), data = c.data;
+      let dt = Number(c.props.wf_increment); const t0 = Number(c.props.wf_start_offset) || 0;
+      if (!(dt > 0)) { // aynı gruptaki zaman kanalından türet
+        const tc = g.channels.find(x => x !== c && /^(time|zaman|t|x)$/i.test(x.name) && x.n === c.n && x.data && x.data.length > 1);
+        dt = tc ? (tc.data[tc.n - 1] - tc.data[0]) / (tc.n - 1) : 1;
+      }
+      const ch = new Channel({name: nm, rest: c.name, base: c.name, comp: '', dev: g.name, kind: tdmsKind(unit), n: c.n, file: f, label: nm, varIdx: -1, unit, tbl: true, binLoad: async () => data});
+      ch.dtS = dt; ch.t0 = t0; ch.spp = 1; ch.Tpkt = dt; ch.data = data; f.channels.push(ch); nch++; minDt = Math.min(minDt, dt); maxN = Math.max(maxN, c.n);
+    }
+    if (!nch) { toast('TDMS içinde sayısal kanal bulunamadı', 6000); return; }
+    f.Tpkt = minDt; f.baseFs = 1 / minDt; f.baseN = maxN;
+    S.files.push(f); S.fopen.add(f.id); for (const g of r.groups) S.open.add(f.id + '/' + g.name); renderChips(); renderTree(); if (!S.plot.axes.length) addToNewAxes(f.channels.slice(0, 4), false);
+    toast(`${file.name}: ${r.groups.length} grup · ${nch} kanal${r.warn.length ? ' · ' + r.warn.join('; ') : ''}`, 6000);
+  });
+}

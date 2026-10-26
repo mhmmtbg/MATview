@@ -80,6 +80,7 @@ Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwrig
 - **Rapor** (Çıktı sekmesi / "Rapora ekle"): görünümleri, istatistik/veri özeti tablolarını ve notları toplar; kapak, özet+revizyon geçmişi+içindekiler, her sayfada üstte logo–rapor adı–dok no/tarih/proje no/revizyon, altta gizlilik derecesi ve "Sayfa x / N" olan A4 rapor üretir. Bilgiler üretmeden önce sorulur (kaydedilir; logo isteğe bağlı). Önizlemeden "Yazdır / PDF" veya HTML. Kod: `src/app9.js`, test: `test/pw_rep.py`, örnek çıktı: `sablon/ornek_rapor.pdf` (sentetik).
 - **Harmonik/yan-band imleçleri**: Analiz sekmesi; spektrum görünümünde k×f0 ve ±m×aralık çizgileri (PNG/SVG'ye de girer).
 - **WAV** (PCM 8/16/24/32, float 32/64, çok kanallı) açılır.
+- **TDMS** (NI LabVIEW/DAQ) açılır: grup/kanal ağacı, `wf_increment` ve `wf_start_offset` ile zaman ekseni, birim, çok segmentli / interleaved / big-endian dosyalar, string ve zaman damgası özellikleri. DAQmx ham veri biçimi desteklenmez. Test: `test/make_tdms.py`, `test/t_tdms.js`.
 - **Bit akışı alanı** (`ub`/`sb`, Bit="a-b"): 12/14 bit paketli telemetre için; şablonda örnek var.
 
 ## MAT dışa aktarma ve Word raporu

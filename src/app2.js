@@ -539,7 +539,7 @@ function init() {
   for (const b of $('#viewtabs').children) b.onclick = () => { switchView(b.dataset.v); };
   $('#btnBin').onclick = () => binDialog();
   $('#btnOpen').onclick = async () => {
-    if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat', '.unv', '.uff', '.csv', '.tsv', '.txt', '.xlsx']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
+    if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat', '.unv', '.uff', '.csv', '.tsv', '.txt', '.xlsx', '.wav', '.tdms']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
     $('#fileIn').click();
   };
   $('#fileIn').onchange = e => { openFiles(e.target.files); e.target.value = ''; };

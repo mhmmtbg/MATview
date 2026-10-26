@@ -183,7 +183,7 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
         <button id="btnHelp" data-ic="help">Yardım</button>
       </div></div>
     <button id="btnTheme" data-ic="theme" title="Açık/koyu tema" aria-label="Tema"></button>
-    <input type="file" id="fileIn" accept=".mat,.unv,.uff,.csv,.tsv,.txt,.xlsx,.wav" multiple hidden>
+    <input type="file" id="fileIn" accept=".mat,.unv,.uff,.csv,.tsv,.txt,.xlsx,.wav,.tdms" multiple hidden>
   </header>
   <aside id="left">
     <div class="pane-h">Dosyalar ve değişkenler</div>
@@ -864,6 +864,123 @@ const UNV = (() => {
   const isPsd = f => !f.is_complex && [2, 9, 10].includes(f.func_type) && f.spacing === 1;
   const grms = f => isPsd(f) ? Math.sqrt(f.y.reduce((a, b) => a + b, 0) * f.dx) : null;
   return {FUNC_TYPE, DIRECTION, ORD_TYPE, parse, chanName, isPsd, grms};
+})();
+
+/* NI TDMS okuyucu (kurulumsuz). Desteklenen: çok segmentli dosyalar, interleaved / ardışık ham veri,
+   big-endian, sayısal tipler, string, zaman damgası, özellikler. DAQmx ham verisi desteklenmez. */
+const TDMS = (() => {
+  const SZ = {1: 1, 2: 2, 3: 4, 4: 8, 5: 1, 6: 2, 7: 4, 8: 8, 9: 4, 10: 8, 0x19: 4, 0x1A: 8, 0x21: 1, 0x44: 16};
+  const TNAME = {1: 'i8', 2: 'i16', 3: 'i32', 4: 'i64', 5: 'u8', 6: 'u16', 7: 'u32', 8: 'u64', 9: 'f32', 10: 'f64', 0x19: 'f32', 0x1A: 'f64', 0x20: 'string', 0x21: 'bool', 0x44: 'time'};
+  const EPOCH = Date.UTC(1904, 0, 1);
+  function rd(dv, o, t, le) {
+    switch (t) {
+      case 1: return dv.getInt8(o); case 2: return dv.getInt16(o, le); case 3: return dv.getInt32(o, le);
+      case 4: return Number(dv.getBigInt64(o, le)); case 5: return dv.getUint8(o); case 6: return dv.getUint16(o, le);
+      case 7: return dv.getUint32(o, le); case 8: return Number(dv.getBigUint64(o, le));
+      case 9: case 0x19: return dv.getFloat32(o, le); case 10: case 0x1A: return dv.getFloat64(o, le);
+      case 0x21: return dv.getUint8(o) ? 1 : 0;
+      case 0x44: { const fr = Number(dv.getBigUint64(o + (le ? 0 : 8), le)) / 18446744073709551616, s = Number(dv.getBigInt64(o + (le ? 8 : 0), le)); return EPOCH + (s + fr) * 1000; }
+    }
+    throw new Error('Desteklenmeyen TDMS veri tipi: 0x' + t.toString(16));
+  }
+  function parse(u8) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), N = u8.length, dec = new TextDecoder();
+    const objs = new Map(), order = []; let active = [], segs = [], pos = 0, warn = [];
+    const getObj = p => { let o = objs.get(p); if (!o) { o = {path: p, props: {}, idx: null, parts: [], total: 0}; objs.set(p, o); order.push(o); } return o; };
+    while (pos + 28 <= N) {
+      if (u8[pos] !== 0x54 || u8[pos + 1] !== 0x44 || u8[pos + 2] !== 0x53 || u8[pos + 3] !== 0x6D) { if (!segs.length) throw new Error('TDMS imzası bulunamadı'); warn.push('Beklenmeyen veri, okuma durduruldu'); break; }
+      const toc = dv.getUint32(pos + 4, true), ver = dv.getUint32(pos + 8, true);
+      let next = Number(dv.getBigUint64(pos + 12, true)), rawOff = Number(dv.getBigUint64(pos + 20, true));
+      const big = !!(toc & 64), nl = !!(toc & 4);
+      const LE = !big, interleaved = !!(toc & 32), meta = !!(toc & 2), raw = !!(toc & 8);
+      const start = pos + 28, unk = next >= 1.8e19; let segEnd = (unk || pos + 28 + next > N) ? N : pos + 28 + next;
+      if (!unk && pos + 28 + next > N) warn.push('Dosya sonu kesik (son segment kısmi)');
+      let p = start;
+      if (toc & 2) {
+        const M = rawOff; // meta uzunluğu = rawOff
+        const mEnd = start + M; let no = dv.getUint32(p, LE); p += 4; const lst = [];
+        if (nl) active = [];
+        for (let i = 0; i < no; i++) {
+          const L = dv.getUint32(p, LE); p += 4; const path = dec.decode(u8.subarray(p, p + L)); p += L; const o = getObj(path);
+          const ri = dv.getUint32(p, LE); p += 4;
+          if (ri === 0xFFFFFFFF) { active = active.filter(a => a !== o); }
+          else if (ri === 0) { if (!o.idx) throw new Error('TDMS: önceki indeks yok ' + path); if (!active.includes(o)) active.push(o); }
+          else if (ri === 0x69120000 || ri === 0x69130000) throw new Error('DAQmx ham verisi içeren TDMS dosyaları desteklenmiyor');
+          else {
+            const dt = dv.getUint32(p, LE); p += 4; p += 4; const nv = Number(dv.getBigUint64(p, LE)); p += 8; let tb = 0;
+            if (dt === 0x20) { tb = Number(dv.getBigUint64(p, LE)); p += 8; }
+            if (!(dt in SZ) && dt !== 0x20) throw new Error('Desteklenmeyen TDMS veri tipi 0x' + dt.toString(16) + ' (' + path + ')');
+            o.idx = {dt, nv, tb}; if (!active.includes(o)) active.push(o);
+          }
+          const np = dv.getUint32(p, LE); p += 4;
+          for (let k = 0; k < np; k++) {
+            const nL = dv.getUint32(p, LE); p += 4; const nm = dec.decode(u8.subarray(p, p + nL)); p += nL; const dt = dv.getUint32(p, LE); p += 4; let v;
+            if (dt === 0x20) { const sL = dv.getUint32(p, LE); p += 4; v = dec.decode(u8.subarray(p, p + sL)); p += sL; }
+            else if (dt === 0) v = null; else { v = rd(dv, p, dt, LE); p += SZ[dt]; }
+            o.props[nm] = dt === 0x44 ? new Date(v) : v;
+          }
+        }
+        p = mEnd;
+      } else p = start + rawOff;
+      if (raw && active.length && p < segEnd) segs.push({at: p, end: segEnd, LE, inter: interleaved, act: active.map(o => ({o, idx: o.idx}))});
+      pos = segEnd;
+      if (segEnd >= N) break;
+    }
+    // Segment verisini kanallara aktar (iki geçiş: toplam say, doldur)
+    const info = new Map();
+    for (const s of segs) {
+      let chunk = 0; for (const a of s.act) chunk += a.idx.dt === 0x20 ? a.idx.tb + 4 * a.idx.nv : a.idx.nv * SZ[a.idx.dt];
+      if (!chunk) continue; s.chunk = chunk; s.nch = Math.floor((s.end - s.at) / chunk);
+      if (s.nch < (s.end - s.at) / chunk && s.end - s.at > 0 && s.nch === 0) warn.push('Kısmi veri bloğu atlandı');
+      for (const a of s.act) a.o.total += a.idx.nv * s.nch;
+    }
+    const out = new Map();
+    for (const o of order) if (o.idx || o.total) {
+      const dt = o.idx && o.idx.dt; let arr;
+      if (dt === 0x20) arr = new Array(o.total); else arr = (dt === 1 || dt === 2 || dt === 5 || dt === 6 || dt === 9 || dt === 0x19 || dt === 0x21) ? new Float32Array(o.total) : new Float64Array(o.total);
+      out.set(o, {arr, fill: 0});
+    }
+    for (const s of segs) {
+      if (!s.chunk) continue;
+      for (let c = 0; c < s.nch; c++) {
+        let base = s.at + c * s.chunk;
+        if (s.inter && s.act.every(a => a.idx.dt !== 0x20)) {
+          const nv = s.act[0].idx.nv, stride = s.act.reduce((q, a) => q + SZ[a.idx.dt], 0);
+          for (let i = 0; i < nv; i++) { let q = base + i * stride; for (const a of s.act) { const w = out.get(a.o); w.arr[w.fill++] = rd(dv, q, a.idx.dt, s.LE); q += SZ[a.idx.dt]; } }
+        } else {
+          for (const a of s.act) {
+            const w = out.get(a.o), n = a.idx.nv, dt = a.idx.dt;
+            if (dt === 0x20) {
+              const offs = []; for (let i = 0; i < n; i++) offs.push(dv.getUint32(base + 4 * i, s.LE)); const sb = base + 4 * n;
+              for (let i = 0; i < n; i++) w.arr[w.fill++] = dec.decode(u8.subarray(sb + (i ? offs[i - 1] : 0), sb + offs[i])); base = sb + a.idx.tb;
+            } else {
+              const sz = SZ[dt], aligned = ((s.LE === true) && (base + u8.byteOffset) % sz === 0);
+              if (aligned && (dt === 9 || dt === 0x19)) { w.arr.set(new Float32Array(u8.buffer, u8.byteOffset + base, n), w.fill); w.fill += n; }
+              else if (aligned && (dt === 10 || dt === 0x1A)) { w.arr.set(new Float64Array(u8.buffer, u8.byteOffset + base, n), w.fill); w.fill += n; }
+              else { for (let i = 0; i < n; i++) w.arr[w.fill++] = rd(dv, base + i * sz, dt, s.LE); }
+              base += n * sz;
+            }
+          }
+        }
+      }
+    }
+    // Yol → grup/kanal
+    const unq = s => s.replace(/^'|'$/g, '').replace(/''/g, "'");
+    const parsePath = p => { const m = p.match(/'((?:[^']|'')*)'/g) || []; return m.map(unq); };
+    const root = {props: {}}, groups = new Map();
+    for (const o of order) {
+      const pp = parsePath(o.path);
+      if (pp.length === 0) root.props = o.props;
+      else if (pp.length === 1) { const g = groups.get(pp[0]) || {name: pp[0], props: {}, channels: []}; g.props = o.props; groups.set(pp[0], g); }
+      else {
+        const g = groups.get(pp[0]) || {name: pp[0], props: {}, channels: []}; groups.set(pp[0], g);
+        const w = out.get(o), dt = o.idx && o.idx.dt;
+        g.channels.push({name: pp[1], props: o.props, dtype: dt ? TNAME[dt] : '', n: w ? w.arr.length : 0, data: w ? w.arr : (dt === 0x20 ? [] : new Float32Array(0))});
+      }
+    }
+    return {props: root.props, groups: [...groups.values()], warn};
+  }
+  return {parse};
 })();
 
 /* Sinyal işleme: FFT, PSD, STFT, Butterworth, filtfilt, Hampel, gürültü azaltma */
@@ -2447,8 +2564,8 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 
 /* ---------- dosya işlemleri ---------- */
 async function openFiles(files) {
-  files = [...files]; const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)); let other = files.filter(f => !/\.(mat|unv|uff)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
-  const tabs = other.filter(f => /\.(csv|tsv|txt)$/i.test(f.name)), wavs = other.filter(f => /\.wav$/i.test(f.name)); other = other.filter(f => !tabs.includes(f) && !wavs.includes(f)); for (const w of wavs) await wavOpen(w); const tabsX = [];
+  files = [...files]; const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)); const tdmss = files.filter(f => /\.tdms$/i.test(f.name)); let other = files.filter(f => !/\.(mat|unv|uff|tdms)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  const tabs = other.filter(f => /\.(csv|tsv|txt)$/i.test(f.name)), wavs = other.filter(f => /\.wav$/i.test(f.name)); other = other.filter(f => !tabs.includes(f) && !wavs.includes(f)); for (const w of wavs) await wavOpen(w); for (const t of tdmss) await tdmsOpen(t); const tabsX = [];
   if (other.length && other.every(f => /\.xlsx$/i.test(f.name))) { const keep = []; for (const f of other) { try { const sh = await XLSX.read(f); if (sh.some(s => /cerceve|çerçeve|frame/i.test(s.name))) keep.push(f); else tabsX.push([f, sh]); } catch (e) { toast('Excel okunamadı: ' + (e.message || e), 7000); } } other = keep; }
   for (const u of unvs) await unvOpen(u);
   for (const t of tabs) await tableOpen(t); for (const [f, sh] of tabsX) await tableOpen(f, sh);
@@ -3103,7 +3220,7 @@ function init() {
   for (const b of $('#viewtabs').children) b.onclick = () => { switchView(b.dataset.v); };
   $('#btnBin').onclick = () => binDialog();
   $('#btnOpen').onclick = async () => {
-    if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat', '.unv', '.uff', '.csv', '.tsv', '.txt', '.xlsx']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
+    if (window.showOpenFilePicker) { try { const hs = await showOpenFilePicker({multiple: true, types: [{description: 'MATLAB dosyaları', accept: {'application/octet-stream': ['.mat', '.unv', '.uff', '.csv', '.tsv', '.txt', '.xlsx', '.wav', '.tdms']}}]}); const fl = []; for (const x of hs) fl.push(await x.getFile()); return openFiles(fl); } catch (e) { if (e.name === 'AbortError') return; } }
     $('#fileIn').click();
   };
   $('#fileIn').onchange = e => { openFiles(e.target.files); e.target.value = ''; };
@@ -4083,6 +4200,31 @@ async function wavOpen(file) {
       ch.dtS = 1 / w.rate; ch.t0 = 0; ch.spp = 1; ch.Tpkt = 1 / w.rate; ch.data = v; f.channels.push(ch); f.cols.push({name: nm, unit: '', data: v}); });
     S.files.push(f); S.fopen.add(f.id); S.open.add(f.id + '/Sütunlar'); renderChips(); renderTree(); if (!S.plot.axes.length) addToNewAxes(f.channels.slice(0, 4), false);
     toast(`${file.name}: ${w.channels.length} kanal · ${w.rate} Hz · ${w.bits} bit${w.float ? ' (float)' : ''} · ${fmtNum(n / w.rate, 5)} s`);
+  });
+}
+
+/* ---------- TDMS içe aktarma ---------- */
+function tdmsKind(u) { u = String(u || '').toLowerCase(); if (/^(g|m\/s2|m\/s²)$/.test(u)) return 'vib'; if (u === 'pa') return 'ac'; if (/^(°?c|k|degc)$/.test(u)) return 'temp'; if (/^(bar|psi|kpa|mpa)$/.test(u)) return 'press'; if (/strain|µe|ue|µm\/m/.test(u)) return 'strain'; if (u === 'v' || u === 'mv') return 'volt'; if (u === 'a' || u === 'ma') return 'curr'; return 'other'; }
+async function tdmsOpen(file) {
+  await busy('TDMS okunuyor: ' + file.name, async () => {
+    let r; try { r = TDMS.parse(new Uint8Array(await file.arrayBuffer())); } catch (e) { toast('TDMS okunamadı: ' + (e.message || e), 8000); return; }
+    const f = {id: 'f' + (importFile.seq++), name: file.name, table: true, tdms: r, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: 1, baseFs: 1, cnts: {}, baseN: 0, cols: []};
+    let nch = 0, minDt = Infinity, maxN = 0;
+    for (const g of r.groups) for (const c of g.channels) {
+      if (c.dtype === 'string' || c.dtype === 'time' || !c.n) continue;
+      const nm = g.name + '/' + c.name, unit = String(c.props.unit_string || ''), data = c.data;
+      let dt = Number(c.props.wf_increment); const t0 = Number(c.props.wf_start_offset) || 0;
+      if (!(dt > 0)) { // aynı gruptaki zaman kanalından türet
+        const tc = g.channels.find(x => x !== c && /^(time|zaman|t|x)$/i.test(x.name) && x.n === c.n && x.data && x.data.length > 1);
+        dt = tc ? (tc.data[tc.n - 1] - tc.data[0]) / (tc.n - 1) : 1;
+      }
+      const ch = new Channel({name: nm, rest: c.name, base: c.name, comp: '', dev: g.name, kind: tdmsKind(unit), n: c.n, file: f, label: nm, varIdx: -1, unit, tbl: true, binLoad: async () => data});
+      ch.dtS = dt; ch.t0 = t0; ch.spp = 1; ch.Tpkt = dt; ch.data = data; f.channels.push(ch); nch++; minDt = Math.min(minDt, dt); maxN = Math.max(maxN, c.n);
+    }
+    if (!nch) { toast('TDMS içinde sayısal kanal bulunamadı', 6000); return; }
+    f.Tpkt = minDt; f.baseFs = 1 / minDt; f.baseN = maxN;
+    S.files.push(f); S.fopen.add(f.id); for (const g of r.groups) S.open.add(f.id + '/' + g.name); renderChips(); renderTree(); if (!S.plot.axes.length) addToNewAxes(f.channels.slice(0, 4), false);
+    toast(`${file.name}: ${r.groups.length} grup · ${nch} kanal${r.warn.length ? ' · ' + r.warn.join('; ') : ''}`, 6000);
   });
 }
 

@@ -125,8 +125,8 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 
 /* ---------- dosya işlemleri ---------- */
 async function openFiles(files) {
-  files = [...files]; const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)); let other = files.filter(f => !/\.(mat|unv|uff)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
-  const tabs = other.filter(f => /\.(csv|tsv|txt)$/i.test(f.name)), wavs = other.filter(f => /\.wav$/i.test(f.name)); other = other.filter(f => !tabs.includes(f) && !wavs.includes(f)); for (const w of wavs) await wavOpen(w); const tabsX = [];
+  files = [...files]; const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)); const tdmss = files.filter(f => /\.tdms$/i.test(f.name)); let other = files.filter(f => !/\.(mat|unv|uff|tdms)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  const tabs = other.filter(f => /\.(csv|tsv|txt)$/i.test(f.name)), wavs = other.filter(f => /\.wav$/i.test(f.name)); other = other.filter(f => !tabs.includes(f) && !wavs.includes(f)); for (const w of wavs) await wavOpen(w); for (const t of tdmss) await tdmsOpen(t); const tabsX = [];
   if (other.length && other.every(f => /\.xlsx$/i.test(f.name))) { const keep = []; for (const f of other) { try { const sh = await XLSX.read(f); if (sh.some(s => /cerceve|çerçeve|frame/i.test(s.name))) keep.push(f); else tabsX.push([f, sh]); } catch (e) { toast('Excel okunamadı: ' + (e.message || e), 7000); } } other = keep; }
   for (const u of unvs) await unvOpen(u);
   for (const t of tabs) await tableOpen(t); for (const [f, sh] of tabsX) await tableOpen(f, sh);
