@@ -182,9 +182,10 @@ async function lvDetect() {
     const res = DSP.levelSegments(x, ch.fs, {step: num('lvStep') || 3, minDur: num('lvDur') || 1, win: num('lvWin') || 0.5, ref: rp ? profGrms(rp.pts) : 0});
     S.levels = {ch, a, segs: res.segs.map(s => Object.assign(s, {t0: ch.t(a + s.i0), t1: ch.t(a + s.i1)})), ref: res.ref, prof: rp};
     const lv = [...new Set(res.segs.map(s => s.level))].sort((p, q) => p - q), col = L => SUBPAL[lv.indexOf(L) % SUBPAL.length];
-    S.plot.bands = res.segs.map(s => ({x0: s.t0, x1: s.t1, color: col(s.level)})); S.plot.invalidate();
+    S.plot.bands = res.segs.map(s => ({x0: s.t0, x1: s.t1, color: col(s.level)})); S.plot.invalidate(); logOp('levels', {ch: ch.name, step: num('lvStep'), minDur: num('lvDur'), win: num('lvWin'), n: res.segs.length});
     $('#lvInfo').textContent = !res.segs.length ? 'Plato bulunamadı (kısa plato süresini veya pencereyi küçültün, adımı kontrol edin).' :
       `Referans (0 dB): ${res.ref.toPrecision(4)} Grms${rp ? ' (profil)' : ' (en yüksek seviye)'}\n` + res.segs.map(s => `${lvTxt(s.level).padStart(7)}  ${s.t0.toFixed(2)}–${s.t1.toFixed(2)} s  (${(s.t1 - s.t0).toFixed(1)} s)  ${s.grms.toPrecision(4)} Grms  [ölçülen ${s.db.toFixed(1)} dB]`).join('\n');
+    phaseTable();
   });
 }
 async function lvSpectra() {

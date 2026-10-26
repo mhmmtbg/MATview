@@ -27,7 +27,7 @@ function fmtTick(v, step) {
 }
 function fmtNum(v, d = 5) { if (!isFinite(v)) return String(v); const a = Math.abs(v); if (a !== 0 && (a >= 1e7 || a < 1e-4)) return v.toExponential(d - 2); return +v.toPrecision(d) + ''; }
 function logTicks(lo, hi) {
-  const out = [], minor = [];
+  const out = [], minor = []; if (!(lo > 0) || !(hi > lo) || !isFinite(hi) || Math.log10(hi / lo) > 400) return {ticks: out, minor};
   for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) {
     out.push(Math.pow(10, e));
     for (let m = 2; m < 10; m++) minor.push(m * Math.pow(10, e));

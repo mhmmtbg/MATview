@@ -192,7 +192,7 @@ function selCount() { return selectionHits().reduce((a, h) => a + h.idx.length, 
 function deleteSelection() {
   const hits = selectionHits(); if (!hits.length) { toast('Silinecek seçim yok'); return; }
   const group = [];
-  for (const hh of hits) { const done = hh.tr.ch.applyDelete(hh.idx); if (done.length) group.push({ch: hh.tr.ch, idx: done}); }
+  for (const hh of hits) { const done = hh.tr.ch.applyDelete(hh.idx); if (done.length) { group.push({ch: hh.tr.ch, idx: done}); logOp('delete', {ch: hh.tr.ch.name, n: done.length}); } }
   S.plot.clearSelection(); if (group.length) { S.undo.push(group); S.redo = []; }
   toast(fmtCnt(group.reduce((a, g) => a + g.idx.length, 0)) + ' nokta silindi (Ctrl+Z ile geri alınır)'); afterEdit();
 }

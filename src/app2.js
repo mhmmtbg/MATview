@@ -7,10 +7,10 @@ const num = id => parseFloat($('#' + id).value), sv = id => $('#' + id).value, c
 const card = (title, ...c) => h('div', {class: 'card'}, h('h4', null, title), ...c);
 const btn = (t, fn, cls, id) => h('button', {class: cls || '', onclick: fn, id}, t);
 
-const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'Formül'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['feat', 'Veri'], ['qual', 'Kalite'], ['output', 'Çıktı']];
+const TABS = [['traces', 'İzler'], ['clean', 'Temizle'], ['analyze', 'Analiz'], ['expr', 'Formül'], ['acoustic', 'Akustik'], ['unv', 'UNV'], ['feat', 'Veri'], ['qual', 'Kalite'], ['test', 'Test'], ['output', 'Çıktı']];
 function buildRight() {
   const tabs = $('#rtabs'), body = $('#rbody'); tabs.replaceChildren(); body.replaceChildren(); S.panels = {};
-  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, qual: buildQual, output: buildOutput};
+  const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, qual: buildQual, test: buildTest, output: buildOutput};
   for (const [k, t] of TABS) {
     tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => setTab(k)}, h('span', {class: 'tl'}, t)));
     const p = builders[k](); p.id = 'p-' + k; if (k !== S.tab) p.classList.add('hidden'); body.append(p); S.panels[k] = p;
@@ -154,7 +154,6 @@ function buildAnalyze() {
     chkIn('spPeak', 'En yüksek 3 tepeyi işaretle', true), chkIn('spCI', '%95 güven aralığını (kesikli) çiz', false),
     h('div', {class: 'btns'}, btn('Spektrumu hesapla', computeSpectrum, 'primary')),
     h('div', {id: 'spInfo', class: 'note'}, 'Aktif alt grafikteki görünür tüm izler için hesaplanır.')));
-  r.append(lvCard());
   r.append(card('Spektrogram (STFT)',
     fr('NFFT', selIn('sgN', [256, 512, 1024, 2048, 4096, 8192].map(v => [v, v]), 1024)),
     fr('Pencere', selIn('sgWin', [['hann', 'Hann'], ['hamming', 'Hamming'], ['blackman', 'Blackman']], 'hann')),
@@ -225,7 +224,7 @@ function addDerived(name, data, src, i0, full) {
   if (!S.derived) S.derived = {id: 'derived', name: 'Türetilmiş kanallar', derived: true, channels: [], mcache: new Map()};
   const c = new Channel({name, rest: name, base: name, comp: '', dev: 'türetilmiş', kind: src ? src.kind : 'calc', n: data.length, file: S.derived, label: name, derived: true, data, varIdx: -1});
   if (src && full && src.n === data.length) c.copyTiming(src); else if (src) { c.g = null; c.dtS = 1 / src.fs; c.t0 = src.t(i0 || 0); } else c.dtS = 1;
-  S.derived.channels.push(c); renderChips(); renderTree(); return c;
+  S.derived.channels.push(c); logOp('derived', {name, src: src ? src.name : '', desc: S.opDesc || ''}); S.opDesc = ''; renderChips(); renderTree(); return c;
 }
 async function addDerivedToPlot(c, ax) { const tr = makeTrace(c); (ax || activeAxes() || S.plot.addAxes()).traces.push(tr); const a = ax || activeAxes(); if (!S.plot.active) S.plot.active = a; switchView('time'); refreshAll(); }
 async function applyFilterUI() {
@@ -236,7 +235,7 @@ async function applyFilterUI() {
     if ((type === 'bp' || type === 'bs') && !(p.f2 > p.f1)) throw new Error('f2, f1\'den büyük olmalı');
     const sos = DSP.design(type, p, ch.fs); const seg = DSP.segment(ch.data, ch.del, a, b); const y = DSP.filtfilt(sos, seg);
     const tag = {lp: 'LP' + p.f1, hp: 'HP' + p.f1, bp: 'BP' + p.f1 + '-' + p.f2, bs: 'BS' + p.f1 + '-' + p.f2, notch: 'N' + p.f1}[type];
-    const c = addDerived(ch.name + '_' + tag, y, ch, a, a === 0 && b === ch.n); await addDerivedToPlot(c, ax);
+    S.opDesc = `Butterworth ${type.toUpperCase()} sıfır faz (filtfilt), derece ${p.order}, f1=${p.f1}${type === 'bp' || type === 'bs' ? ', f2=' + p.f2 : ''}${type === 'notch' ? ', Q=' + p.Q : ''} Hz`; const c = addDerived(ch.name + '_' + tag, y, ch, a, a === 0 && b === ch.n); await addDerivedToPlot(c, ax);
     toast('Süzülmüş kanal eklendi: ' + c.name);
   });
 }
@@ -351,7 +350,7 @@ async function acPlay(clean) {
 async function acAddClean() {
   await busy('Temizleniyor…', async () => {
     const p = await acPrepare(true); $('#acLog').textContent = p.log.join('\n');
-    const c = addDerived(p.ch.name + '_temiz', p.y, p.ch, p.a, p.a === 0 && p.b === p.ch.n); await addDerivedToPlot(c, activeAxes());
+    S.opDesc = 'akustik otomatik/elle temizleme'; const c = addDerived(p.ch.name + '_temiz', p.y, p.ch, p.a, p.a === 0 && p.b === p.ch.n); await addDerivedToPlot(c, activeAxes());
   });
 }
 async function acCompare() {
@@ -397,7 +396,7 @@ async function acWav(clean) {
 function buildOutput() {
   const r = h('div');
   r.append(card('Görüntü (açık olan görünüm)', h('div', {class: 'note'}, 'Zaman, Spektrum ve Spektrogram görünümlerinin hepsi PNG veya SVG (vektör) olarak kaydedilir.'), fr('PNG ölçeği', selIn('pngScale', [[1, '1×'], [2, '2×'], [3, '3×'], [4, '4×']], 2)), chkIn('pngLight', 'Açık tema ile (baskı için)', true), h('div', {class: 'btns'}, btn('PNG kaydet', savePng, 'primary'), btn('SVG kaydet', saveSvg), btn('Panoya kopyala', copyPng))));
-  r.append(buildMatCard()); r.append(buildReportCard()); setTimeout(repRefreshList);
+  r.append(buildMatCard()); r.append(buildReportCard()); r.append(methodCard()); setTimeout(repRefreshList);
   r.append(card('Veri (CSV / MAT)',
     h('div', {class: 'note'}, 'Grafikteki izlerin verisi aktarılır.'),
     fr('Aralık', selIn('exScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
