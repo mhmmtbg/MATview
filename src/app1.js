@@ -190,6 +190,7 @@ function visRange(tr, ax) { const ch = tr.ch; const a = Math.max(0, Math.floor(c
 function selectionHits() { return S.plot.sel && S.plot.sel.hits ? S.plot.sel.hits : []; }
 function selCount() { return selectionHits().reduce((a, h) => a + h.idx.length, 0); }
 function deleteSelection() {
+  if (S.rawOn) return toast('Ham veri görünümünde silme kapalı — önce “İşlenmiş görünüme dön”');
   const hits = selectionHits(); if (!hits.length) { toast('Silinecek seçim yok'); return; }
   const group = [];
   for (const hh of hits) { const done = hh.tr.ch.applyDelete(hh.idx); if (done.length) { group.push({ch: hh.tr.ch, idx: done}); logOp('delete', {ch: hh.tr.ch.name, n: done.length}); } }

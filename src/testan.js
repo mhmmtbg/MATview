@@ -87,6 +87,7 @@ function buildTest() {
     h('div', {id: 'cpNote', class: 'note'}),
     h('div', {class: 'btns'}, btn('Uygunluğu hesapla', complianceRun, 'primary'), btn('Rapora ekle', cpToReport)),
     h('div', {id: 'cpBox'}), h('div', {class: 'note'}, 'Şablon değerleri yayınlanmış karşılaştırma tablosundan alınmıştır; kullandığınız şartnamenin/test planının güncel değerlerini doğrulayıp gerekirse “Özel”e yazın. Ölçülen PSD örnek tahmindir (rastgele hata içerir); karar tablosunda serbestlik derecesi uyarısı verilir.')));
+  if (typeof extraTestCards === 'function') for (const c of extraTestCards()) r.append(c);
   setTimeout(() => { cpFillProf(); tolToUI(TOL_TPL.mil810avg); }); return r;
 }
 

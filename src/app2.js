@@ -396,7 +396,7 @@ async function acWav(clean) {
 function buildOutput() {
   const r = h('div');
   r.append(card('Görüntü (açık olan görünüm)', h('div', {class: 'note'}, 'Zaman, Spektrum ve Spektrogram görünümlerinin hepsi PNG veya SVG (vektör) olarak kaydedilir.'), fr('PNG ölçeği', selIn('pngScale', [[1, '1×'], [2, '2×'], [3, '3×'], [4, '4×']], 2)), chkIn('pngLight', 'Açık tema ile (baskı için)', true), h('div', {class: 'btns'}, btn('PNG kaydet', savePng, 'primary'), btn('SVG kaydet', saveSvg), btn('Panoya kopyala', copyPng))));
-  r.append(buildMatCard()); r.append(buildReportCard()); r.append(methodCard()); setTimeout(repRefreshList);
+  r.append(buildMatCard()); r.append(buildReportCard()); r.append(methodCard()); r.append(historyCard()); setTimeout(repRefreshList);
   r.append(card('Veri (CSV / MAT)',
     h('div', {class: 'note'}, 'Grafikteki izlerin verisi aktarılır.'),
     fr('Aralık', selIn('exScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
@@ -458,17 +458,19 @@ async function exportData(kind) {
   });
 }
 function matWrite(vars) {
+  if (typeof methodText === 'function' && !vars.noLog && S.methodLog && S.methodLog.length && (!$('#mxLog') || ck('mxLog'))) vars = [...vars, {name: 'MATView_islem_gunlugu', chr: methodText().join('\n').replace(/[çÇğĞıİöÖşŞüÜ]/g, m => ({'ç': 'c', 'Ç': 'C', 'ğ': 'g', 'Ğ': 'G', 'ı': 'i', 'İ': 'I', 'ö': 'o', 'Ö': 'O', 'ş': 's', 'Ş': 'S', 'ü': 'u', 'Ü': 'U'})[m]).replace(/[^\x20-\x7E\n]/g, '?')}];
+  vars = vars.map(v => v.chr != null ? Object.assign({}, v, {data: Uint16Array.from(Array.from(v.chr, ch => ch.charCodeAt(0) & 0xFFFF)), rows: 1, cols: v.chr.length, cls: 4, dt: 4, bps: 2}) : v);
   const hdr = new Uint8Array(128); const txt = 'MATLAB 5.0 MAT-file, MATView ile olusturuldu'; for (let i = 0; i < 116; i++) hdr[i] = i < txt.length ? txt.charCodeAt(i) : 32; hdr[124] = 0x00; hdr[125] = 0x01; hdr[126] = 0x49; hdr[127] = 0x4D;
   const parts = [hdr];
   for (const v of vars) {
-    const nm = v.name, nmPad = (nm.length + 7) & ~7, small = nm.length <= 4, nameBytes = small ? 8 : 8 + nmPad, dataBytes = v.data.length * (v.u8 ? 1 : 8), pad = (8 - dataBytes % 8) % 8;
+    const nm = v.name, nmPad = (nm.length + 7) & ~7, small = nm.length <= 4, nameBytes = small ? 8 : 8 + nmPad, dataBytes = v.data.length * (v.bps || (v.u8 ? 1 : 8)), pad = (8 - dataBytes % 8) % 8;
     const total = 16 + 16 + nameBytes + 8 + dataBytes + pad, head = new ArrayBuffer(8 + 16 + 16 + nameBytes + 8), dv = new DataView(head); let o = 0;
     dv.setUint32(o, 14, true); dv.setUint32(o + 4, total, true); o += 8;
-    dv.setUint32(o, 6, true); dv.setUint32(o + 4, 8, true); dv.setUint32(o + 8, v.u8 ? 9 : 6, true); dv.setUint32(o + 12, 0, true); o += 16;
+    dv.setUint32(o, 6, true); dv.setUint32(o + 4, 8, true); dv.setUint32(o + 8, v.cls || (v.u8 ? 9 : 6), true); dv.setUint32(o + 12, 0, true); o += 16;
     dv.setUint32(o, 5, true); dv.setUint32(o + 4, 8, true); dv.setInt32(o + 8, v.rows || v.data.length, true); dv.setInt32(o + 12, v.cols || 1, true); o += 16;
     if (small) { dv.setUint32(o, (nm.length << 16) | 1, true); for (let i = 0; i < nm.length; i++) dv.setUint8(o + 4 + i, nm.charCodeAt(i)); o += 8; }
     else { dv.setUint32(o, 1, true); dv.setUint32(o + 4, nm.length, true); for (let i = 0; i < nm.length; i++) dv.setUint8(o + 8 + i, nm.charCodeAt(i)); o += 8 + nmPad; }
-    dv.setUint32(o, v.u8 ? 2 : 9, true); dv.setUint32(o + 4, dataBytes, true);
+    dv.setUint32(o, v.dt || (v.u8 ? 2 : 9), true); dv.setUint32(o + 4, dataBytes, true);
     parts.push(new Uint8Array(head), new Uint8Array(v.data.buffer, v.data.byteOffset, dataBytes)); if (pad) parts.push(new Uint8Array(pad));
   }
   return new Blob(parts, {type: 'application/octet-stream'});
