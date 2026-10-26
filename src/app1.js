@@ -18,7 +18,7 @@ async function busy(txt, fn, opt) {
   const b = $('#busy'); $('#busytxt').textContent = txt; $('#busybar').style.width = '0%'; b.classList.remove('hidden'); S.cancel = false;
   const cb = $('#busycancel'); if (cb) { cb.style.display = opt && opt.cancel ? '' : 'none'; $('#busyCancelBtn').disabled = false; } await sleep(30);
   try { return await fn(p => { $('#busybar').style.width = Math.round(p * 100) + '%'; }); }
-  catch (e) { console.error(e); toast('Hata: ' + (e.message || e) + errHint(e.message || e), 9000); }
+  catch (e) { console.error(e); if (typeof logErr === 'function') logErr('işlem', (e && e.message) || e, e && e.stack); toast('Hata: ' + (e.message || e) + errHint(e.message || e), 9000); }
   finally { b.classList.add('hidden'); }
 }
 function modal(title, body, buttons) {

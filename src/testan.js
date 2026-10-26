@@ -49,7 +49,7 @@ async function complianceRun() {
     const list = phases || [{level: lvl0, a: null, b: null, name: lvl0 ? lvTxt(lvl0) : 'seviye 0 dB'}], groups = mode === 'avg' ? [trs] : trs.map(x => [x]); let step = 0; const tot = list.length * groups.length;
     for (const ph of list) for (const gr of groups) {
       const spec = []; let fs = 0; for (const tr of gr) { const ch = tr.ch; await ensureLoaded(ch); fs = ch.fs; let a, b; if (ph.a != null && ch === S.levels.ch) { a = ph.a; b = ph.b; } else [a, b] = specRange(tr, ax, sv('cpScope'));
-        const seg = DSP.segment(ch.data, ch.del, a, b); if (seg.length < 512) { toast('Aralık çok kısa: ' + tr.label); continue; } const nfft = Math.min(DSP.nextPow2(Math.ceil(fs / dfReq)), DSP.nextPow2(seg.length)); spec.push(DSP.welch(seg, fs, {nfft, win: 'hann', overlap: 0.5, scale: 'psd', maxSeg: 8000})); }
+        const seg = DSP.segment(ch.data, ch.del, a, b); if (seg.length < 512) { toast('Aralık çok kısa: ' + tr.label); continue; } const nfft = Math.min(DSP.nextPow2(Math.ceil(fs / dfReq)), DSP.nextPow2(seg.length)); spec.push(await DSPW.run('welch', [seg, fs, {nfft, win: 'hann', overlap: 0.5, scale: 'psd', maxSeg: 8000}])); }
       if (!spec.length) continue; const r0 = spec[0]; let y = r0.y; if (spec.length > 1) { y = new Float64Array(r0.y.length); for (const s of spec) for (let i = 0; i < y.length; i++) y[i] += s.y[i] / spec.length; }
       const sc = Math.pow(10, ph.level / 10), fa = [], dev = [], me = [], ta = []; let sm = 0, st = 0, n = 0;
       for (let i = 0; i < r0.f.length; i++) { const f = r0.f[i]; if (f < f1 || f > f2 || !(y[i] > 0)) continue; const tg = profAt(prof.pts, f) * sc; fa.push(f); me.push(y[i]); ta.push(tg); dev.push(10 * Math.log10(y[i] / tg)); sm += y[i] * r0.df; st += tg * r0.df; n++; }

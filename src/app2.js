@@ -189,7 +189,7 @@ async function computeSpectrum(only) {
     for (const tr of list) {
       if (!tr.visible) continue; await ensureLoaded(tr.ch); const ch = tr.ch; const [a, b] = specRange(tr, ax, sv('spScope'));
       if (b - a < 64) { toast('Aralık çok kısa: ' + tr.label); continue; }
-      const seg = DSP.segment(ch.data, ch.del, a, b); const res = DSP.welch(seg, ch.fs, o);
+      const seg = DSP.segment(ch.data, ch.del, a, b); const res = await DSPW.run('welch', [seg, ch.fs, o]);
       let y = res.y; if (ys === 'db') { const kf = o.scale === 'psd' ? 10 : 20; y = res.y.map(v => kf * Math.log10(v + 1e-300)); let pk = -Infinity; for (const v of y) if (v > pk) pk = v; y = y.map(v => Math.max(v, pk - 180)); }
       const sd = DSP.stats(seg, null, 0, seg.length); if (!(sd.std > 1e-9 * (Math.abs(sd.mean) + 1e-12))) toast('Uyarı: ' + tr.label + ' seçili aralıkta sabit (değişmiyor), spektrum anlamsız.', 6000);
       const t = {kind: 'xy', x: res.f, y, label: tr.label, color: tr.color, width: 1, visible: true, raw: res.y, scale: o.scale, df: res.df, srcKind: ch.kind};
@@ -511,13 +511,13 @@ function timeDialog() {
   body.append(h('div', {class: 'note'}, 'Zaman = paket sırası × paket süresi. Kayıp paketler zaman eksenindeki boşluk olarak yansıtılır. Varsayılan paket süresi 10 ms.'));
   modal('Zaman ayarları', body, [{t: 'Uygula', primary: true, fn: () => { for (const {f, t, b} of rows) { f.Tpkt = Math.max(1e-6, parseFloat(t.value) / 1000 || f.Tpkt); f.baseFs = parseFloat(b.value) || f.baseFs; applyTiming(f); } S.plot.fitAll(true); refreshAll(); }}, {t: 'İptal'}]);
 }
-function helpDialog() {
+function helpBody() {
   const body = h('div', {style: 'line-height:1.7'}, h('b', null, 'Fare'), h('br'), 'Tekerlek: X yakınlaştır · Shift+tekerlek: Y · Ctrl+tekerlek: ikisi', h('br'), 'Eksen kenarında sürükle/tekerlek: yalnız o eksen · Çift tık: tümünü sığdır', h('br'), 'Soldan kanal sürükleyip grafiğe bırakın (alt grafiğin üstüne = üst üste, boşluğa = yeni alt grafik)', h('br'), h('br'),
     h('b', null, 'Klavye'), h('br'), h('kbd', null, 'P'), ' gez  ', h('kbd', null, 'Z'), ' yakınlaştır  ', h('kbd', null, 'C'), ' veri imleci  ', h('kbd', null, 'B'), ' kutu seç  ', h('kbd', null, 'L'), ' kement', h('br'), h('kbd', null, 'Delete'), ' seçileni sil  ', h('kbd', null, 'Ctrl+Z'), '/', h('kbd', null, 'Ctrl+Y'), ' geri al/yinele  ', h('kbd', null, 'Home'), ' sığdır  ', h('kbd', null, 'Esc'), ' seçimi kaldır', h('br'), h('br'),
     h('b', null, 'Binary'), h('br'), '"Binary aç…": çerçeve matrisini Excel (.xlsx) ile tanımlayın; her hücre 1 bayt, hücredeki ad kanal adıdır (aynı ad tekrar ederse AD_1, AD_2…). Senaryo sayfası: okuma sırası, senkron kelimesi, kare hızı, sayaç alanı. Alanlar sayfası: birleşik değer (u8/i8/u16/i16/u32/i32/f32/f64, BE/LE), bit aralığı ve x ile dönüşüm formülü. Çözülmüş alanlar sol listede dosya başlığındaki .mat düğmesiyle dışa aktarılır.', h('br'), h('br'),
     h('b', null, 'UNV ve profil'), h('br'), 'UNV (dataset 58, ASCII) dosyaları "Dosya aç…" ile açılır; kanal sayısı dosyadan okunur, kompleks kanallar Genlik/Faz/Re/Im gelir. Kanallar Spektrum görünümüne çizilir. "UNV / Profil" sekmesinde profil girilir (frekans–seviye çiftleri, ± tolerans), profille karşılaştırma tablosu alınır.', h('br'), h('br'),
     h('b', null, 'Veri'), h('br'), 'as = akustik · ts = titreşim · ss/hs = sıcaklık · bs = basınç · gs = gerinim. Zaman ekseni cnt paket sayacından üretilir (varsayılan 10 ms/paket; "Zaman ayarları"ndan değiştirilebilir).', h('br'), 'Silinen noktalar orijinal dosyayı değiştirmez; dışa aktarırken çıkarılır veya NaN yapılır.');
-  modal('Yardım', body);
+  return body;
 }
 
 /* ---------- başlatma ---------- */
