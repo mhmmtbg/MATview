@@ -92,6 +92,7 @@ const FRM = (() => {
             v.base = base; ptr = base + Math.ceil(v.n * E * tt[0]);
           }
         } catch (e) { W('err', S.name, rn, `"${nm}" okunamaz: ${e.message}`); unknown = true; continue; }
+        v.reserved = /^(reserved|rezerve|rezerv)/i.test(v.name);
         v.bytes = v.offs ? v.n * Math.ceil(E * tt[0]) : Math.ceil(v.n * E * tt[0]);
         if (v.formula) { try { const c = compile(v.formula); if (/&/.test(v.formula) && /&[^()]*[-+]/.test(v.formula.replace(/\([^()]*\)/g, ''))) (amp = amp || []).push(v.name); } catch (e) { W('err', S.name, rn, `"${v.name}": ${e.message} — ham değer okunacak`); v.formulaErr = e.message; } }
         // çerçeve sınırı (akış içi değişkenler paket başına göredir; en yüksek konum sınırı yalnız mutlak için denetlenir)
@@ -117,9 +118,10 @@ const FRM = (() => {
     def.sheets.forEach((S, si) => {
       names.push(S.name);
       for (const st of S.streams) for (let b = st.start; b < Math.min(L, st.start + st.win); b++) { if (own[b] >= 0 && own[b] !== si) { const k = names[own[b]] + '|' + S.name; const o = ovl.get(k) || {a: names[own[b]], b: S.name, lo: b, hi: b}; o.hi = b; ovl.set(k, o); overl++; } own[b] = si; }
-      for (const v of S.vars) { if (v.rel) continue; for (const [a, b] of varSpans(v, 0)) for (let q = a; q < Math.min(L, b); q++) { if (own[q] >= 0 && own[q] !== si) { const k = names[own[q]] + '|' + S.name; const o = ovl.get(k) || {a: names[own[q]], b: S.name, lo: q, hi: q}; o.hi = q; o.lo = Math.min(o.lo, q); ovl.set(k, o); overl++; } own[q] = si; } }
+      for (const v of S.vars) { if (v.rel || v.reserved) continue; for (const [a, b] of varSpans(v, 0)) for (let q = a; q < Math.min(L, b); q++) { if (own[q] >= 0 && own[q] !== si) { const k = names[own[q]] + '|' + S.name; const o = ovl.get(k) || {a: names[own[q]], b: S.name, lo: q, hi: q}; o.hi = q; o.lo = Math.min(o.lo, q); ovl.set(k, o); overl++; } own[q] = si; } }
+      for (const v of S.vars) { if (v.rel || !v.reserved) continue; for (const [a, b] of varSpans(v, 0)) for (let q = a; q < Math.min(L, b); q++) if (own[q] < 0) own[q] = si; }
     });
-    for (const o of ovl.values()) W('warn', o.a + '/' + o.b, 0, `Çakışma: "${o.a}" ve "${o.b}" sayfaları aynı baytları tanımlıyor (bayt ${o.lo + 1}–${o.hi + 1}); sonraki sayfa üstüne yazar`);
+    for (const o of ovl.values()) W('info', o.a + '/' + o.b, 0, `"${o.a}" ve "${o.b}" sayfaları aynı baytları tanımlıyor (bayt ${o.lo + 1}–${o.hi + 1}); üst/alt sistem ilişkisi olabilir, ikisi de ayrı ayrı çözülür`);
     const gaps = []; let a = -1; for (let i = 0; i <= L; i++) { const free = i < L && own[i] < 0; if (free && a < 0) a = i; else if (!free && a >= 0) { gaps.push([a + 1, i]); a = -1; } }
     const undef = gaps.reduce((s, g) => s + g[1] - g[0] + 1, 0), cov = L - undef;
     if (gaps.length) W('warn', '(çerçeve)', 0, `Tanımsız bayt aralıkları (${gaps.length} adet, toplam ${undef} bayt = %${(100 * undef / L).toFixed(1)}): ` + gaps.slice(0, 12).map(g => g[0] === g[1] ? g[0] : g[0] + '–' + g[1]).join(', ') + (gaps.length > 12 ? ' …' : '') + ' — çözülmeyecek');
@@ -131,6 +133,7 @@ const FRM = (() => {
   function plan(def) {
     const out = [], seen = new Map();
     for (const S of def.sheets) for (const v of S.vars) {
+      if (v.reserved) continue;
       const base = v.name, sep = v.E > 1 && v.E <= MAXSEP;
       for (let e = 0; e < (sep ? v.E : 1); e++) {
         let nm = sep ? `${base}_${e + 1}` : base; const key = S.name + '/' + nm; const k = (seen.get(key) || 0) + 1; seen.set(key, k); if (k > 1) nm += '_r' + v.row;

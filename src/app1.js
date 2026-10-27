@@ -131,6 +131,7 @@ async function openFiles(files) {
   for (const u of unvs) await unvOpen(u);
   for (const t of tabs) await tableOpen(t); for (const [f, sh] of tabsX) await tableOpen(f, sh);
   if (frmX.length) { if (await frmLoadExcel(frmX[0])) frmDialog(); }
+  if (other.length && FS.def && !other.some(f => /\.xlsx$/i.test(f.name))) { frmDropBin(other); other = []; }
   if (other.length) await binFilesIn(other);
   for (const file of files) {
     await busy('Dosya taranıyor: ' + file.name, async () => {

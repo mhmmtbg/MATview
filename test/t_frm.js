@@ -4,7 +4,7 @@ const rows = JSON.parse(fs.readFileSync(D + 'rows.json')), T = JSON.parse(fs.rea
 const def = FRM.parse(rows), L = def.frameBytes, NF = bin.length / L; let bad = 0; const ck = (c, m) => { if (!c) { console.log('HATA:', m); bad++; } };
 const msg = def.warns.map(w => w.lvl + ' ' + w.sheet + ' ' + w.msg);
 ck(msg.some(m => /^err Z/.test(m) && /çerçeve dışına/.test(m)), 'Z taşma hatası yok'); ck(msg.some(m => /^err L .*BADT.*bilinmeyen tip/.test(m)), 'bilinmeyen tip hatası yok');
-ck(msg.some(m => /^err L .*LB.*Formül/.test(m)), 'bozuk formül hatası yok'); ck(msg.some(m => /Çakışma/.test(m) && /A\/O|"A" ve "O"/.test(m)), 'çakışma uyarısı yok'); ck(msg.some(m => /Tanımsız bayt/.test(m)), 'tanımsız bayt uyarısı yok');
+ck(msg.some(m => /^err L .*LB.*Formül/.test(m)), 'bozuk formül hatası yok'); ck(msg.some(m => /^info/.test(m) && /aynı baytları/.test(m)), "çakışma bilgisi yok"); ck(msg.some(m => /Tanımsız bayt/.test(m)), 'tanımsız bayt uyarısı yok');
 ck(def.sheets.map(s => s.name).join() === 'A,L,S,O', 'sayfalar: ' + def.sheets.map(s => s.name));
 const plan = FRM.plan(def), by = {}; plan.forEach(p => by[p.sheet + '/' + p.name] = p);
 function load(key) {

@@ -15,7 +15,7 @@ async function frmLoadExcel(file) {
   try {
     const sheets = await XLSX.read(file), def = FRM.parse(sheets);
     FS.def = def; FS.name = file.name; FS.perm = false;
-    const err = def.warns.filter(w => w.lvl === 'err').length, wr = def.warns.length - err;
+    const err = def.warns.filter(w => w.lvl === 'err').length, wr = def.warns.filter(w => w.lvl === 'warn').length;
     toast(`${file.name}: ${def.sheets.length} alt sistem, ${fmtCnt(def.sheets.reduce((s, x) => s + x.vars.length, 0))} değişken` + (err ? ` · ${err} hata` : '') + (wr ? ` · ${wr} uyarı` : ''), 6000);
     return true;
   } catch (e) { console.error(e); toast('Çerçeve Excel\'i okunamadı: ' + (e.message || e), 9000); return false; }
@@ -27,15 +27,15 @@ function frmStats(def) {
 function frmReportBody(list, head) {
   const wrap = h('div'); if (head) wrap.append(h('div', {class: 'note'}, head));
   if (!list.length) { wrap.append(h('div', {class: 'note'}, 'Uyarı veya hata yok.')); return wrap; }
-  const ne = list.filter(w => w.lvl === 'err').length;
-  wrap.append(h('div', {class: 'note'}, `${ne} hata · ${list.length - ne} uyarı`));
-  const tb = h('tbody'); for (const w of [...list].sort((a, b) => (a.lvl === 'err' ? 0 : 1) - (b.lvl === 'err' ? 0 : 1)))
-    tb.append(h('tr', null, h('td', {style: 'color:' + (w.lvl === 'err' ? 'var(--danger)' : '#c98a10') + ';white-space:nowrap;font-weight:600'}, w.lvl === 'err' ? 'HATA' : 'UYARI'), h('td', {style: 'white-space:nowrap'}, w.sheet + (w.row ? ' · sat. ' + w.row : '')), h('td', null, w.msg)));
+  const ne = list.filter(w => w.lvl === 'err').length, ni = list.filter(w => w.lvl === 'info').length;
+  wrap.append(h('div', {class: 'note'}, `${ne} hata · ${list.length - ne - ni} uyarı · ${ni} bilgi`));
+  const tb = h('tbody'); for (const w of [...list].sort((a, b) => ({err: 0, warn: 1, info: 2}[a.lvl] - {err: 0, warn: 1, info: 2}[b.lvl])))
+    tb.append(h('tr', null, h('td', {style: 'color:' + (w.lvl === 'err' ? 'var(--danger)' : (w.lvl === 'info' ? 'var(--muted)' : '#c98a10')) + ';white-space:nowrap;font-weight:600'}, w.lvl === 'err' ? 'HATA' : (w.lvl === 'info' ? 'BİLGİ' : 'UYARI')), h('td', {style: 'white-space:nowrap'}, w.sheet + (w.row ? ' · sat. ' + w.row : '')), h('td', null, w.msg)));
   wrap.append(h('div', {style: 'overflow:auto;max-height:55vh'}, h('table', {class: 'ftab'}, h('thead', null, h('tr', null, ['Düzey', 'Konum', 'Açıklama'].map(x => h('th', null, x)))), tb)));
   return wrap;
 }
 function frmReportDialog(list, title, head) {
-  const csv = () => saveBlob(new Blob(['﻿Düzey;Sayfa;Satır;Açıklama\n' + list.map(w => [w.lvl === 'err' ? 'HATA' : 'UYARI', w.sheet, w.row || '', '"' + String(w.msg).replace(/"/g, '""') + '"'].join(';')).join('\n')], {type: 'text/csv'}), 'cerceve_rapor.csv');
+  const csv = () => saveBlob(new Blob(['﻿Düzey;Sayfa;Satır;Açıklama\n' + list.map(w => [w.lvl === 'err' ? 'HATA' : (w.lvl === 'info' ? 'BİLGİ' : 'UYARI'), w.sheet, w.row || '', '"' + String(w.msg).replace(/"/g, '""') + '"'].join(';')).join('\n')], {type: 'text/csv'}), 'cerceve_rapor.csv');
   modal(title || 'Çerçeve raporu', frmReportBody(list, head), [{t: 'CSV kaydet', fn: () => { csv(); return false; }}, {t: 'Kapat'}]);
 }
 
@@ -74,7 +74,7 @@ async function frmOpen(file) {
   const def = FS.def, L = def.frameBytes, skip = FS.skip | 0, T = FS.ms / 1000;
   await busy('Telemetre çözülüyor: ' + file.name, async prog => {
     const info = FRM.frameInfo(file.size, L, skip); if (!info.frames) throw new Error(`Dosyada tam kare yok (${fmtCnt(file.size)} bayt < ${L} bayt/kare)`);
-    const frames = info.frames, whole = file.size <= 256 * 1048576, rep = def.warns.map(w => Object.assign({}, w, {sheet: 'Tanım · ' + w.sheet}));
+    const frames = info.frames, whole = file.size <= 700 * 1048576, rep = def.warns.map(w => Object.assign({}, w, {sheet: 'Tanım · ' + w.sheet}));
     const R = (lvl, sheet, row, msg) => rep.push({lvl, sheet, row, msg});
     const u8 = whole ? new Uint8Array(await file.arrayBuffer()) : null;
     if (info.rest) R('warn', 'Binary', 0, `Dosya sonunda ${info.rest} bayt tam kare oluşturmuyor; atlandı`);
@@ -118,11 +118,12 @@ async function frmOpen(file) {
     }
     f.Tpkt = T / maxSpp; f.baseFs = maxSpp / T; f.baseN = maxN;
     prog(1); S.files.push(f); S.fopen.add(f.id); renderChips(); renderTree();
-    const nerr = rep.filter(w => w.lvl === 'err').length, nw = rep.length - nerr;
+    const nerr = rep.filter(w => w.lvl === 'err').length, nw = rep.filter(w => w.lvl === 'warn').length;
     const head = `${file.name}: ${fmtCnt(frames)} kare × ${L} bayt · ${def.sheets.length} alt sistem · ${fmtCnt(plan.length)} kanal` + (whole ? '' : ' · büyük dosya: kanallar seçildikçe dosyadan okunur');
     FS.last = {list: rep, head};
     toast(head + (nerr ? ` · ${nerr} hata` : '') + (nw ? ` · ${nw} uyarı` : ''), 8000, rep.length ? {t: 'Rapor', fn: () => frmReportDialog(rep, 'Çözme raporu', head)} : null);
     if (rep.length) setTimeout(() => frmReportDialog(rep, 'Çözme raporu — çözülemeyen/tanımsız kısımlar', head), 400);
   });
 }
+function frmDropBin(files) { FS.bin = files[0]; frmDialog(); }
 (function frmBind() { const b = document.getElementById('btnFrm'); if (b) b.onclick = () => frmDialog(); })();
