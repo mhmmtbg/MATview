@@ -57,9 +57,9 @@ function frmDialog(pre) {
     if (!FS.def) { defBox.append(h('div', {class: 'note'}, 'Her alt sistem ayrı bir sayfadır. Sütunlar: Birim · Index · Değişken · Tip · Eleman Sayısı · Formül · Byte Endian · Bit Endian · Örnek Sayısı · Undersample Header · isUndersample. Index, karedeki bayt sırasıdır (varsayılan 0 tabanlı, telemetryParser gibi); "auto" bir önceki değişkenden sonra devam eder.')); }
     else {
       const s = frmStats(FS.def), err = FS.def.warns.filter(w => w.lvl === 'err').length;
-      defBox.append(h('div', {class: 'note'}, `${FS.name} · ${s.sheets} alt sistem · ${fmtCnt(s.vars)} değişken (${fmtCnt(s.chans)} kanal) · ${s.streams} akış başlığı · kare ${fmtCnt(FS.def.frameBytes)} bayt, tanımlı ${fmtCnt(s.covered)} bayt (%${s.pct.toFixed(1)}), tanımsız ${fmtCnt(s.undef)}`),
+      defBox.append(...[h('div', {class: 'note'}, `${FS.name} · ${s.sheets} alt sistem · ${fmtCnt(s.vars)} değişken (${fmtCnt(s.chans)} kanal) · ${s.streams} akış başlığı · kare ${fmtCnt(FS.def.frameBytes)} bayt, tanımlı ${fmtCnt(s.covered)} bayt (%${s.pct.toFixed(1)}), tanımsız ${fmtCnt(s.undef)}`),
         err ? h('div', {class: 'note', style: 'color:var(--danger)'}, `${err} satır okunamadı — "Rapor…" ile bakın.`) : null,
-        chkIn('frmPerm', 'Bu çerçeveyi kalıcı işaretle (sonraki açılışlarda otomatik yüklenir)', FS.perm));
+        chkIn('frmPerm', 'Bu çerçeveyi kalıcı işaretle (sonraki açılışlarda otomatik yüklenir)', FS.perm)].filter(Boolean));
       const cb = defBox.querySelector('#frmPerm'); cb.onchange = () => { if (cb.checked) { if (!frmPersist(true)) cb.checked = false; else toast('Çerçeve kalıcı işaretlendi'); } else { frmPersist(false); toast('Kalıcı işaret kaldırıldı'); } paint(); };
     }
     binBox.append(h('div', {class: 'btns'}, btn('Binary dosya seç…', () => bin.click())), h('div', {class: 'note', id: 'frmInfo'}, FS.bin ? '' : 'Henüz binary dosya seçilmedi.'));
@@ -113,6 +113,7 @@ async function frmOpen(file) {
     } else { const n = Math.max(0, Math.floor((file.size - skip) / PL)); starts = new Float64Array(n); for (let k = 0; k < n; k++) starts[k] = skip + k * PL; skipped = skip + Math.max(0, file.size - skip) % PL; }
     const frames = starts.length; if (!frames) throw new Error(`Dosyada tam kare bulunamadı (${fmtCnt(file.size)} bayt, kare ${fmtCnt(PL)} bayt${LY.hdr ? ', header ' + FS.lay.header : ''})`);
     LY.starts = starts;
+    if (LY.hdr && skipped > file.size * 0.1) R('err', 'Binary', 0, `Header "${FS.lay.header}" ile dosyanın %${(100 * skipped / file.size).toFixed(0)}'i çerçeve dışı kaldı (yalnız ${fmtCnt(frames)} kare yakalandı). Bu header kayıttaki gerçek çerçeve başına denk gelmiyor: Header alanını boş bırakıp "Düzeni otomatik bul" ile kayma kullanın`);
     if (skipped) R('warn', 'Binary', 0, `${fmtCnt(skipped)} bayt çerçeve dışı/artık olarak atlandı` + (ev.length ? ' (ilk konumlar: ' + ev.slice(0, 3).map(x => x.at).join(', ') + ')' : ''));
     R('info', 'Binary', 0, `Çerçeve düzeni: ${LY.C}×${LY.R}${LY.T !== LY.C ? ' (kayıtta ' + LY.T + ' sütun, ' + LY.drop.length + ' atıldı)' : ''}, ${LY.tr ? 'sütun öncelikli' : 'satır öncelikli'}, ${LY.hdr ? 'header ' + FS.lay.header + ' (' + (LY.hdrEnd ? 'sonda' : 'başta') + ')' : 'kayma ' + skip + ' bayt'}, Index ${def.indexBase}-tabanlı; ${fmtCnt(frames)} kare`);
     // kare okuma: whole → tek blok; büyük dosya → 48 MB bloklar. cb(bayt, bloğun_dosya_ofseti, kare_sayısı, ilk_kare)
