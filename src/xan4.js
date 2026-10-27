@@ -37,7 +37,7 @@ window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.
 const CHANGELOG = [
   {v: '2.1', d: 'Telemetre çerçevesi', items: [
     'Yeni: alt sistem başına bir sayfalı Excel çerçeve tanımı (Birim, Index, Değişken, Tip, Eleman/Örnek Sayısı, Formül, Endian, Undersample Header). Çerçeve kalıcı işaretlenebilir; 12.500 baytlık karelerden oluşan binary çözülür ve ana ağaçta alt sistem → değişken olarak listelenir.',
-    'telemetryParser ile uyumlu anlamlar: B2 blok örnekleme, bit akışı tipleri (uint12…), byte.bit index, tekrar index'i ayrı değişken, kareler boyunca birleşen stream paketleri; Index tabanı ve B düzeni ayarlanabilir.',
+    'telemetryParser ile uyumlu anlamlar: B2 blok örnekleme, bit akışı tipleri (uint12…), byte.bit index, tekrar indeksi ayrı değişken, kareler boyunca birleşen stream paketleri; Index tabanı ve B düzeni ayarlanabilir.',
     'Tanımlı olmayan baytlar, çakışmalar, okunamayan satırlar ve bulunamayan akış başlıkları rapor olarak gösterilir.',
   ]},
   {v: '2.0', d: 'Kapsamlı güncelleme', items: [
