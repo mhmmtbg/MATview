@@ -10,7 +10,7 @@ async function binFilesIn(files) {
   binDialog();
 }
 async function binLoadDef(file) {
-  try { const sheets = await XLSX.read(file); BS.def = BIN.defFromSheets(sheets); BS.defName = file.name; }
+  try { const sheets = await XLSX.read(file); if (FRM.isFrameBook(sheets) && !sheets.some(x => /^(cerceve|çerçeve|frame)/i.test(x.name))) { $('#modal').classList.add('hidden'); if (await frmLoadExcel(file)) { if (BS.bin) FS.bin = BS.bin; frmDialog(); } return; } BS.def = BIN.defFromSheets(sheets); BS.defName = file.name; }
   catch (e) { console.error(e); toast('Excel okunamadı: ' + (e.message || e), 7000); }
 }
 function binTemplate() {

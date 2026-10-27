@@ -174,8 +174,8 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
       <div class="ddm hidden" id="mOpen">
         <button id="btnOpen" data-ic="file" title="MATLAB (.mat) veya UNV dosyası aç">MAT / UNV dosyası…</button>
         <button id="btnTab" data-ic="table" title="CSV / Excel tablosu: zaman serisi veya özellik/regresyon verisi">Tablo (CSV / Excel)…</button>
-        <button id="btnFrm" data-ic="bin" title="Alt sistem sayfalı Excel çerçevesiyle telemetre binary çöz">Telemetre çerçevesi…</button>
-        <button id="btnBin" data-ic="bin" title="Binary dosyayı Excel çerçeve tanımıyla çöz">Binary dosya (Excel çerçeve)…</button>
+        <button id="btnFrm" data-ic="bin" title="Alt sistem sayfalı Excel çerçevesiyle telemetre binary çöz">Binary dosya (Excel çerçeve)…</button>
+        <button id="btnBin" data-ic="bin" title="Eski: hücre matrisi biçimindeki çerçeve tanımıyla binary çöz">Binary (eski matris çerçeve)…</button>
       </div></div>
     <div class="dd"><button id="btnSet" data-ic="settings" aria-haspopup="true" title="Ayarlar"><span class="lbl">Ayarlar</span><span class="car">▾</span></button>
       <div class="ddm right hidden" id="mSet">
@@ -3789,7 +3789,7 @@ async function binFilesIn(files) {
   binDialog();
 }
 async function binLoadDef(file) {
-  try { const sheets = await XLSX.read(file); BS.def = BIN.defFromSheets(sheets); BS.defName = file.name; }
+  try { const sheets = await XLSX.read(file); if (FRM.isFrameBook(sheets) && !sheets.some(x => /^(cerceve|çerçeve|frame)/i.test(x.name))) { $('#modal').classList.add('hidden'); if (await frmLoadExcel(file)) { if (BS.bin) FS.bin = BS.bin; frmDialog(); } return; } BS.def = BIN.defFromSheets(sheets); BS.defName = file.name; }
   catch (e) { console.error(e); toast('Excel okunamadı: ' + (e.message || e), 7000); }
 }
 function binTemplate() {
@@ -6024,7 +6024,7 @@ function frmDialog(pre) {
     if (FS.last) binBox.append(h('div', {class: 'btns'}, btn('Son çözme raporu…', () => frmReportDialog(FS.last.list, 'Çözme raporu', FS.last.head))));
   }
   body.append(card('1. Telemetre çerçevesi (Excel)', defBox), card('2. Binary dosya', binBox), xin, bin); paint();
-  modal('Telemetre çerçevesi ile binary çöz', body, [{t: 'Çöz ve ana ekrana ekle', primary: true, fn: () => {
+  modal('Telemetre çerçevesi ile binary çöz (alt sistem sayfalı Excel)', body, [{t: 'Çöz ve ana ekrana ekle', primary: true, fn: () => {
     try { if (!FS.def) throw new Error('Önce çerçeve Excel\'ini seçin'); if (!FS.bin) throw new Error('Binary dosya seçin'); readPar(); } catch (e) { toast(e.message, 5000); return false; }
     if (FS.perm) frmPersist(true); frmOpen(FS.bin);
   }}, {t: 'Kapat'}]);

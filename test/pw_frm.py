@@ -36,5 +36,11 @@ async def main():
         await pg2.set_input_files('#fileIn', ['/tmp/frm/frame.xlsx', '/tmp/frm/data.bin']); await pg2.wait_for_timeout(1500)
         i2 = await pg2.evaluate("document.querySelector('#frmInfo') && document.querySelector('#frmInfo').textContent"); print(i2); assert i2 and '40 kare' in i2, i2
         await pg2.close()
+        # eski matris diyaloğundan çerçeve Excel'i seçilirse yeni akışa yönlenmeli
+        pg3 = await ctx.new_page(); await pg3.goto(url)
+        await pg3.evaluate("document.querySelector('#btnBin').click()"); await pg3.wait_for_timeout(300)
+        await pg3.set_input_files('#mbody input[type=file][accept=".xlsx"]', ['/tmp/frm/frame.xlsx']); await pg3.wait_for_timeout(1200)
+        tt = await pg3.evaluate("document.querySelector('#mtitle').textContent"); print(tt); assert 'Telemetre' in tt, tt
+        await pg3.close()
         print('ERRS', errs); assert not errs; await b.close()
 asyncio.run(main())

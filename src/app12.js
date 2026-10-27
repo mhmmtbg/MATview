@@ -64,7 +64,7 @@ function frmDialog(pre) {
     if (FS.last) binBox.append(h('div', {class: 'btns'}, btn('Son çözme raporu…', () => frmReportDialog(FS.last.list, 'Çözme raporu', FS.last.head))));
   }
   body.append(card('1. Telemetre çerçevesi (Excel)', defBox), card('2. Binary dosya', binBox), xin, bin); paint();
-  modal('Telemetre çerçevesi ile binary çöz', body, [{t: 'Çöz ve ana ekrana ekle', primary: true, fn: () => {
+  modal('Telemetre çerçevesi ile binary çöz (alt sistem sayfalı Excel)', body, [{t: 'Çöz ve ana ekrana ekle', primary: true, fn: () => {
     try { if (!FS.def) throw new Error('Önce çerçeve Excel\'ini seçin'); if (!FS.bin) throw new Error('Binary dosya seçin'); readPar(); } catch (e) { toast(e.message, 5000); return false; }
     if (FS.perm) frmPersist(true); frmOpen(FS.bin);
   }}, {t: 'Kapat'}]);
