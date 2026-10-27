@@ -17,13 +17,13 @@ async def main():
         rep = await pg.evaluate("document.querySelector('#mbody').innerText"); print(rep[:600])
         assert 'HATA' in rep and 'UYARI' in rep and 'BADT' in rep and 'Tanımsız' in rep and 'artık' in rep or 'tam kare' in rep, rep[:400]
         await pg.evaluate("document.querySelector('#mclose').click()")
-        r = await pg.evaluate("(()=>{const f=S.files[S.files.length-1]; return [f.name, [...new Set(f.channels.map(c=>c.dev))].join(), f.channels.length]})()"); print(r); assert r[1] == 'A,L,S,O' and r[2] == 17, r
+        r = await pg.evaluate("(()=>{const f=S.files[S.files.length-1]; return [f.name, [...new Set(f.channels.map(c=>c.dev))].join(), f.channels.length]})()"); print(r); assert r[1] == 'A,L,S,O' and r[2] == 20, r
         tr = await pg.evaluate("document.querySelector('#tree').innerText"); assert 'A' in tr and 'bin' in tr.lower() or 'data_tail' in tr, tr[:200]
-        d = await pg.evaluate("(async()=>{const o={}; for (const n of ['A/T1','A/M12','L/LV','S/S3']) {const c=S.files[S.files.length-1].channels.find(c=>c.name===n); await ensureLoaded(c); o[n]=[c.data.length, c.data[3], c.g?c.g.length:0, c.dtS];} return o})()"); print(d)
+        d = await pg.evaluate("(async()=>{const o={}; for (const n of ['A/T1','A/M12','L/LV','S/S3_1']) {const c=S.files[S.files.length-1].channels.find(c=>c.name===n); await ensureLoaded(c); o[n]=[c.data.length, c.data[3], c.g?c.g.length:0, c.dtS];} return o})()"); print(d)
         assert d['A/T1'][0] == 80 and abs(d['A/T1'][1] - T['A/T1'][3]) < 1e-9 and abs(d['A/T1'][3] - 0.005) < 1e-12, d
         assert d['A/M12'][0] == 160 and d['A/M12'][1] == T['A/M12'][3], d
         assert d['L/LV'][0] == len(T['L/LV']) and d['L/LV'][2] == len(T['L/LV']), d
-        assert d['S/S3'][0] == len(T['S/S3']), d
+        assert d['S/S3_1'][0] == len(T['S/S3_1']), d
         # kalıcılık: yeniden yükle
         await pg.reload(); await pg.wait_for_timeout(800)
         k = await pg.evaluate("[FS.perm, FS.def && FS.def.sheets.length, FS.name]"); print(k); assert k[0] is True and k[1] == 4, k

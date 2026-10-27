@@ -1,20 +1,21 @@
 /* ===== Telemetre çerçevesi (alt sistem sayfalı Excel) arayüzü: yükle, kalıcı işaretle, binary çöz, ana ekranda alt sistem → değişken ===== */
-const FS = {def: null, name: '', perm: false, ms: 10, skip: 0, bin: null, last: null};
+const FS = {src: null, def: null, name: '', perm: false, ms: 10, skip: 0, opt: {indexBase: 1, blockMode: 'block'}, bin: null, last: null};
 const FKEY = 'mv.frame';
+function frmReparse() { FS.def = FRM.parse(FS.src, FS.opt); }
 (function frmInit() {
-  try { const j = JSON.parse(localStorage.getItem(FKEY) || 'null'); if (j && j.def && j.def.sheets) { FS.def = j.def; FS.name = j.name || 'kalıcı çerçeve'; FS.perm = true; if (j.ms > 0) FS.ms = j.ms; if (j.skip >= 0) FS.skip = j.skip | 0; } } catch (e) { /* depolama yok */ }
+  try { const j = JSON.parse(localStorage.getItem(FKEY) || 'null'); if (j && j.src) { FS.src = j.src; FS.name = j.name || 'kalıcı çerçeve'; if (j.opt) FS.opt = Object.assign(FS.opt, j.opt); if (j.ms > 0) FS.ms = j.ms; if (j.skip >= 0) FS.skip = j.skip | 0; frmReparse(); FS.perm = true; } } catch (e) { FS.src = null; FS.def = null; /* depolama yok / eski biçim */ }
 })();
 function frmPersist(on) {
   try {
-    if (on && FS.def) localStorage.setItem(FKEY, JSON.stringify({name: FS.name, def: FS.def, ms: FS.ms, skip: FS.skip, ts: Date.now()}));
+    if (on && FS.src) localStorage.setItem(FKEY, JSON.stringify({name: FS.name, src: FS.src, opt: FS.opt, ms: FS.ms, skip: FS.skip, ts: Date.now()}));
     else localStorage.removeItem(FKEY);
-    FS.perm = !!on && !!FS.def; return true;
+    FS.perm = !!on && !!FS.src; return true;
   } catch (e) { FS.perm = false; toast('Çerçeve kalıcı kaydedilemedi (tarayıcı depolaması dolu/engelli): ' + (e.message || e), 7000); return false; }
 }
 async function frmLoadExcel(file) {
   try {
-    const sheets = await XLSX.read(file), def = FRM.parse(sheets);
-    FS.def = def; FS.name = file.name; FS.perm = false;
+    const sheets = await XLSX.read(file), src = sheets.map(x => ({name: x.name, rows: (x.rows || []).map(r => (r || []).slice(0, 12).map(v => v == null ? null : v))}));
+    const def = FRM.parse(src, FS.opt); FS.src = src; FS.def = def; FS.name = file.name; FS.perm = false;
     const err = def.warns.filter(w => w.lvl === 'err').length, wr = def.warns.filter(w => w.lvl === 'warn').length;
     toast(`${file.name}: ${def.sheets.length} alt sistem, ${fmtCnt(def.sheets.reduce((s, x) => s + x.vars.length, 0))} değişken` + (err ? ` · ${err} hata` : '') + (wr ? ` · ${wr} uyarı` : ''), 6000);
     return true;
@@ -43,7 +44,7 @@ function frmDialog(pre) {
   const body = h('div'), defBox = h('div'), binBox = h('div');
   const xin = h('input', {type: 'file', accept: '.xlsx', hidden: true, onchange: async e => { if (e.target.files[0]) { await frmLoadExcel(e.target.files[0]); paint(); } }});
   const bin = h('input', {type: 'file', hidden: true, onchange: e => { if (e.target.files[0]) { FS.bin = e.target.files[0]; paint(); } }});
-  const readPar = () => { const ms = num('frmMs'), sk = num('frmSkip') | 0; if (!(ms > 0)) throw new Error('Kare periyodu > 0 olmalı'); if (!(sk >= 0)) throw new Error('Atlanacak bayt ≥ 0 olmalı'); FS.ms = ms; FS.skip = sk; };
+  const readPar = () => { if ($('#frmBase')) { FS.opt.indexBase = +sv('frmBase'); FS.opt.blockMode = sv('frmBlk'); } const ms = num('frmMs'), sk = num('frmSkip') | 0; if (!(ms > 0)) throw new Error('Kare periyodu > 0 olmalı'); if (!(sk >= 0)) throw new Error('Atlanacak bayt ≥ 0 olmalı'); FS.ms = ms; FS.skip = sk; };
   function paint() {
     defBox.replaceChildren(); binBox.replaceChildren();
     defBox.append(h('div', {class: 'btns'}, btn('Çerçeve Excel\'i seç…', () => xin.click()), FS.def ? btn('Rapor…', () => frmReportDialog(FS.def.warns, 'Çerçeve tanımı raporu', FS.name)) : null,
@@ -58,14 +59,17 @@ function frmDialog(pre) {
     }
     binBox.append(h('div', {class: 'btns'}, btn('Binary dosya seç…', () => bin.click())), h('div', {class: 'note', id: 'frmInfo'}, FS.bin ? '' : 'Henüz binary dosya seçilmedi.'));
     if (FS.def) {
-      binBox.append(fr('Kare periyodu (ms)', numIn('frmMs', FS.ms, {min: 0})), fr('Atlanacak ilk bayt', numIn('frmSkip', FS.skip, {min: 0})));
+      binBox.append(fr('Kare periyodu (ms)', numIn('frmMs', FS.ms, {min: 0})), fr('Atlanacak ilk bayt', numIn('frmSkip', FS.skip, {min: 0})),
+        fr('Index tabanı', selIn('frmBase', [['1', '1 tabanlı (Index 1 = çerçevenin ilk baytı)'], ['0', '0 tabanlı (Index 0 = çerçevenin ilk baytı)']], FS.opt.indexBase)),
+        fr('B örnekleme düzeni', selIn('frmBlk', [['block', 'Blok: önce tüm değişkenlerin 1. örneği, sonra 2. örneği (telemetryParser)'], ['var', 'Değişken ardışık: her değişkenin örnekleri yan yana']], FS.opt.blockMode)));
+      for (const id of ['frmBase', 'frmBlk']) binBox.querySelector('#' + id).onchange = () => { try { readPar(); frmReparse(); if (FS.perm) frmPersist(true); } catch (e) { toast('Çerçeve yeniden çözümlenemedi: ' + (e.message || e), 6000); } paint(); };
       if (FS.bin) { const fi = FRM.frameInfo(FS.bin.size, FS.def.frameBytes, FS.skip); binBox.querySelector('#frmInfo').textContent = `${FS.bin.name} · ${fmtCnt(FS.bin.size)} bayt · ${fmtCnt(fi.frames)} kare` + (fi.rest ? ` · sonda ${fi.rest} bayt artık (atlanır)` : ''); }
     }
     if (FS.last) binBox.append(h('div', {class: 'btns'}, btn('Son çözme raporu…', () => frmReportDialog(FS.last.list, 'Çözme raporu', FS.last.head))));
   }
   body.append(card('1. Telemetre çerçevesi (Excel)', defBox), card('2. Binary dosya', binBox), xin, bin); paint();
   modal('Telemetre çerçevesi ile binary çöz (alt sistem sayfalı Excel)', body, [{t: 'Çöz ve ana ekrana ekle', primary: true, fn: () => {
-    try { if (!FS.def) throw new Error('Önce çerçeve Excel\'ini seçin'); if (!FS.bin) throw new Error('Binary dosya seçin'); readPar(); } catch (e) { toast(e.message, 5000); return false; }
+    try { if (!FS.def) throw new Error('Önce çerçeve Excel\'ini seçin'); if (!FS.bin) throw new Error('Binary dosya seçin'); readPar(); if (FS.def.indexBase !== FS.opt.indexBase || FS.def.blockMode !== FS.opt.blockMode) frmReparse(); } catch (e) { toast(e.message, 5000); return false; }
     if (FS.perm) frmPersist(true); frmOpen(FS.bin);
   }}, {t: 'Kapat'}]);
 }
@@ -79,28 +83,33 @@ async function frmOpen(file) {
     const u8 = whole ? new Uint8Array(await file.arrayBuffer()) : null;
     if (info.rest) R('warn', 'Binary', 0, `Dosya sonunda ${info.rest} bayt tam kare oluşturmuyor; atlandı`);
     if (skip) R('warn', 'Binary', 0, `İlk ${skip} bayt atlandı`);
-    // akış başlıkları: ilk kareler üzerinde bulunma oranı
-    const probeN = Math.min(frames, 2000), pu = whole ? u8 : new Uint8Array(await file.slice(skip, skip + probeN * L).arrayBuffer()), po = whole ? skip : 0;
+    // kare okuma: whole → tek blok; büyük dosya → 48 MB bloklar
+    const pass = async cb => { if (whole) { await cb(u8, skip, frames, 0); return; } const BF = Math.max(1, Math.floor(48e6 / L)); for (let k0 = 0; k0 < frames; k0 += BF) { const nf = Math.min(BF, frames - k0); await cb(new Uint8Array(await file.slice(skip + k0 * L, skip + (k0 + nf) * L).arrayBuffer()), 0, nf, k0); prog(Math.min(0.9, k0 / frames)); } };
+    // akışlar: yuva baytlarını kareler boyunca birleştir, header ara
+    const streams = new Map();
     for (const S of def.sheets) for (const st of S.streams) {
-      if (!st.hdr) continue; const hp = FRM.streamPos(pu, po, probeN, L, st); let c = 0; for (const x of hp) if (x >= 0) c++;
-      const hx = st.hdr.map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase();
-      if (!c) R('err', S.name, st.row, `Akış başlığı "${hx}" ilk ${probeN} karede hiç bulunamadı (kare ${st.start + 1}–${st.start + st.win}); bu akışın değişkenleri boş kalır`);
-      else if (c < probeN) R('warn', S.name, st.row, `Akış başlığı "${hx}" ilk ${probeN} karenin %${(100 * c / probeN).toFixed(1)}'inde var; diğer karelerde bu akışın değişkenleri atlanır`);
+      const slot = new Uint8Array(frames * st.win);
+      await pass(async (b, o0, nf, k0) => { for (let k = 0; k < nf; k++) { const a = o0 + k * L + st.start, e = Math.min(b.length, a + st.win); if (a < b.length) slot.set(b.subarray(a, e), (k0 + k) * st.win); } });
+      const pos = FRM.streamScan(slot, st), hx = st.hdr ? st.hdr.map(x => x.toString(16).padStart(2, '0')).join(' ').toUpperCase() : '';
+      streams.set(S.name + '\u0000' + st.unit, {slot, pos, st});
+      if (!st.hdr) continue;
+      if (!pos.length) R('err', S.name, st.row, `Akış başlığı "${hx}" yuva baytları birleştirilince (bayt ${st.start + 1}–${st.start + st.win}, ${fmtCnt(frames)} kare) hiç bulunamadı; ${st.unit} değişkenleri boş kalır`);
+      else R('info', S.name, st.row, `${st.unit}: ${fmtCnt(pos.length)} paket bulundu (paket ${st.P} bayt, header ${hx})`);
     }
     const plan = FRM.plan(def), byKey = new Map(), byName = new Map();
     for (const p of plan) { byKey.set(p.sheet + '/' + p.name, p); if (!byName.has(p.name)) byName.set(p.name, p); }
-    const rtErr = new Set(), spc = new Map();
+    const rtErr = new Set();
     const f = {id: 'f' + (importFile.seq++), name: file.name, table: true, frm: {def, T, frames}, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: T, baseFs: 1 / T, cnts: {}, baseN: frames, cols: []};
-    const rawOf = async p => {   // formülsüz ham değerler {v, ok}
-      if (whole) return FRM.extractBlock(u8, skip, frames, L, def, p, spc);
-      const spp = p.spp, out = new Float64Array(frames * spp), ok = new Uint8Array(frames * spp), BF = Math.max(1, Math.floor(48e6 / L));
-      for (let k0 = 0; k0 < frames; k0 += BF) { const nf = Math.min(BF, frames - k0), b = new Uint8Array(await file.slice(skip + k0 * L, skip + (k0 + nf) * L).arrayBuffer()), r = FRM.extractBlock(b, 0, nf, L, def, p, new Map()); out.set(r.v, k0 * spp); if (r.ok) ok.set(r.ok, k0 * spp); else ok.fill(1, k0 * spp, (k0 + nf) * spp); }
-      return {v: out, ok};
+    const rawOf = async p => {   // formülsüz ham değerler {v, ok, g}
+      if (p.v.stream) { const s = streams.get(p.sheet + '\u0000' + p.v.stream); return FRM.streamPackets(s.slot, s.pos, s.st.win, p); }
+      if (whole) return FRM.extractFrames(u8, skip, frames, L, p);
+      const spp = p.spp, out = new Float64Array(frames * spp); await pass(async (b, o0, nf, k0) => { out.set(FRM.extractFrames(b, o0, nf, L, p).v, k0 * spp); });
+      return {v: out, ok: null, g: null};
     };
     let maxSpp = 1, maxN = 0;
     for (const p of plan) {
-      const dt = T / p.spp, nm = p.sheet + '/' + p.name, v = p.v;
-      const c = new Channel({name: nm, rest: p.name, base: p.name, comp: '', dev: p.sheet, kind: 'other', n: frames * p.spp, file: f, label: nm, varIdx: -1, bin: true, tbl: true, unit: ''});
+      const dt = T / p.spp, nm = p.sheet + '/' + p.name, v = p.v, ns = v.stream ? streams.get(p.sheet + '\u0000' + v.stream).pos.length : frames;
+      const c = new Channel({name: nm, rest: p.name, base: p.name, comp: '', dev: p.sheet, kind: 'other', n: ns * p.spp, file: f, label: nm, varIdx: -1, bin: true, tbl: true, unit: ''});
       c.dtS = dt; c.Tpkt = dt; c.t0 = 0; c.spp = 1; maxSpp = Math.max(maxSpp, p.spp); maxN = Math.max(maxN, frames * p.spp);
       c.binLoad = async () => {
         let r = await rawOf(p);
@@ -108,7 +117,7 @@ async function frmOpen(file) {
           try {
             const cc = FRM.compile(v.formula), sel = new Map();
             for (const id of cc.ids) { const q = byKey.get(p.sheet + '/' + id) || byName.get(id); if (!q) throw new Error(`formüldeki "${id}" değişkeni çerçevede yok`); const rr = await rawOf(q); sel.set(id, {v: rr.v, spp: q.spp}); }
-            r = FRM.applyFormula(p, r.v, r.ok, frames, id => sel.get(id));
+            r = FRM.applyFormula(p, r, id => sel.get(id));
           } catch (e) { const k = nm + '|' + (e.message || e); if (!rtErr.has(k)) { rtErr.add(k); R('err', p.sheet, v.row, `"${p.name}" formülü uygulanamadı (${e.message || e}); ham değer gösteriliyor`); toast(`${nm}: formül uygulanamadı — ham değer`, 5000); } }
         }
         const cp = FRM.compact(r); c.g = cp.g; c.spp = 1;

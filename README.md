@@ -120,18 +120,18 @@ Gerçek dosyada sorun görürseniz `F1 ▸ Sorun bildir` ile veri içermeyen tan
 
 ## Sürüm 2.1 — Telemetre çerçevesi (alt sistem sayfalı Excel)
 
-Sol menüde **Telemetre çerçevesi…** (ya da çerçeve `.xlsx` dosyasını sürükleyip bırakma). Her alt sistem ayrı bir sayfadır; ilk satır başlık: `Birim · Index · Değişken · Tip · Eleman Sayısı · Formül · Byte Endian · Bit Endian · Örnek Sayısı · Undersample Header · isUndersample` (başlık yazımı, tip büyük/küçük harfi, boşluklar önemsenmez).
+Sol menüde **Binary dosya (Excel çerçeve)…** (ya da çerçeve `.xlsx` ile binary'yi birlikte sürükleyip bırakma). Her alt sistem ayrı bir sayfadır; ilk satır başlık: `Birim · Index · Değişken · Tip · Eleman Sayısı · Formül · Byte Endian · Bit Endian · Örnek Sayısı · Undersample Header · isUndersample` (başlık yazımı, tip büyük/küçük harfi, boşluklar önemsenmez). Anlamlar telemetryParser ile uyumludur.
 
 | Alan | Anlamı |
 |---|---|
-| Index | 12.500 baytlık karede **1 tabanlı** bayt sırası. `auto` = önceki değişkenin bittiği yer. `i=1:35, (i-1)*24+26+102` = aynı değişken karede 35 yerde (35 örnek). |
-| Tip | UInt8/16/32, Int8/16/32, Single/Float32, Double, uint12 (3 bayta 2 değer), uint24/int24, stream |
-| Eleman Sayısı | 2–8: ayrı kanallar (`ad_1…ad_N`); 8'den büyük: tek dalga kanalı (N örnek). Karede yan yana. |
-| Örnek Sayısı | `B2` (veya sayı N): değişken karede N örnek tutar, art arda; zaman ekseni kare periyodu/N. |
-| Formül | `X`/`x` ham değer; `^`, `sqrt`, `&`, `>>`, `if(L3%8 == 2) …` (koşul sağlanmayan örnekler atlanır, zaman ekseni boşluklu kalır). |
-| Byte Endian | `big` ise büyük uçlu, boş = küçük uçlu. |
-| stream | Index'ten başlayan *Eleman Sayısı* baytlık pencerede *Undersample Header* (hex) aranır; bulunursa altındaki değişkenler paket başına göre (başlıktan sonra, 1 tabanlı) okunur, bulunamayan karelerde atlanır. |
+| Index | Çerçevede bayt sırası (**Index tabanı** ayarı: 1 tabanlı varsayılan, 0 tabanlı seçilebilir). `auto` = önceki değişkenin bittiği yer. `11.3` = bayt 11, bit 3. `i=1:35, (i-1)*24+26` = tekrar: her tekrar ayrı değişken (`ad_1…ad_35`, adda `{i}` kullanılabilir; aralık `a:b`, `a:adım:b`, `[1 4 9]`). |
+| Tip | UInt/Int 8–64 (uint12, int24 gibi herhangi bir bit genişliği, bit akışı olarak), BitN, bool, Single/Double, stream, bayt dizisi (kanal olmaz) |
+| Eleman Sayısı | 2–8: ayrı kanallar (`ad_1…ad_N`); 8'den büyük: tek dalga kanalı |
+| Örnek Sayısı | Sayı N: değişken N örnek tutar, yan yana. `B2`: **blok** — birimin satırları bir kez dizilir, blok B kez tekrarlanır (önce tüm değişkenlerin 1. örneği, sonra 2. örneği). "B örnekleme düzeni" ayarıyla "değişken ardışık" da seçilebilir. Zaman ekseni kare periyodu / örnek sayısı. |
+| Formül | `X`/`x`; `^`, `sqrt`, `&`, `>>`, `if(L3%8 == 2) …` (koşulu sağlamayan örnekler atlanır, zaman ekseni boşluklu kalır). |
+| Byte/Bit Endian | `big` = büyük uçlu (varsayılan küçük); bit akışı için MSB (varsayılan) / LSB |
+| stream | Her karedeki Index'ten başlayan *Eleman Sayısı* baytlık yuvalar kareler boyunca art arda eklenir, *Undersample Header* (hex) aranır; paket (header + isUndersample=1 satırları) birkaç kareye yayılabilir. Paket içi indexler paketin başına göredir. Paketin zamanı, başladığı karedir. |
 
-**Kalıcı işaretleme:** Çerçeve seçildikten sonra *Bu çerçeveyi kalıcı işaretle* kutusu tarayıcıda saklar; sonraki açılışlarda otomatik yüklenir, *Kalıcı çerçeveyi kaldır* ile silinir. **Çözme:** binary seçilir (kare periyodu varsayılan 10 ms), sonuç ana ekranda bir `.mat` dosyası gibi *alt sistem → değişken* ağacı olarak görünür. Çerçevede tanımlı olmayan baytlar **uyarı**, okunamayan satırlar (bilinmeyen tip, bozuk formül, çerçeve dışı Index, bulunamayan akış başlığı) **hata** olarak raporlanır; rapor CSV olarak kaydedilebilir. 256 MB üstü dosyalarda kanallar seçildikçe dosyadan okunur.
+**Kalıcı işaretleme:** *Bu çerçeveyi kalıcı işaretle* kutusu çerçeveyi tarayıcıda saklar, sonraki açılışlarda otomatik yüklenir. **Çözme:** binary seçilir (kare periyodu varsayılan 10 ms, çerçeve 12.500 bayt), sonuç ana ekranda *alt sistem → değişken* ağacıdır. Tanımsız baytlar, okunamayan satırlar (geçersiz tip, bozuk formül, çerçeve dışı Index, bulunamayan akış başlığı) uyarı/hata olarak raporlanır; aynı baytları iki sayfa tanımlıyorsa (üst/alt sistem, reserved) bilgi olarak. `reserved/rezerve` adlı satırlar kanal olmaz. 700 MB üstü dosyalarda kanallar seçildikçe dosyadan okunur.
 
-**Varsayımlar (doğrulanmamış):** uint12 çiftinde ilk değer = bayt1 + bayt2'nin üst 4 biti (üst bitler), ikinci değer = bayt2'nin alt 4 biti + bayt3 (üst bitler); stream paketinde otomatik konum başlıktan hemen sonra başlar; `x&0x00FF-…` gibi ifadelerde C önceliği uygulanır (uyarı verilir); formül seçicileri ham değerle okunur. Test: `python3 test/make_frame.py && node test/t_frm.js && python3 test/pw_frm.py` (yalnız sentetik veri).
+**Henüz yok (telemetryParser'da var):** senkron header ile çerçeve yakalama, sütun öncelikli yeniden düzenleme, çerçeve belirteci/tipleri, çerçeve sayacı ile kayıp kare, .mat dışa aktarma. **Doğrulanmamış:** Index tabanı (sizin dosyanızdaki MEST/TENK sabit başlıkları 1 tabanlı okumayla örtüşüyor), B2 blok düzeni, formüllerde `x&0x00FF-…` C önceliği. Test: `python3 test/make_frame.py && node test/t_frm.js && python3 test/pw_frm.py` (yalnız sentetik veri).
