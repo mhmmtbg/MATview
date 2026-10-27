@@ -127,10 +127,12 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 async function openFiles(files) {
   files = [...files]; if (files.some(f => /\.tdms_index$/i.test(f.name))) { toast('.tdms_index dosyası atlandı (yalnızca dizin; .tdms dosyası okunur)', 5000); files = files.filter(f => !/\.tdms_index$/i.test(f.name)); } const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)); const tdmss = files.filter(f => /\.tdms$/i.test(f.name)), mdfs = files.filter(f => /\.(mf4|mdf)$/i.test(f.name)); let other = files.filter(f => !/\.(mat|unv|uff|tdms|mf4|mdf)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
   const tabs = other.filter(f => /\.(csv|tsv|txt)$/i.test(f.name)), wavs = other.filter(f => /\.wav$/i.test(f.name)); other = other.filter(f => !tabs.includes(f) && !wavs.includes(f)); for (const w of wavs) await wavOpen(w); for (const t of tdmss) await tdmsOpen(t); for (const m of mdfs) await mdfOpen(m); const tabsX = [];
-  const frmX = []; if (other.length && other.every(f => /\.xlsx$/i.test(f.name))) { const keep = []; for (const f of other) { try { const sh = await XLSX.read(f); if (sh.some(s => /cerceve|çerçeve|frame/i.test(s.name))) keep.push(f); else if (FRM.isFrameBook(sh)) frmX.push(f); else tabsX.push([f, sh]); } catch (e) { toast('Excel okunamadı: ' + (e.message || e), 7000); } } other = keep; }
+  const frmX = []; { const xls = other.filter(f => /\.xlsx$/i.test(f.name)), nonx = other.filter(f => !/\.xlsx$/i.test(f.name)), keep = [];
+    for (const f of xls) { try { const sh = await XLSX.read(f); if (FRM.isFrameBook(sh) && !sh.some(s => /^(cerceve|çerçeve|frame)/i.test(s.name))) frmX.push(f); else if (nonx.length || sh.some(s => /cerceve|çerçeve|frame/i.test(s.name))) keep.push(f); else tabsX.push([f, sh]); } catch (e) { toast('Excel okunamadı: ' + (e.message || e), 7000); } }
+    other = [...nonx, ...keep]; }
   for (const u of unvs) await unvOpen(u);
   for (const t of tabs) await tableOpen(t); for (const [f, sh] of tabsX) await tableOpen(f, sh);
-  if (frmX.length) { if (await frmLoadExcel(frmX[0])) frmDialog(); }
+  if (frmX.length) { const nb = other.filter(f => !/\.xlsx$/i.test(f.name)); if (await frmLoadExcel(frmX[0])) { if (nb.length) { FS.bin = nb[0]; other = other.filter(f => f !== nb[0]); } frmDialog(); } }
   if (other.length && FS.def && !other.some(f => /\.xlsx$/i.test(f.name))) { frmDropBin(other); other = []; }
   if (other.length) await binFilesIn(other);
   for (const file of files) {

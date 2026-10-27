@@ -31,5 +31,10 @@ async def main():
         assert 'kalıcı' in (await pg.evaluate("document.querySelector('#mbody').innerText")).lower()
         await pg.evaluate("[...document.querySelectorAll('#mbody button')].find(b=>b.textContent.startsWith('Kalıcı çerçeveyi kaldır')).click()"); await pg.wait_for_timeout(200)
         assert await pg.evaluate("localStorage.getItem('mv.frame')") is None
+        # xlsx + binary birlikte bırakma (kalıcı çerçeve olmadan) yeni akışa gitmeli
+        pg2 = await ctx.new_page(); await pg2.goto(url);
+        await pg2.set_input_files('#fileIn', ['/tmp/frm/frame.xlsx', '/tmp/frm/data.bin']); await pg2.wait_for_timeout(1500)
+        i2 = await pg2.evaluate("document.querySelector('#frmInfo') && document.querySelector('#frmInfo').textContent"); print(i2); assert i2 and '40 kare' in i2, i2
+        await pg2.close()
         print('ERRS', errs); assert not errs; await b.close()
 asyncio.run(main())
