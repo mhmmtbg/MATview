@@ -35,6 +35,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.1', d: 'Telemetre çerçevesi', items: [
+    'Yeni: alt sistem başına bir sayfalı Excel çerçeve tanımı (Birim, Index, Değişken, Tip, Eleman/Örnek Sayısı, Formül, Endian, Undersample Header). Çerçeve kalıcı işaretlenebilir; 12.500 baytlık karelerden oluşan binary çözülür ve ana ağaçta alt sistem → değişken olarak listelenir.',
+    'Tanımlı olmayan baytlar, çakışmalar, okunamayan satırlar ve bulunamayan akış başlıkları rapor olarak gösterilir.',
+  ]},
   {v: '2.0', d: 'Kapsamlı güncelleme', items: [
     'Güvenilirlik: Welch (periyodik pencere, scipy/MATLAB ile 1e-15 uyumlu), etkin ortalama sayısı, serbestlik derecesi ve güven aralığı; Kalite sekmesi (kırpılma, sıçrama, kopma, sabit kanal, DC kayması).',
     'Test mühendisliği: şartname uygunluk (MIL-STD-810 / ISO / özel tolerans şablonları), faz/seviye tespiti, kontrol kanalı rolleri, transmisibilite/FRF, akustik bant tablosu (OASPL), şok analizi (SRS, süre, ΔV, şekil), termal analiz.',

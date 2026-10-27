@@ -117,3 +117,21 @@ Gerçek dosyada sorun görürseniz `F1 ▸ Sorun bildir` ile veri içermeyen tan
 
 ### Test
 `bash test/run_tests.sh` — Node birim testleri (DSP, scipy doğrulaması, MAT/HDF5/UNV/TDMS/MDF ayrıştırıcıları) ve Playwright arayüz testleri. Sentetik dosyaları üretmek için `numpy scipy h5py hdf5storage nptdms pyuff asammdf pytest` gerekir (yalnız test için).
+
+## Sürüm 2.1 — Telemetre çerçevesi (alt sistem sayfalı Excel)
+
+Sol menüde **Telemetre çerçevesi…** (ya da çerçeve `.xlsx` dosyasını sürükleyip bırakma). Her alt sistem ayrı bir sayfadır; ilk satır başlık: `Birim · Index · Değişken · Tip · Eleman Sayısı · Formül · Byte Endian · Bit Endian · Örnek Sayısı · Undersample Header · isUndersample` (başlık yazımı, tip büyük/küçük harfi, boşluklar önemsenmez).
+
+| Alan | Anlamı |
+|---|---|
+| Index | 12.500 baytlık karede **1 tabanlı** bayt sırası. `auto` = önceki değişkenin bittiği yer. `i=1:35, (i-1)*24+26+102` = aynı değişken karede 35 yerde (35 örnek). |
+| Tip | UInt8/16/32, Int8/16/32, Single/Float32, Double, uint12 (3 bayta 2 değer), uint24/int24, stream |
+| Eleman Sayısı | 2–8: ayrı kanallar (`ad_1…ad_N`); 8'den büyük: tek dalga kanalı (N örnek). Karede yan yana. |
+| Örnek Sayısı | `B2` (veya sayı N): değişken karede N örnek tutar, art arda; zaman ekseni kare periyodu/N. |
+| Formül | `X`/`x` ham değer; `^`, `sqrt`, `&`, `>>`, `if(L3%8 == 2) …` (koşul sağlanmayan örnekler atlanır, zaman ekseni boşluklu kalır). |
+| Byte Endian | `big` ise büyük uçlu, boş = küçük uçlu. |
+| stream | Index'ten başlayan *Eleman Sayısı* baytlık pencerede *Undersample Header* (hex) aranır; bulunursa altındaki değişkenler paket başına göre (başlıktan sonra, 1 tabanlı) okunur, bulunamayan karelerde atlanır. |
+
+**Kalıcı işaretleme:** Çerçeve seçildikten sonra *Bu çerçeveyi kalıcı işaretle* kutusu tarayıcıda saklar; sonraki açılışlarda otomatik yüklenir, *Kalıcı çerçeveyi kaldır* ile silinir. **Çözme:** binary seçilir (kare periyodu varsayılan 10 ms), sonuç ana ekranda bir `.mat` dosyası gibi *alt sistem → değişken* ağacı olarak görünür. Çerçevede tanımlı olmayan baytlar **uyarı**, okunamayan satırlar (bilinmeyen tip, bozuk formül, çerçeve dışı Index, bulunamayan akış başlığı) **hata** olarak raporlanır; rapor CSV olarak kaydedilebilir. 256 MB üstü dosyalarda kanallar seçildikçe dosyadan okunur.
+
+**Varsayımlar (doğrulanmamış):** uint12 çiftinde ilk değer = bayt1 + bayt2'nin üst 4 biti (üst bitler), ikinci değer = bayt2'nin alt 4 biti + bayt3 (üst bitler); stream paketinde otomatik konum başlıktan hemen sonra başlar; `x&0x00FF-…` gibi ifadelerde C önceliği uygulanır (uyarı verilir); formül seçicileri ham değerle okunur. Test: `python3 test/make_frame.py && node test/t_frm.js && python3 test/pw_frm.py` (yalnız sentetik veri).
