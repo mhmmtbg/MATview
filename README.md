@@ -124,7 +124,7 @@ Sol menüde **Binary dosya (Excel çerçeve)…** (ya da çerçeve `.xlsx` ile b
 
 | Alan | Anlamı |
 |---|---|
-| Index | Çerçevede bayt sırası (**Index tabanı** ayarı: 1 tabanlı varsayılan, 0 tabanlı seçilebilir). `auto` = önceki değişkenin bittiği yer. `11.3` = bayt 11, bit 3. `i=1:35, (i-1)*24+26` = tekrar: her tekrar ayrı değişken (`ad_1…ad_35`, adda `{i}` kullanılabilir; aralık `a:b`, `a:adım:b`, `[1 4 9]`). |
+| Index | Çerçevede bayt sırası (**Index tabanı** ayarı: 0 tabanlı varsayılan — telemetryParser ile aynı — 1 tabanlı seçilebilir). `auto` = önceki değişkenin bittiği yer. `11.3` = bayt 11, bit 3. `i=1:35, (i-1)*24+26` = tekrar: her tekrar ayrı değişken (`ad_1…ad_35`, adda `{i}` kullanılabilir; aralık `a:b`, `a:adım:b`, `[1 4 9]`). |
 | Tip | UInt/Int 8–64 (uint12, int24 gibi herhangi bir bit genişliği, bit akışı olarak), BitN, bool, Single/Double, stream, bayt dizisi (kanal olmaz) |
 | Eleman Sayısı | 2–8: ayrı kanallar (`ad_1…ad_N`); 8'den büyük: tek dalga kanalı |
 | Örnek Sayısı | Sayı N: değişken N örnek tutar, yan yana. `B2`: **blok** — birimin satırları bir kez dizilir, blok B kez tekrarlanır (önce tüm değişkenlerin 1. örneği, sonra 2. örneği). "B örnekleme düzeni" ayarıyla "değişken ardışık" da seçilebilir. Zaman ekseni kare periyodu / örnek sayısı. |
@@ -134,4 +134,6 @@ Sol menüde **Binary dosya (Excel çerçeve)…** (ya da çerçeve `.xlsx` ile b
 
 **Kalıcı işaretleme:** *Bu çerçeveyi kalıcı işaretle* kutusu çerçeveyi tarayıcıda saklar, sonraki açılışlarda otomatik yüklenir. **Çözme:** binary seçilir (kare periyodu varsayılan 10 ms, çerçeve 12.500 bayt), sonuç ana ekranda *alt sistem → değişken* ağacıdır. Tanımsız baytlar, okunamayan satırlar (geçersiz tip, bozuk formül, çerçeve dışı Index, bulunamayan akış başlığı) uyarı/hata olarak raporlanır; aynı baytları iki sayfa tanımlıyorsa (üst/alt sistem, reserved) bilgi olarak. `reserved/rezerve` adlı satırlar kanal olmaz. 700 MB üstü dosyalarda kanallar seçildikçe dosyadan okunur.
 
-**Henüz yok (telemetryParser'da var):** senkron header ile çerçeve yakalama, sütun öncelikli yeniden düzenleme, çerçeve belirteci/tipleri, çerçeve sayacı ile kayıp kare, .mat dışa aktarma. **Doğrulanmamış:** Index tabanı (sizin dosyanızdaki MEST/TENK sabit başlıkları 1 tabanlı okumayla örtüşüyor), B2 blok düzeni, formüllerde `x&0x00FF-…` C önceliği. Test: `python3 test/make_frame.py && node test/t_frm.js && python3 test/pw_frm.py` (yalnız sentetik veri).
+**Çerçeve düzeni (2.2):** *3. Çerçeve düzeni* bölümü: sütun × satır (varsayılan 125×100), *sütun öncelikli (transpoze)*, header (hex; başta/sonda; sıkı sync) ya da sabit boyut + *kayma*, kayıttaki toplam sütun ve atılacak sütunlar (1'den başlar). **Düzeni otomatik bul**, Excel'deki akış başlıklarının beklenen yuvalara oturduğu transpoze + kaymayı bulur (ilk 8 MB, oylama + doğrulama). Doğrulanmış örnek: 5 bağımsız akışın hepsi şablon Index'lerine birebir oturdu.
+
+**Henüz yok (telemetryParser'da var):** çerçeve belirteci/tipleri (birden çok şablon), çerçeve sayacı ve kayıp çerçeve tespiti, birim başına .mat çıktısı, `Birim.değişken` / `ad[3]` formül başvuruları, devasa dosya için disk önbelleği.

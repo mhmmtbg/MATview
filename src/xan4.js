@@ -35,6 +35,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.2', d: 'Telemetre çerçeve düzeni', items: [
+    'Düzeltme: akış başlıkları (CRPA, KKS, TPS) bulunamıyordu — kayıt sütun öncelikli dizilmiş ve çerçeve başı satır sayacına denk geliyordu. Çerçeve düzeni bölümü eklendi: sütun x satır, sütun öncelikli (transpoze), kayma veya header (sync) ile çerçeve yakalama, sıkı sync, kayıttan sütun atma.',
+    'Düzeni otomatik bul: Excel deki akış başlıklarından transpoze ve kaymayı oylama ile bulur, hangi akışta kaç paket çıktığını gösterir.',
+    'Index artık varsayılan olarak 0 tabanlı (telemetryParser gibi); 1 tabanlı seçenek duruyor.',
+  ]},
   {v: '2.1', d: 'Telemetre çerçevesi', items: [
     'Yeni: alt sistem başına bir sayfalı Excel çerçeve tanımı (Birim, Index, Değişken, Tip, Eleman/Örnek Sayısı, Formül, Endian, Undersample Header). Çerçeve kalıcı işaretlenebilir; 12.500 baytlık karelerden oluşan binary çözülür ve ana ağaçta alt sistem → değişken olarak listelenir.',
     'telemetryParser ile uyumlu anlamlar: B2 blok örnekleme, bit akışı tipleri (uint12…), byte.bit index, tekrar indeksi ayrı değişken, kareler boyunca birleşen stream paketleri; Index tabanı ve B düzeni ayarlanabilir.',

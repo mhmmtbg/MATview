@@ -9,6 +9,8 @@ async def main():
         await pg.set_input_files('#fileIn', ['/tmp/frm/frame.xlsx']); await pg.wait_for_timeout(1200)
         assert await pg.query_selector('#modal:not(.hidden)'), 'çerçeve diyaloğu açılmadı'
         assert await pg.evaluate("FS.def && FS.def.sheets.length") == 4
+        await pg.select_option('#frmBase', '1'); await pg.wait_for_timeout(200)
+        assert await pg.evaluate("FS.def.indexBase") == 1
         await pg.set_input_files('#mbody input[type=file]:not([accept])', ['/tmp/frm/data_tail.bin']); await pg.wait_for_timeout(300)
         info = await pg.evaluate("document.querySelector('#frmInfo').textContent"); print(info); assert '40 kare' in info and '3 bayt' in info, info
         await pg.evaluate("document.querySelector('#frmPerm').click()"); await pg.wait_for_timeout(200)

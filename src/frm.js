@@ -80,7 +80,7 @@ const FRM = (() => {
 
   /* ---- Excel → tanım ---- */
   function parse(sheets, opt) {
-    opt = opt || {}; const L = opt.frameBytes || 12500, base = opt.indexBase === 0 ? 0 : 1, blockMode = opt.blockMode === 'var' ? 'var' : 'block';
+    opt = opt || {}; const L = opt.frameBytes || 12500, base = opt.indexBase === 1 ? 1 : 0, blockMode = opt.blockMode === 'var' ? 'var' : 'block';
     const warns = [], def = {ver: 2, frameBytes: L, indexBase: base, blockMode, sheets: [], warns};
     const W = (lvl, sheet, row, msg) => warns.push({lvl, sheet, row, msg});
     for (const sh of sheets) {
@@ -184,7 +184,7 @@ const FRM = (() => {
     if (gaps.length) W('warn', '(çerçeve)', 0, `Tanımsız bayt aralıkları (${gaps.length} adet, toplam ${undef} bayt = %${(100 * undef / L).toFixed(1)}): ` + gaps.slice(0, 12).map(g => g[0] === g[1] ? g[0] : g[0] + '–' + g[1]).join(', ') + (gaps.length > 12 ? ' …' : '') + ' — çözülmeyecek');
     return {covered: cov, undef, gaps, overlapBytes: overl};
   }
-  const base1 = def => def.indexBase === 0 ? 0 : 1;
+  const base1 = def => def.indexBase === 1 ? 1 : 0;
 
   /* ---- kanal planı ---- */
   // [{sheet, name, v, e (eleman|-1), spp (örnek/kare veya paket)}]
@@ -223,9 +223,19 @@ const FRM = (() => {
   const reader = v => { let r = rdCache.get(v); if (!r) { r = mkReader(v); rdCache.set(v, r); } return r; };
 
   // Çerçeve değişkeni: u8 içinde kare k = off0 + k*L → {v: Float64Array(nf*spp)}
-  function extractFrames(u8, off0, nf, L, ch) {
-    const v = ch.v, rd = reader(v), spp = ch.spp, out = new Float64Array(nf * spp), dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  // lay verilirse (çerçeve düzeni): kare k'nın fiziksel başlangıcı lay.starts[k0+k] − off0, mantıksal bayt j = u8[başlangıç + lay.perm[j]]
+  function extractFrames(u8, off0, nf, L, ch, lay, k0) {
+    const v = ch.v, rd = reader(v), spp = ch.spp, out = new Float64Array(nf * spp);
     const E = v.E, sep = ch.e >= 0, nEl = sep ? 1 : E, eb = v.elemBits, sstep = v.sMode === 'block' ? v.blockSize * 8 : E * eb, start = v.byte * 8 + v.bit;
+    if (lay) {
+      const endBit = v.bit + (v.n - 1) * sstep + ((sep ? ch.e : E - 1) + 1) * eb, span = Math.ceil(endBit / 8) + 8, sc = new Uint8Array(span), sdv = new DataView(sc.buffer), vb = v.byte, perm = lay.perm, lim = Math.min(span, L - vb);
+      for (let k = 0; k < nf; k++) {
+        const b0 = lay.starts[(k0 | 0) + k] - off0; for (let j = 0; j < lim; j++) { const q = b0 + perm[vb + j]; sc[j] = q < u8.length ? u8[q] : 0; }
+        for (let s = 0; s < v.n; s++) for (let q = 0; q < nEl; q++) { const e = sep ? ch.e : q; out[k * spp + (sep ? s : s * nEl + q)] = rd(sc, sdv, v.bit + s * sstep + e * eb); }
+      }
+      return {v: out, ok: null, g: null};
+    }
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
     for (let k = 0; k < nf; k++) { const bb = (off0 + k * L) * 8 + start; for (let s = 0; s < v.n; s++) for (let q = 0; q < nEl; q++) { const e = sep ? ch.e : q; out[k * spp + (sep ? s : s * nEl + q)] = rd(u8, dv, bb + s * sstep + e * eb); } }
     return {v: out, ok: null, g: null};
   }
@@ -263,7 +273,100 @@ const FRM = (() => {
     const m = r.v.length - bad, v = new Float64Array(m), g = new Float64Array(m); let p = 0;
     for (let i = 0; i < r.v.length; i++) if (!r.ok || r.ok[i]) { v[p] = r.v[i]; g[p++] = r.g ? r.g[i] : i; } return {v, g};
   }
+
+  /* ---- çerçeve düzeni (referans: telemetryParser) ----
+     Fiziksel çerçeve T sütun × R satır (satır satır gelir); atılan sütunlar çıkarılınca C × R kalır.
+     transpoze açıksa mantıksal sıra sütun öncelikli: j = sütun*R + satır. Çerçeve başı: sabit boyut + kayma, ya da sync header. */
+  function parseCols(str) {
+    const out = [], seen = {}, parts = String(str == null ? '' : str).split(/[\s,;]+/).filter(Boolean);
+    for (const p of parts) { const m = /^(\d+)(?:\s*[-:]\s*(\d+))?$/.exec(p); if (!m) throw new Error(`Geçersiz sütun: '${p}' (örn. 122, 123 veya 122-125)`); const a = +m[1], b = m[2] ? +m[2] : a; if (b < a) throw new Error(`Geçersiz aralık: '${p}'`); for (let c = a; c <= b; c++) if (!seen[c]) { seen[c] = 1; out.push(c); } }
+    return out.sort((x, y) => x - y);
+  }
+  function layout(o) {
+    o = o || {}; const C = (o.cols | 0) || 125, R = (o.rows | 0) || 100, tr = !!o.transpose, drop = parseCols(o.dropList);
+    if (C < 1 || R < 1) throw new Error('Sütun ve satır sayısı 1 veya daha büyük olmalı');
+    const T = drop.length ? ((o.dropTotal | 0) || C + drop.length) : C;
+    if (drop.length) { if (T - drop.length !== C) throw new Error(`${T} − ${drop.length} = ${T - drop.length} sütun kalıyor, ancak çerçeve sütun sayısı ${C}`); if (drop[0] < 1 || drop[drop.length - 1] > T) throw new Error(`Atılan sütunlar 1 ile ${T} arasında olmalı`); }
+    const dset = new Set(drop.map(x => x - 1)), keep = []; for (let c = 0; c < T; c++) if (!dset.has(c)) keep.push(c);
+    const L = C * R, PL = T * R, perm = new Int32Array(L);
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) perm[tr ? c * R + r : r * C + c] = r * T + keep[c];
+    const hdr = parseHex(o.header), hdrEnd = o.headerPos === 'end';
+    return {C, R, T, L, PL, tr, perm, drop, hdr: hdr || null, hdrEnd, strict: !!o.strict, shift: Math.max(0, o.shift | 0), kind: 'layout'};
+  }
+  const same = (b, h, p) => { for (let j = 0; j < h.length; j++) if (b[p + j] !== h[j]) return false; return true; };
+  function findSeq(b, h, from, to) { const n = h.length, h0 = h[0]; for (let q = from; q + n <= to; q++) { if (b[q] === h0 && same(b, h, q)) return q; } return -1; }
+  // Referanstaki tarayıcının aynısı: header'a göre çerçeve keser. onFrame(mutlakBaşlangıç), onSkip(n, at, 'gap'|'end')
+  function createScanner(lay, onFrame, onSkip) {
+    const FL = lay.PL, hdr = lay.hdr || [], h = hdr.length, atStart = !lay.hdrEnd, strict = lay.strict;
+    let carry = new Uint8Array(0), searchFrom = 0, havePrev = false, wAbs = 0;
+    const gap = (n, at) => { havePrev = false; onSkip(n, at, 'gap'); };
+    function scan(work, fin) {
+      let pos = 0, search = searchFrom; const WL = work.length;
+      for (;;) {
+        if (h === 0) { if (WL - pos >= FL) { onFrame(wAbs + pos); pos += FL; continue; } if (fin && WL > pos) { onSkip(WL - pos, wAbs + pos, 'end'); pos = WL; } break; }
+        const minP = atStart ? pos : pos + FL - h; if (search < minP) search = minP;
+        const p = findSeq(work, hdr, search, WL);
+        if (p < 0) {
+          if (fin) { if (WL > pos) onSkip(WL - pos, wAbs + pos, 'end'); pos = WL; }
+          else { const keepFrom = atStart ? Math.max(pos, WL - h + 1) : Math.max(pos, WL - FL + 1); if (keepFrom > pos) { gap(keepFrom - pos, wAbs + pos); pos = keepFrom; } }
+          search = Math.max(pos, WL - h + 1); break;
+        }
+        const s = atStart ? p : p + h - FL;
+        if (s + FL > WL) { if (fin) { onSkip(WL - pos, wAbs + pos, 'end'); pos = WL; break; } if (s > pos) { gap(s - pos, wAbs + pos); pos = s; } search = p; break; }
+        if (strict && !(havePrev && s === pos)) {
+          const np = p + FL;
+          if (np + h > WL && !fin) { if (s > pos) { gap(s - pos, wAbs + pos); pos = s; } search = p; break; }
+          if (np + h <= WL && !same(work, hdr, np)) { search = p + 1; continue; }
+        }
+        if (s > pos) gap(s - pos, wAbs + pos);
+        onFrame(wAbs + s); havePrev = true; pos = s + FL; search = pos;
+      }
+      searchFrom = Math.max(0, search - pos); wAbs += pos; return work.subarray(pos);
+    }
+    return {push(chunk, fin) {
+      let work; if (carry.length) { work = new Uint8Array(carry.length + chunk.length); work.set(carry); work.set(chunk, carry.length); } else work = chunk;
+      const rest = scan(work, !!fin); carry = (!fin && rest.length) ? rest.slice() : new Uint8Array(0);
+    }};
+  }
+  // Bellekteki dosya için çerçeve başlangıçları {starts: Float64Array, skipped}
+  function locate(u8, lay) {
+    if (lay.hdr && lay.hdr.length) {
+      const st = [], sk = {n: 0, ev: []}; const sc = createScanner(lay, a => st.push(a), (n, at, kind) => { sk.n += n; if (sk.ev.length < 20) sk.ev.push({n, at, kind}); }); sc.push(u8, true);
+      return {starts: Float64Array.from(st), skipped: sk.n, ev: sk.ev};
+    }
+    const n = Math.max(0, Math.floor((u8.length - lay.shift) / lay.PL)), st = new Float64Array(n); for (let k = 0; k < n; k++) st[k] = lay.shift + k * lay.PL;
+    return {starts: st, skipped: lay.shift + Math.max(0, u8.length - lay.shift) % lay.PL, ev: []};
+  }
+  // Kare k'nın mantıksal baytlarını [a, a+len) out[oo..]'ya al (base: fiziksel başlangıç, u8 içinde)
+  function gather(u8, base, lay, a, len, out, oo) { const perm = lay.perm, L = lay.L; for (let j = 0; j < len; j++) { const i = a + j; if (i >= L) break; const q = base + perm[i]; out[oo + j] = q < u8.length ? u8[q] : 0; } }
+  // Akış yuvalarını (ilk nf kare) derle
+  function slotOf(u8, lay, starts, off0, st, nf) { const slot = new Uint8Array(nf * st.win); for (let k = 0; k < nf; k++) gather(u8, starts[k] - off0, lay, st.start, st.win, slot, k * st.win); return slot; }
+  /* Otomatik düzen bulma: akış başlıklarının (Excel) beklenen yuvalarda görüneceği transpoze + kayma çiftini oy ile bulur.
+     u8: dosyanın başından birkaç MB. Dönüş: [{transpose, shift, votes, packets, per:[{sheet, unit, packets}], row, col}] (en iyi önde) */
+  function autoLayout(u8, def, o) {
+    o = o || {}; const C = (o.cols | 0) || 125, R = (o.rows | 0) || 100, L = C * R, res = [], streams = [];
+    for (const S of def.sheets) for (const st of S.streams) if (st.hdr && st.hdr.length && st.start + st.win <= L) streams.push({sheet: S.name, st});
+    if (!streams.length) return res;
+    for (const tr of [true, false]) {
+      const lay0 = layout({cols: C, rows: R, transpose: tr}), PL = lay0.PL, stride = tr ? C : 1, votes = new Map();
+      for (const {st} of streams) {
+        const h = st.hdr, hl = h.length; let cnt = 0;
+        for (let p = 0; p + (hl - 1) * stride < u8.length && cnt < 3000; p++) {
+          if (u8[p] !== h[0]) continue; let ok = true; for (let j = 1; j < hl; j++) if (u8[p + j * stride] !== h[j]) { ok = false; break; } if (!ok) continue; cnt++;
+          for (let d = 0; d < st.win; d++) { const lw = st.start + d; if (lw >= L || (tr && (lw % R) + hl > R)) continue; const s0 = (((p - lay0.perm[lw]) % PL) + PL) % PL; votes.set(s0, (votes.get(s0) || 0) + (d === 0 ? 100 : 1)); }
+        }
+      }
+      const top = [...votes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+      for (const [s0, vt] of top) {
+        const lay = layout({cols: C, rows: R, transpose: tr, shift: s0}), nf = Math.min(400, Math.floor((u8.length - s0) / PL)); if (nf < 2) continue;
+        const starts = new Float64Array(nf); for (let k = 0; k < nf; k++) starts[k] = s0 + k * PL;
+        const per = streams.map(({sheet, st}) => ({sheet, unit: st.unit, packets: streamScan(slotOf(u8, lay, starts, 0, st, nf), st).length}));
+        res.push({transpose: tr, shift: s0, votes: vt, exact: Math.floor(vt / 100), packets: per.reduce((a, x) => a + x.packets, 0), hit: per.filter(x => x.packets > 0).length, total: per.length, per, row: Math.floor(s0 / C) + 1, col: s0 % C + 1});
+      }
+    }
+    return res.sort((a, b) => b.hit - a.hit || b.exact - a.exact || b.packets - a.packets);
+  }
   function frameInfo(size, L, skip) { const body = Math.max(0, size - (skip | 0)); return {frames: Math.floor(body / L), rest: body % L}; }
-  return {parse, parseType, parseIndex, parseHex, compile, isFrameBook, coverage, plan, extractFrames, streamScan, streamPackets, applyFormula, compact, frameInfo, fold, MAXSEP, spans};
+  return {layout, parseCols, createScanner, locate, gather, slotOf, autoLayout, parse, parseType, parseIndex, parseHex, compile, isFrameBook, coverage, plan, extractFrames, streamScan, streamPackets, applyFormula, compact, frameInfo, fold, MAXSEP, spans};
 })();
 if (typeof module !== 'undefined') module.exports = FRM;
