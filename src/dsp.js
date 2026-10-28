@@ -190,10 +190,11 @@ const DSP = (() => {
       const a = Math.max(0, i - k), b = Math.min(n - 1, i + k); let m = 0;
       for (let j = a; j <= b; j++) if (!(del && del[j]) && isFinite(x[j])) buf[m++] = x[j];   // silinmiş / NaN örnekler medyanı bozmasın
       if (m < 3) continue;
-      const sub = buf.subarray(0, m); sub.sort();
+      // küçük pencerede ekleme sıralaması, TypedArray.sort'tan çok daha hızlı
+      const sub = buf.subarray(0, m); if (m <= 64) { for (let u = 1; u < m; u++) { const t = sub[u]; let w2 = u - 1; while (w2 >= 0 && sub[w2] > t) { sub[w2 + 1] = sub[w2]; w2--; } sub[w2 + 1] = t; } } else sub.sort();
       const med = sub[m >> 1];
       for (let j = 0; j < m; j++) dev[j] = Math.abs(sub[j] - med);
-      const dsub = dev.subarray(0, m); dsub.sort();
+      const dsub = dev.subarray(0, m); if (m <= 64) { for (let u = 1; u < m; u++) { const t = dsub[u]; let w2 = u - 1; while (w2 >= 0 && dsub[w2] > t) { dsub[w2 + 1] = dsub[w2]; w2--; } dsub[w2 + 1] = t; } } else dsub.sort();
       const mad = 1.4826 * dsub[m >> 1];
       const d = Math.abs(x[i] - med);
       if (mad > 0 && d > nsig * mad && d > (gmin || 0)) flags.push(i);

@@ -48,25 +48,40 @@ class Channel {
     return (lo + f) * this.spp;
   }
   get duration() { return this.t(this.n - 1); }
+  // İki düzeyli piramit: 32'lik bloklar (mn/mx) ve 32 bloktan oluşan 1024'lük üst bloklar (mn2/mx2) → tam görünümde sütun başına birkaç okuma
   buildPyr() {
-    const n = this.n, nb = Math.ceil(n / PYR_B), mn = new Float64Array(nb), mx = new Float64Array(nb);
-    for (let b = 0; b < nb; b++) this._blk(b, mn, mx);
-    this.pyr = {mn, mx};
+    const n = this.n, nb = Math.ceil(n / PYR_B), nb2 = Math.ceil(nb / PYR_B), mn = new Float64Array(nb), mx = new Float64Array(nb), mn2 = new Float64Array(nb2).fill(Infinity), mx2 = new Float64Array(nb2).fill(-Infinity);
+    const d = this.data, del = this.del, M = 1.7976931348623157e308;
+    for (let b = 0; b < nb; b++) {
+      const a = b * PYR_B, e = Math.min(n, a + PYR_B); let lo = Infinity, hi = -Infinity;
+      if (del) { for (let i = a; i < e; i++) { const v = d[i]; if (del[i] || !(v >= -M && v <= M)) continue; if (v < lo) lo = v; if (v > hi) hi = v; } }
+      else for (let i = a; i < e; i++) { const v = d[i]; if (!(v >= -M && v <= M)) continue; if (v < lo) lo = v; if (v > hi) hi = v; }
+      mn[b] = lo; mx[b] = hi; const q = (b / PYR_B) | 0; if (lo < mn2[q]) mn2[q] = lo; if (hi > mx2[q]) mx2[q] = hi;
+    }
+    this.pyr = {mn, mx, mn2, mx2};
   }
   _blk(b, mn, mx) {
     const d = this.data, del = this.del, a = b * PYR_B, e = Math.min(this.n, a + PYR_B); let lo = Infinity, hi = -Infinity;
     for (let i = a; i < e; i++) { const v = d[i]; if ((del && del[i]) || !isFinite(v)) continue; if (v < lo) lo = v; if (v > hi) hi = v; }
     mn[b] = lo; mx[b] = hi;
   }
+  _blk2(q) { const p = this.pyr, a = q * PYR_B, e = Math.min(p.mn.length, a + PYR_B); let lo = Infinity, hi = -Infinity; for (let k = a; k < e; k++) { if (p.mn[k] < lo) lo = p.mn[k]; if (p.mx[k] > hi) hi = p.mx[k]; } p.mn2[q] = lo; p.mx2[q] = hi; }
   // [a,b) aralığında min/max -> this._mn/_mx; veri yoksa false
   minmax(a, b) {
     const d = this.data, del = this.del; let lo = Infinity, hi = -Infinity;
     a = Math.max(0, a | 0); b = Math.min(this.n, b | 0);
     if (b - a >= 4 * PYR_B) {
       if (!this.pyr) this.buildPyr();
-      const ba = Math.ceil(a / PYR_B), bb = Math.floor(b / PYR_B), pm = this.pyr.mn, px = this.pyr.mx;
+      const P = this.pyr, ba = Math.ceil(a / PYR_B), bb = Math.floor(b / PYR_B), pm = P.mn, px = P.mx;
       for (let i = a, e = ba * PYR_B; i < e; i++) { const v = d[i]; if ((del && del[i]) || !isFinite(v)) continue; if (v < lo) lo = v; if (v > hi) hi = v; }
-      for (let k = ba; k < bb; k++) { if (pm[k] < lo) lo = pm[k]; if (px[k] > hi) hi = px[k]; }
+      let k = ba;
+      if (bb - ba >= 4 * PYR_B) {   // üst düzey: tam 32-blok gruplarını atla
+        const qa = Math.ceil(ba / PYR_B), qb = Math.floor(bb / PYR_B), m2 = P.mn2, x2 = P.mx2;
+        for (; k < qa * PYR_B; k++) { if (pm[k] < lo) lo = pm[k]; if (px[k] > hi) hi = px[k]; }
+        for (let q = qa; q < qb; q++) { if (m2[q] < lo) lo = m2[q]; if (x2[q] > hi) hi = x2[q]; }
+        k = qb * PYR_B;
+      }
+      for (; k < bb; k++) { if (pm[k] < lo) lo = pm[k]; if (px[k] > hi) hi = px[k]; }
       for (let i = bb * PYR_B; i < b; i++) { const v = d[i]; if ((del && del[i]) || !isFinite(v)) continue; if (v < lo) lo = v; if (v > hi) hi = v; }
     } else {
       for (let i = a; i < b; i++) { const v = d[i]; if ((del && del[i]) || !isFinite(v)) continue; if (v < lo) lo = v; if (v > hi) hi = v; }
@@ -85,7 +100,7 @@ class Channel {
     for (let k = 0; k < idx.length; k++) { const i = idx[k]; if (del[i]) { del[i] = 0; c++; blocks.add((i / PYR_B) | 0); } }
     this.delCount -= c; this._fixBlocks(blocks);
   }
-  _fixBlocks(blocks) { if (!this.pyr) return; for (const b of blocks) this._blk(b, this.pyr.mn, this.pyr.mx); }
+  _fixBlocks(blocks) { if (!this.pyr) return; const qs = new Set(); for (const b of blocks) { this._blk(b, this.pyr.mn, this.pyr.mx); qs.add((b / PYR_B) | 0); } for (const q of qs) this._blk2(q); }
 }
 Channel.seq = 1;
 

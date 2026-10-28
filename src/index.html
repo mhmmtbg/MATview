@@ -27,7 +27,7 @@
         <button id="btnHelp" data-ic="help">Yardım</button>
       </div></div>
     <button id="btnTheme" data-ic="theme" title="Açık/koyu tema" aria-label="Tema"></button>
-    <input type="file" id="fileIn" accept=".mat,.unv,.uff,.csv,.tsv,.txt,.xlsx,.wav,.tdms,.mf4,.mdf" multiple hidden>
+    <input type="file" id="fileIn" accept=".m,.mat,.unv,.uff,.csv,.tsv,.txt,.xlsx,.wav,.tdms,.mf4,.mdf" multiple hidden>
   </header>
   <aside id="left">
     <div class="pane-h">Dosyalar ve değişkenler</div>
@@ -43,7 +43,7 @@
   </aside>
   <main id="center">
     <div id="viewbar">
-      <div class="seg" id="viewtabs"><button data-v="time" class="on">Zaman</button><button data-v="spec">Spektrum</button><button data-v="sgram">Spektrogram</button><button data-v="xy" class="hidden" title="Zamandan bağımsız (özellik / regresyon) veri">Dağılım</button></div>
+      <div class="seg" id="viewtabs"><button data-v="time" class="on">Zaman</button><button data-v="spec">Spektrum</button><button data-v="sgram">Spektrogram</button><button data-v="xy" class="hidden" title="Zamandan bağımsız (özellik / regresyon) veri">Dağılım</button><button data-v="code" title="MATLAB alt kümesi kod çalıştırma (F5)">Kod</button><button data-v="fig" class="hidden" title="Kodun çizdiği figürler (plot / subplot)">Figür</button></div>
       <div class="spacer"></div>
       <span id="hoverinfo" class="muted"></span>
       <button id="btnRep" data-ic="download" title="Açık görünümü rapora ekler">Rapora ekle</button><button id="btnPng" data-ic="download" title="Açık görünümü PNG olarak kaydet">PNG</button><button id="btnSvg" data-ic="download" title="Açık görünümü SVG (vektör) olarak kaydet">SVG</button>
@@ -54,6 +54,8 @@
       <div class="view hidden" id="v-spec"><canvas id="cv-spec"></canvas></div>
       <div class="view hidden" id="v-sgram"><canvas id="cv-sgram"></canvas></div>
       <div class="view hidden" id="v-xy"><canvas id="cv-xy"></canvas></div>
+      <div class="view hidden" id="v-code"></div>
+      <div class="view hidden" id="v-fig"></div>
       <div id="welcome" class="hidden"><div class="wbox"><h2>MATView</h2><p class="muted">Başlamak için bir veri dosyası açın ya da pencereye sürükleyip bırakın.</p>
         <div class="wcards"><button id="wMat" data-ic="file" class="wcard"><b>MAT dosyası</b><span>MATLAB v5 / v7.3</span></button><button id="wUnv" data-ic="unv" class="wcard"><b>UNV / UFF</b><span>Spektrum kayıtları (58)</span></button><button id="wTab" data-ic="table" class="wcard"><b>CSV / Excel</b><span>Zaman serisi veya özellik verisi</span></button><button id="wBin" data-ic="bin" class="wcard"><b>Binary</b><span>Excel çerçeve tanımıyla</span></button></div>
         <p class="note">İpucu: Kanala çift tıklayın = yeni alt grafik · Shift+çift tık = aktif grafiğe ekle · Kanalı grafiğe sürükleyin. <kbd>?</kbd> kısayollar.</p></div></div>

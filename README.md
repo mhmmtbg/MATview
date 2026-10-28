@@ -14,6 +14,7 @@ MATLAB `.mat` dosyalarını okuyan, MATLAB benzeri grafik çizen; yakınlaştır
 - Spektrum, spektrogram, Butterworth süzgeçler, MATLAB tarzı ifade satırı.
 - Akustik: dinleme, tık/notch/HP/LP/spektral gürültü azaltma, WAV kaydı.
 - Dışa aktarma: PNG, CSV, MAT (v5), oturum.
+- **Kod** görünümü: MATLAB alt kümesini (matris, hücre, yapı, işlev, döngüler, fft/butter/filtfilt/pwelch…) kurulum olmadan çalıştırır; `ch('kanal')` ile açık kanalları okur, `addch` ile sonuç ekler; `figure/subplot/plot` ile **Figür** görünümüne çizer. `.m` dosyaları açılır/kaydedilir.
 
 ## Derleme
 ```
@@ -24,7 +25,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H=windowsg
 Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwright testleri bulunur (gerçek veri dosyaları depoda yoktur).
 
 ## Yapı
-`src/mat.js` (v5 okuyucu), `src/h5.js` (HDF5), `src/dsp.js`, `src/expr.js`, `src/plot.js` (grafik motoru), `src/store.js` (veri modeli), `src/app1.js`/`app2.js` (arayüz), `launcher/main.go` (yerel sunucu + tarayıcı başlatıcı).
+`src/mat.js` (v5 okuyucu), `src/h5.js` (HDF5), `src/dsp.js`, `src/expr.js`, `src/plot.js` (grafik motoru), `src/store.js` (veri modeli), `src/app1.js`/`app2.js` (arayüz), `src/mlab1-3.js` (MATLAB alt kümesi: ayrıştırıcı, yorumlayıcı, işlev kütüphanesi), `src/app13.js` (Kod/Figür arayüzü), `launcher/main.go` (yerel sunucu + tarayıcı başlatıcı).
 
 ## Testler hakkında
 `test/` altındaki betikler gerçek ölçüm dosyalarına ihtiyaç duyar; bu dosyalar depoda yoktur. Dosyaları (`veri_A.mat`, `veri_B.mat`, `veri_C.mat`) bir klasöre koyup `MATVIEW_TEST_DATA` ortam değişkeniyle klasörü gösterin. Kanal adları kendi verinize göre uyarlanmalıdır.

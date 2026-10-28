@@ -79,13 +79,29 @@ function refreshTraceInfo() {
   if (document.activeElement !== $('#fsIn')) $('#fsIn').value = +c.fs.toPrecision(8);
 }
 function updateStats() {
-  clearTimeout(S._st); S._st = setTimeout(() => {
+  clearTimeout(S._st); const _tr = typeof activeTrace === 'function' ? activeTrace() : null, _big = _tr && _tr.ch && _tr.ch.n > 2e6; S._st = setTimeout(() => {
     const el = $('#statsbar'); el.replaceChildren();
     const tr = activeTrace(), ax = activeAxes();
     if (S.view !== 'time' || !tr || !tr.ch.data) { el.append(h('span', {class: 'muted'}, S.view === 'time' ? 'İstatistik: bir iz seçin' : '')); return; }
-    const [a, b] = visRange(tr, ax), s = DSP.stats(tr.ch.data, tr.ch.del, a, b), f = v => fmtNum(v, 6);
+    const [a, b] = visRange(tr, ax), f = v => fmtNum(v, 6), tok = S._stTok = (S._stTok || 0) + 1;
+    if (b - a > 1.5e6) { el.append(h('span', {class: 'muted'}, 'Görünen aralık · ' + tr.label + ' · istatistik hesaplanıyor…')); statsChunked(tr.ch.data, tr.ch.del, a, b, tok).then(s => { if (s) paintStats(el, tr, s); }); return; }
+    paintStats(el, tr, DSP.stats(tr.ch.data, tr.ch.del, a, b));
+  }, _big ? 250 : 70);   // büyük kanalda istatistik, etkileşim durulunca hesaplanır
+}
+// büyük aralıkta istatistik parça parça hesaplanır (arayüz donmaz); görünüm değişirse yarıda bırakılır
+async function statsChunked(x, del, i0, i1, tok) {
+  let n = 0, s = 0, s2 = 0, mn = Infinity, mx = -Infinity, nd = 0; const CH = 1 << 20;
+  for (let a = i0; a < i1; a += CH) {
+    const e = Math.min(i1, a + CH);
+    for (let i = a; i < e; i++) { if (del && del[i]) { nd++; continue; } const v = x[i]; if (!isFinite(v)) continue; n++; s += v; s2 += v * v; if (v < mn) mn = v; if (v > mx) mx = v; }
+    await new Promise(r => setTimeout(r, 0)); if (S._stTok !== tok) return null;
+  }
+  const mean = n ? s / n : NaN, rms = n ? Math.sqrt(s2 / n) : NaN, std = n > 1 ? Math.sqrt(Math.max(0, (s2 - n * mean * mean) / (n - 1))) : NaN;
+  return {n, mean, rms, std, min: mn, max: mx, p2p: mx - mn, deleted: nd};
+}
+function paintStats(el, tr, s) {
+  const f = v => fmtNum(v, 6); el.replaceChildren();
     el.append(...[h('span', {class: 'muted'}, 'Görünen aralık · ' + tr.label), h('span', null, h('b', null, 'N '), fmtCnt(s.n)), h('span', null, h('b', null, 'Min '), f(s.min)), h('span', null, h('b', null, 'Maks '), f(s.max)), h('span', null, h('b', null, 'Ort '), f(s.mean)), h('span', null, h('b', null, 'RMS '), f(s.rms)), h('span', null, h('b', null, 'Std '), f(s.std)), h('span', null, h('b', null, 'Tepe-tepe '), f(s.p2p)), s.deleted ? h('span', null, h('b', null, 'Silinen '), fmtCnt(s.deleted)) : null].filter(Boolean));
-  }, 70);
 }
 
 /* ---------- Temizle ---------- */

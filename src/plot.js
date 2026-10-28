@@ -109,7 +109,7 @@ class Plot {
   // ---------- yerleşim ----------
   layout(W, H) {
     const n = this.axes.length; if (!n) return;
-    const L = 74, R = 18, T = 10, B = 40, gap = 26;
+    const L = 74, R = 18, T = this.axes.some(a => a.title) ? 26 : 10, B = 40, gap = this.axes.some(a => a.title) ? 40 : 26;
     const avail = Math.max(60 * n, H - T - B - gap * (n - 1));
     let tw = 0; for (const a of this.axes) tw += a.hw || 1;
     let y = T;
@@ -137,7 +137,7 @@ class Plot {
     if (m.mode === 'vis') { a = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))); b = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1); }
     const key = m.mode + ':' + a + ':' + b + ':' + ch.delCount + ':' + m.dc, c = t._grms;
     if (c && c.key === key) return c.txt;
-    if (b - a > 3e6 && c && m.mode === 'vis') {   // etkileşim sırasında eski değeri göster, durulunca yeniden hesapla
+    if (b - a > 2e5 && c && m.mode === 'vis') {   // etkileşim sırasında eski değeri göster, durulunca yeniden hesapla
       clearTimeout(t._gt); t._gt = setTimeout(() => { t._grms = {key, txt: this._grmsTxt(ch, a, b)}; this.invalidate(); }, 150); return c.txt;
     }
     t._grms = {key, txt: this._grmsTxt(ch, a, b)}; return t._grms.txt;

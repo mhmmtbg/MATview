@@ -35,6 +35,13 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.4', d: 'Kod sekmesi (MATLAB alt kümesi), figür/subplot, hızlı yakınlaştırma', items: [
+    'Yeni: Kod görünümü — MATLAB alt kümesini çalıştırır (matris/karmaşık sayı, hücre, yapı, işlev tutamacı, if/for/while/switch/try, yerel işlevler). MATLAB kurulumu gerekmez; kod arka plan işçisinde çalışır, Durdur düğmesi vardır. Betikler .m olarak açılıp kaydedilir (sürükle-bırak da olur), tarayıcıda kitaplığa kaydedilir, örnek betikler hazırdır.',
+    'Yeni: kanal köprüsü — ch(ad) kanalı sütun vektörü olarak alır, chfs(ad) örnekleme frekansı, cht(ad) zaman, chlist kanal listesi; addch(ad, y, fs) sonucu Türetilmiş kanallar altına ekler. load(\'dosya.mat\') açık .mat dosyalarından değişken okur.',
+    'Yeni: DSP — fft/ifft, filter, filtfilt, butter (alçak/yüksek/bant), pwelch, interp1, polyfit/polyval, detrend, xcorr, conv, hampel, medfilt1, mov* işlevleri, findpeaks, hilbert, trapz, cumtrapz ve ~300 temel işlev. butter/filter/fft/pwelch/polyfit sonuçları scipy/numpy ile 1e-9 düzeyinde karşılaştırılarak doğrulandı (filtfilt MATLAB gibi 3*(n-1) kenar uzatması kullanır).',
+    'Yeni: Figür görünümü — figure, subplot, plot, hold, xlabel/ylabel/title, legend, grid, xlim/ylim, semilogx/semilogy/loglog, bar, hist, stem, scatter. Her alt grafik yakınlaştırılıp gezilebilir; PNG kaydedilir.',
+    'Hız: büyük veride yakınlaştırma/kaydırma sırasındaki takılmalar giderildi — iki düzeyli min/max piramidi, istatistik ve Grms hesaplarının parça parça (eşzamansız) yapılması, daha hızlı Hampel.',
+    'Desteklenmeyenler (açık hata verir): toolbox işlevleri (spectrogram, designfilt, wavelet…), sınıflar/containers.Map, Simulink, arayüz işlevleri.']},
   {v: '2.3', d: 'Hampel, grafik değiştir, txt', items: [
     'Düzeltme: Hampel ile bulunan noktalar silinince çizgi kesik görünüyordu; silinen kısa boşluklar (20 örneğe kadar) artık çizgiyle köprülenir, NaN ve uzun silinmiş aralıklar çizgiyi keser. Hampel penceresi silinmiş/NaN örnekleri medyana katmaz.',
     'Yeni: kanal satırında ve sağ tık menüsünde Mevcut grafiği kaldırıp bunu çiz düğmesi (grup satırında tüm kanallar tek grafikte).',
