@@ -485,12 +485,14 @@ function drawTrace(ctx, tr, ax, P, T) {
     const Y = v => ax.ylog ? P.yPx(ax, v) : r.y + r.h - (v - y0) * ys, xs = r.w / (x1 - x0);
     const data = ch.data, del = ch.del;
     if (count <= 2 * W) {
-      ctx.beginPath(); let pen = false;
+      ctx.beginPath(); let pen = false, dRun = 0;   // silinen kısa boşluklar (≤20 örnek) çizgiyle köprülenir; NaN ve uzun silinmiş aralıklar çizgiyi keser
       for (let i = i0; i <= i1; i++) {
         const v = data[i];
-        if ((del && del[i]) || !isFinite(v) || (ax.ylog && v <= 0)) { pen = false; continue; }
+        if (del && del[i]) { dRun++; continue; }
+        if (!isFinite(v) || (ax.ylog && v <= 0)) { pen = false; dRun = 0; continue; }
         const x = r.x + (ch.t(i) - x0) * xs, y = Y(v);
-        if (!pen) { ctx.moveTo(x, y); pen = true; if (i === i0 || true) { /* tek nokta için */ } } else ctx.lineTo(x, y);
+        if (!pen || dRun > 20) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
+        dRun = 0;
       }
       ctx.stroke();
       if (count < W / 3) { // az örnek: işaretçi

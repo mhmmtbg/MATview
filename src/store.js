@@ -10,6 +10,9 @@ function kindOf(full, rest) {
   const s = rest.toLowerCase();
   if (/_related$/.test(s)) return 'other';
   if (/cbit|_bit_|bit_|^tm/.test(s)) return 'state';
+  for (const t of s.split(/[_\s.\/]+/)) {   // önek olsa da (MEST_anak100_1_ts11_X) as/ts/ss/hs/bs/pbs/gs + sayı kısaltmaları
+    if (/^as\d/.test(t)) return 'ac'; if (/^ts\d/.test(t)) return 'vib'; if (/^(ss|hs)\d/.test(t)) return 'temp'; if (/^p?bs\d/.test(t)) return 'press'; if (/^gs\d/.test(t)) return 'strain';
+  }
   if (/^as\d/.test(s)) return 'ac';
   if (/^ts/.test(s)) return 'vib';
   if (/^(ss|hs)\d/.test(s)) return 'temp';

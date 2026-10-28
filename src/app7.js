@@ -1,8 +1,26 @@
 /* ===== CSV / Excel tablo içe aktarma + zaman serisi / özellik (regresyon) verisi ayrımı ===== */
 function parseCSV(text) {
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-  const head = text.split(/\r?\n/).filter(l => l.trim()).slice(0, 8); let delim = ',', bs = -1;
-  for (const d of [';', '\t', '|', ',']) { const c = head.map(l => l.split(d).length - 1); const sc = c[0] > 0 && c.every(x => x === c[0]) ? c[0] : (c[0] > 0 ? 0.5 : -1); if (sc > bs) { bs = sc; delim = d; } }
+  // .txt dışa aktarımları: # % // ile başlayan açıklama satırlarını ve veri bloğundan önceki giriş satırlarını (sütun sayısı farklı) at
+  let lines = text.split(/\r?\n/).filter(l => l.trim()), skipped = 0; const n0 = lines.length;
+  lines = lines.filter(l => !/^\s*(#|%|\/\/)/.test(l)); skipped += n0 - lines.length;
+  const sample = lines.slice(0, 400);
+  const cnt = (l, d) => d === 'ws' ? l.trim().split(/\s+/).length : l.split(d).length;
+  let delim = ',', bs = -1, mode = 1;
+  for (const d of [';', '\t', '|', ',', 'ws']) {
+    const c = sample.map(l => cnt(l, d)), fq = new Map(); for (const x of c) fq.set(x, (fq.get(x) || 0) + 1);
+    let mc = 1, mf = 0; for (const [k, v] of fq) if (k > 1 && v > mf) { mc = k; mf = v; }
+    const sc = sample.length ? mf / sample.length : 0; if (mf && sc > bs + 1e-9) { bs = sc; delim = d; mode = mc; }
+  }
+  // veri bloğunun başlangıcı: sütun sayısı modla eşleşen ilk satır (başlık dahil); öncesi giriş metni
+  let first = lines.findIndex(l => cnt(l, delim) === mode); if (first < 0) first = 0;
+  if (delim === 'ws' && first > 0) { /* başlık boşluklu sütun adları içerebilir: sayıdan önceki son satırı koru */ const prev = lines[first - 1]; if (prev && prev.trim().split(/\s{2,}|\t/).length === mode) first--; }
+  skipped += first; lines = lines.slice(first);
+  if (delim === 'ws') {
+    const rows = []; for (let i = 0; i < lines.length; i++) { const l = lines[i], t = l.trim(); let r = t.split(/\s+/); if (r.length !== mode) { if (i === 0 && t.split(/\s{2,}|\t/).length === mode) r = t.split(/\s{2,}|\t/); else { skipped++; continue; } } rows.push(r); }
+    return {rows, delim, skipped};
+  }
+  text = lines.join('\n');
   const rows = []; let row = [], cur = '', q = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -13,10 +31,11 @@ function parseCSV(text) {
     else cur += ch;
   }
   if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
-  return {rows, delim};
+  return {rows, delim, skipped};
 }
 async function readTextSmart(file) {
-  const buf = await file.arrayBuffer();
+  const buf = await file.arrayBuffer(), u = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+  if (u[0] === 0xFF && u[1] === 0xFE) return new TextDecoder('utf-16le').decode(buf); if (u[0] === 0xFE && u[1] === 0xFF) return new TextDecoder('utf-16be').decode(buf);
   try { return new TextDecoder('utf-8', {fatal: true}).decode(buf); } catch (e) { return new TextDecoder('windows-1254').decode(buf); }
 }
 const NUMRE = /^[-+]?(\d+([.,]\d*)?|[.,]\d+)([eE][-+]?\d+)?$/;
@@ -62,7 +81,7 @@ async function tableOpen(file, sheets) {
   const T = {name: file.name, si: 0};
   try {
     if (sheets) T.sheets = sheets; else if (/\.xlsx$/i.test(file.name)) T.sheets = await XLSX.read(file);
-    else { const p = parseCSV(await readTextSmart(file)); T.sheets = [{name: 'CSV', rows: p.rows}]; }
+    else { const p = parseCSV(await readTextSmart(file)); T.sheets = [{name: /\.txt$/i.test(file.name) ? 'TXT' : 'CSV', rows: p.rows}]; if (p.skipped) toast(`${fmtCnt(p.skipped)} açıklama/giriş satırı atlandı (ayraç: ${p.delim === 'ws' ? 'boşluk' : p.delim === '\t' ? 'sekme' : p.delim})`, 5000); }
     if (!T.sheets.length || !T.sheets.some(s => s.rows && s.rows.length > 1)) throw new Error('Dosyada veri satırı bulunamadı');
     T.si = Math.max(0, T.sheets.findIndex(s => s.rows && s.rows.length > 1)); analyzeSheet(T);
   } catch (e) { console.error(e); toast('Tablo okunamadı: ' + (e.message || e) + ' — .csv, .tsv, .txt veya .xlsx kullanın.', 9000); return; }

@@ -35,6 +35,12 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.3', d: 'Hampel, grafik değiştir, txt', items: [
+    'Düzeltme: Hampel ile bulunan noktalar silinince çizgi kesik görünüyordu; silinen kısa boşluklar (20 örneğe kadar) artık çizgiyle köprülenir, NaN ve uzun silinmiş aralıklar çizgiyi keser. Hampel penceresi silinmiş/NaN örnekleri medyana katmaz.',
+    'Yeni: kanal satırında ve sağ tık menüsünde Mevcut grafiği kaldırıp bunu çiz düğmesi (grup satırında tüm kanallar tek grafikte).',
+    'Telemetre kanalları artık türüne göre tanınır: önek olsa da as (akustik), ts (titreşim), ss/hs (sıcaklık), bs/pbs (basınç), gs (gerinim) kısaltmaları.',
+    'Metin (.txt) içe aktarma: boşluk, sekme, noktalı virgül ayraçları, # % // açıklama satırları, veri bloğundan önceki giriş satırları, ondalık virgül, UTF-16.',
+  ]},
   {v: '2.2', d: 'Telemetre çerçeve düzeni', items: [
     'Düzeltme: akış başlıkları (CRPA, KKS, TPS) bulunamıyordu — kayıt sütun öncelikli dizilmiş ve çerçeve başı satır sayacına denk geliyordu. Çerçeve düzeni bölümü eklendi: sütun x satır, sütun öncelikli (transpoze), kayma veya header (sync) ile çerçeve yakalama, sıkı sync, kayıttan sütun atma.',
     'Düzeni otomatik bul: Excel deki akış başlıklarından transpoze ve kaymayı oylama ile bulur, hangi akışta kaç paket çıktığını gösterir.',

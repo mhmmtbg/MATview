@@ -186,8 +186,10 @@ const DSP = (() => {
     const flags = [];
     for (let i = 0; i < n; i++) {
       if (del && del[i]) continue;
+      if (!isFinite(x[i])) continue;
       const a = Math.max(0, i - k), b = Math.min(n - 1, i + k); let m = 0;
-      for (let j = a; j <= b; j++) buf[m++] = x[j];
+      for (let j = a; j <= b; j++) if (!(del && del[j]) && isFinite(x[j])) buf[m++] = x[j];   // silinmiş / NaN örnekler medyanı bozmasın
+      if (m < 3) continue;
       const sub = buf.subarray(0, m); sub.sort();
       const med = sub[m >> 1];
       for (let j = 0; j < m; j++) dev[j] = Math.abs(sub[j] - med);

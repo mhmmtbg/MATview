@@ -104,7 +104,7 @@ function devMenu(f, dev, x, y) {
   ctxMenu(x, y, items);
 }
 function chMenu(c, x, y) {
-  const sel = chsFromSel(); ctxMenu(x, y, [{t: 'Seçili ' + sel.length + ' kanalı .mat olarak kaydet…', ic: 'download', fn: () => matSelExport(sel)}, '-', {t: 'Yeni alt grafiğe ekle', ic: 'plus', fn: () => addToNewAxes(sel.length > 1 ? sel : [c], false)}, {t: 'Aktif grafiğe aynı eksende ekle', ic: 'layers', fn: () => addToAxes(activeAxes(), sel.length > 1 ? sel : [c])}]);
+  const sel = chsFromSel(); ctxMenu(x, y, [{t: 'Seçili ' + sel.length + ' kanalı .mat olarak kaydet…', ic: 'download', fn: () => matSelExport(sel)}, '-', {t: 'Mevcut grafiği kaldırıp bunu çiz', ic: 'swap', fn: () => replacePlot(sel, sel.length > 1)}, {t: 'Yeni alt grafiğe ekle', ic: 'plus', fn: () => addToNewAxes(sel.length > 1 ? sel : [c], false)}, {t: 'Aktif grafiğe aynı eksende ekle', ic: 'layers', fn: () => addToAxes(activeAxes(), sel.length > 1 ? sel : [c])}]);
 }
 /* ---- Çıktı sekmesi kartı ---- */
 function buildMatCard() {

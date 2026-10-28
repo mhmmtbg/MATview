@@ -4,7 +4,7 @@ const IC = {
   bin: '<path d="M3 2h10v12H3zM6 5h1M9 5h1M6 8h1M9 8h1M6 11h1M9 11h1"/>', unv: '<path d="M2 14V9M5 14V4M8 14V7M11 14V2M14 14V8"/>',
   settings: '<path d="M2 4h8M12 4h2M2 8h2M6 8h8M2 12h6M10 12h4M10 2.5v3M4 6.5v3M8 10.5v3"/>', time: '<circle cx="8" cy="8" r="6"/><path d="M8 4v4l3 2"/>',
   mem: '<path d="M4 4h8v8H4zM6 1.5V4M10 1.5V4M6 12v2.5M10 12v2.5M1.5 6H4M1.5 10H4M12 6h2.5M12 10h2.5"/>',
-  layers: '<path d="M8 2l6 3-6 3-6-3zM2 8l6 3 6-3M2 11l6 3 6-3"/>', stack: '<path d="M2 2h12v5H2zM2 9h12v5H2z"/>',
+  swap: '<path d="M2 5h10M9 2l3 3-3 3M14 11H4M7 8l-3 3 3 3"/>', layers: '<path d="M8 2l6 3-6 3-6-3zM2 8l6 3 6-3M2 11l6 3 6-3"/>', stack: '<path d="M2 2h12v5H2zM2 9h12v5H2z"/>',
   kbd: '<path d="M1.5 4h13v8h-13zM4 7h1M7 7h1M10 7h1M4 9.5h8"/>', help: '<circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.3a1.9 1.9 0 113 1.5c-.8.5-1.2 1-1.2 1.8M8 11.6v.1"/>',
   theme: '<circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 010 11z" fill="currentColor"/>', check: '<path d="M3 8.5l3.5 3.5L13 4.5"/>',
   plus: '<path d="M8 3v10M3 8h10"/>', close: '<path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/>', trash: '<path d="M3 4h10M6 4V2h4v2M5 4l.5 10h5L11 4"/>',

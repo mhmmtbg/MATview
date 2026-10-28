@@ -142,7 +142,7 @@ async function frmOpen(file) {
     let maxSpp = 1, maxN = 0;
     for (const p of plan) {
       const dt = T / p.spp, nm = p.sheet + '/' + p.name, v = p.v, ns = v.stream ? streams.get(p.sheet + '\u0000' + v.stream).pos.length : frames;
-      const c = new Channel({name: nm, rest: p.name, base: p.name, comp: '', dev: p.sheet, kind: 'other', n: ns * p.spp, file: f, label: nm, varIdx: -1, bin: true, tbl: true, unit: ''});
+      const c = new Channel({name: nm, rest: p.name, base: p.name, comp: '', dev: p.sheet, kind: kindOf(p.sheet, p.name), n: ns * p.spp, file: f, label: nm, varIdx: -1, bin: true, tbl: true, unit: ''});
       c.dtS = dt; c.Tpkt = dt; c.t0 = 0; c.spp = 1; maxSpp = Math.max(maxSpp, p.spp); maxN = Math.max(maxN, frames * p.spp);
       c.binLoad = async () => {
         let r = await rawOf(p);

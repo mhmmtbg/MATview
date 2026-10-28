@@ -86,7 +86,7 @@ function renderTree() {
           const bk = dk + '/' + base, bo = filtering || S.open.has(bk);
           body.append(h('div', {class: 'trow', ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
             h('span', {class: 'twisty'}, bo ? '▼' : '▶'), kic(list[0].kind), h('span', {class: 'nm'}, hl(base)), h('span', {class: 'meta'}, list.length + ' kanal'),
-            h('button', {class: 'add', 'data-ic': 'stack', title: 'Her kanalı ayrı alt grafiğe ekle', onclick: e => { e.stopPropagation(); addToNewAxes(list, false); }}), h('button', {class: 'add', 'data-ic': 'layers', title: 'Hepsini tek (yeni) grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addGroup(list); }})));
+            h('button', {class: 'add', 'data-ic': 'stack', title: 'Her kanalı ayrı alt grafiğe ekle', onclick: e => { e.stopPropagation(); addToNewAxes(list, false); }}), h('button', {class: 'add', 'data-ic': 'layers', title: 'Hepsini tek (yeni) grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addGroup(list); }}), h('button', {class: 'add', 'data-ic': 'swap', title: 'Mevcut grafiği kaldırıp bu kanalları tek grafikte çiz', onclick: e => { e.stopPropagation(); replacePlot(list, true); }})));
           if (bo) for (const c of list) body.append(chRow(c, c.comp || c.rest, true));
         } else { if ((f.binary || f.unv) && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) body.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) body.append(chRow(c, c.rest, false)); }
       }
@@ -115,7 +115,8 @@ function chRow(c, label, sub) {
     title: c.name + '\n' + fmtCnt(c.n) + ' örnek · ' + fmtNum(c.fs, 6) + ' Hz' + chMM(c)},
     kic(c.kind), h('span', {class: 'nm'}, hl(label)), h('span', {class: 'meta'}, c.n >= 1e6 ? (c.n / 1e6).toFixed(1) + 'M' : c.n >= 1e3 ? (c.n / 1e3).toFixed(0) + 'k' : c.n),
     h('button', {class: 'add', 'data-ic': 'stack', title: 'Yeni alt grafik olarak ekle', onclick: e => { e.stopPropagation(); addToNewAxes([c]); }}),
-    h('button', {class: 'add', 'data-ic': 'layers', title: 'Aktif grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addToAxes(activeAxes(), [c]); }}));
+    h('button', {class: 'add', 'data-ic': 'layers', title: 'Aktif grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addToAxes(activeAxes(), [c]); }}),
+    h('button', {class: 'add', 'data-ic': 'swap', title: 'Mevcut grafiği kaldırıp yerine bunu çiz', onclick: e => { e.stopPropagation(); replacePlot([c]); }}));
   row._uid = c.uid; return row;
 }
 function chsFromSel() { const out = []; for (const f of allFiles()) for (const c of f.channels) if (S.selCh.has(c.uid)) out.push(c); return out; }
@@ -177,6 +178,7 @@ async function addToAxes(ax, chs) {
   const first = !S.plot.axes.length; for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax);
   switchView('time'); refreshAll(); await loadForPlot(chs, first);
 }
+function replacePlot(chs, one) { clearPlot(); S.plot.invalidate(); return addToNewAxes(chs, one); }
 const addGroup = list => addToNewAxes(list, true);
 async function loadForPlot(chs, fit) {
   await busy('Veri yükleniyor…', async prog => {
