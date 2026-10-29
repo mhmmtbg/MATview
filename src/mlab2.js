@@ -532,7 +532,7 @@
         case 'num': return [num(node.v)];
         case 'imag': return [ML.cplx(0, node.v)];
         case 'str': return [str(node.v)];
-        case 'paren': return [this.eval(node.a, sc)];
+        case 'paren': { if (nargout > 1 && (node.a.t === 'call' || node.a.t === 'id')) return this.evalMulti(node.a, sc, nargout); return [this.eval(node.a, sc)]; }   // [~,i] = (find(...)): MATLAB gibi çok çıktı geçer
         case 'id': {
           const n = node.n;
           if (this.hasVar(sc, n)) return [this.getVar(sc, n)];

@@ -111,27 +111,36 @@
     return no ? [gh(this, fo.id)] : [];
   };
   // arayüz olayı: nesnenin geri çağırma işlevi
-  ML.guiCallback = function (it, id, kind) {
+  ML.guiCallback = function (it, id, kind, evt) {
     const g = G(it), o = g.objs.get(id); if (!o || o.deleted) return;
     let fo = figOf(it, o), prop = kind || 'Callback', target = o;
     if (prop === 'SelectionChangedFcn') { const p = G(it).objs.get(o.parent); if (p && p.type === 'uibuttongroup') { target = p; } }
     let cb = target.props[prop] && !(target.props[prop] instanceof M && target.props[prop].re.length === 0) ? target.props[prop] : (prop === 'SelectionChangedFcn' ? target.props.SelectionChangeFcn : undefined);
     const prevO = g.cbo, prevF = g.cbf; g.cbo = id; g.cbf = fo ? fo.id : null; if (fo) it.curFig = fo.id;
+    const ev = evtValue(it, id, evt);
     try {
       if (cb && !(cb instanceof M && cb.re.length === 0)) {
-        if (isFH(cb)) return it.callFunctionValue(cb, [gh(it, id), empty()], 0);
-        if (isCell(cb)) return it.callFunctionValue(cb.v[0], [gh(it, id), empty(), ...cb.v.slice(1)], 0);
+        if (isFH(cb)) return it.callFunctionValue(cb, [gh(it, id), ev], 0);
+        if (isCell(cb)) return it.callFunctionValue(cb.v[0], [gh(it, id), ev, ...cb.v.slice(1)], 0);
         if (isChar(cb)) return ML.evalString(it, S(cb), it.base);
       }
       const t = S(target.props.Tag || str('')), main = fo && fo.guiName;
       if (main && t) {
         const fn = t + '_' + (prop === 'SelectionChangedFcn' ? 'SelectionChangedFcn' : prop);
         if (!it.funcs.has(fn)) { if (prop === 'Callback' && o.type === 'uicontrol' && /pushbutton|togglebutton|popupmenu|listbox|edit|checkbox|radiobutton|slider/.test(S(o.props.Style))) it.out(`(${fn} işlevi ${main}.m içinde bulunamadı)\n`, 'warn'); return; }
-        if (it.funcs.has(main)) return it.callNamed(main, [str(fn), gh(it, id), empty(), g.data.get(fo.id) || empty()], 0, 0, it.base);
-        return it.callNamed(fn, [gh(it, id), empty(), g.data.get(fo.id) || empty()], 0, 0, it.base);
+        if (it.funcs.has(main)) return it.callNamed(main, [str(fn), gh(it, id), ev, g.data.get(fo.id) || empty()], 0, 0, it.base);
+        return it.callNamed(fn, [gh(it, id), ev, g.data.get(fo.id) || empty()], 0, 0, it.base);
       }
     } finally { g.cbo = prevO; g.cbf = prevF; }
   };
+  // olay verisi (eventdata): uitable hücre seçimi → Indices (n×2, satır/sütun, 1 tabanlı) + Source
+  function evtValue(it, id, evt) {
+    if (!evt || !evt.Indices) return empty();
+    const ix = evt.Indices, n = ix.length, m = zeros(n, n ? 2 : 0); ix.forEach((rc, i) => { m.re[i] = rc[0]; m.re[i + n] = rc[1]; });
+    const q = Object.create(null); q.Indices = m; q.Source = gh(it, id); q.EventName = str('CellSelection');
+    const o = G(it).objs.get(id); if (o) o.selIdx = m;
+    return {sa: true, r: 1, c: 1, v: [q]};
+  }
   // ana iş parçacığından gelen değer güncellemesi (kullanıcı arayüzde değiştirdi)
   ML.guiSetFromUI = function (it, id, props) {
     const o = G(it).objs.get(id); if (!o) return;
@@ -287,7 +296,7 @@
     let filter = a.length && isChar(a[0]) ? S(a[0]) : a.length && isCell(a[0]) ? a[0].v.map(S).join(';') : '*.*'; const title = a.length > 1 ? S(a[1]) : 'Dosya seçin'; let multi = false;
     for (let i = 0; i + 1 < a.length; i++) if (isChar(a[i]) && S(a[i]).toLowerCase() === 'multiselect') multi = /on/i.test(S(a[i + 1]));
     const r = blocking(this, 'uigetfile', {filter, title, multi}, () => {
-      const pats = filter.split(/[;,]/).map(p => p.trim()).filter(Boolean).map(p => new RegExp('^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i'));
+      const pats = filter.split(/[;,]/).map(p => p.trim().replace(/^.*[\\/]/, '')).filter(Boolean).map(p => new RegExp('^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i'));
       const list = [...vfs(this).values()].filter(e => !pats.length || pats.some(re => re.test(e.name)));
       if (!list.length) E('MATLAB:uigetfile', `uigetfile: dosya seçme penceresi bu ortamda açılamıyor. Arayüzün üstündeki “Dosya ekle” ile (${filter}) dosyasını ekleyip düğmeye yeniden basın.`);
       return multi ? list.map(e => e.name) : [list[list.length - 1].name];
@@ -296,7 +305,9 @@
     const fn = multi && r.length > 1 ? {cell: true, r: 1, c: r.length, v: r.map(str)} : str(r[0]);
     return [fn, str(dirOf(this) + sepOf(this)), num(1)].slice(0, Math.max(1, no));
   };
-  B.uiputfile = function (a, no) { const def = a.length > 1 ? S(a[1]) : a.length && /^[^*]+\.\w+$/.test(S(a[0])) ? S(a[0]) : 'cikti.mat'; const r = blocking(this, 'uiputfile', {def}, () => def); if (r == null) return [num(0), num(0), num(0)].slice(0, Math.max(1, no)); return [str(base(r)), str(dirOf(this) + sepOf(this)), num(1)].slice(0, Math.max(1, no)); };
+  B.uiputfile = function (a, no) {   // uiputfile(filtre, başlık, varsayılanAd)
+    const flt = a.length && isChar(a[0]) ? S(a[0]) : '', ext = (/\*(\.\w+)/.exec(flt) || [])[1] || '.mat';
+    const def = a.length > 2 && isChar(a[2]) && S(a[2]) ? base(S(a[2])) : /^[^*]+\.\w+$/.test(flt) ? base(flt) : 'cikti' + ext; const r = blocking(this, 'uiputfile', {def}, () => def); if (r == null) return [num(0), num(0), num(0)].slice(0, Math.max(1, no)); return [str(base(r)), str(dirOf(this) + sepOf(this)), num(1)].slice(0, Math.max(1, no)); };
   B.uigetdir = function () { return str(dirOf(this)); };
   B.fullfile = a => { const parts = a.map(S).filter(Boolean); let s = parts.map((p, i) => i ? p.replace(/^[\\/]+/, '') : p).map((p, i, arr) => i < arr.length - 1 ? p.replace(/[\\/]+$/, '') : p).join('\\'); return str(s); };
   B.fileparts = (a, no) => { const p = S(a[0]), i = Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')), d = i >= 0 ? p.slice(0, i) : '', f = p.slice(i + 1), j = f.lastIndexOf('.'); return [str(d), str(j > 0 ? f.slice(0, j) : f), str(j > 0 ? f.slice(j) : '')].slice(0, Math.max(1, no)); };
@@ -389,13 +400,52 @@
   B.fprintf = function (a, no, sc) { if (a.length >= 2 && a[0] instanceof M && !isChar(a[0]) && a[0].re.length === 1 && a[0].re[0] >= 3) { const f = fidOf(this, a[0]); if (!f.write) E('MATLAB:fprintf', 'fprintf: dosya yazma kipinde açılmadı.'); const s = ML.sprintfImpl(S(a[1]), a.slice(2)); f.chunks.push(new TextEncoder().encode(s.replace(/\r?\n/g, '\r\n'))); return; } return origFprintf.call(this, a, no, sc); };
   B.fscanf = function (a) { const f = fidOf(this, a[0]); const b = readBytes(this, f.e, f.pos, f.size - f.pos); f.pos = f.size; const t = new TextDecoder('windows-1254').decode(b); const nums = (t.match(/[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?/g) || []).map(Number); return colv(nums); };
   B.textscan = function () { E('MATLAB:unsupported', 'textscan desteklenmiyor; fgetl ile satır satır okuyun ya da MATView “Aç ▸ Tablo” ile içe aktarın.'); };
+  // save / load / who -file: bu oturumda kaydedilen .mat dosyaları bellekte de tutulur (MATLAB'daki gibi hemen geri okunabilir)
+  const matKey = n => { n = base(String(n)).toLowerCase(); return /\.mat$/.test(n) ? n : n + '.mat'; };
+  const savedOf = (it, n) => it.savedMats && it.savedMats.get(matKey(n));
+  function matVars(it, nm) {   // ad → {değişken: değer} | null
+    const sv = savedOf(it, nm); if (sv) return sv;
+    const c = it.ctx; let v = c.loadMat && (c.loadMat(nm) || c.loadMat(base(nm)) || c.loadMat(matKey(nm))); if (v) return v;
+    if (c.loadMatRpc) { v = c.loadMatRpc(base(nm)) || (/\.mat$/i.test(nm) ? null : c.loadMatRpc(base(nm) + '.mat')); if (v) return v; }
+    return null;
+  }
+  ML.matVars = matVars;
+  const origSave = B.save;
+  B.save = function (a, no, sc) {
+    const c = this.ctx; if (!c.saveMat) return origSave.call(this, a, no, sc);
+    let nm = a.length ? S(a[0]) : 'matlab.mat'; if (!/\.mat$/i.test(nm)) nm += '.mat';
+    const rest = a.slice(1).map(S), flags = rest.filter(x => x.startsWith('-')).map(x => x.toLowerCase()), names = rest.filter(x => !x.startsWith('-'));
+    const vars = Object.create(null);
+    if (flags.includes('-struct')) {
+      const sn = names[0]; if (!sn || !sc.vars.has(sn)) E('MATLAB:save:couldNotFindVariable', `save: '-struct' için '${sn || ''}' yapısı bulunamadı.`);
+      const st = sc.vars.get(sn); if (!isSA(st) || st.v.length !== 1) E('MATLAB:save:notScalarStruct', "save: '-struct' ile verilen değişken tek elemanlı bir yapı olmalı.");
+      const fl = names.slice(1); for (const k of Object.keys(st.v[0])) if (!fl.length || fl.includes(k)) vars[k] = st.v[0][k];
+      for (const f of fl) if (!(f in st.v[0])) E('MATLAB:save:couldNotFindField', `save: yapıda '${f}' alanı yok.`);
+    } else {
+      const pats = names.map(p => new RegExp('^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'));
+      for (const p of names) if (!/\*/.test(p) && !sc.vars.has(p)) E('MATLAB:save:couldNotFindVariable', `save: '${p}' değişkeni bulunamadı.`);
+      for (const [k, v] of sc.vars) if (!pats.length || pats.some(re => re.test(k))) vars[k] = v;
+    }
+    if (flags.includes('-append')) { const old = savedOf(this, nm); if (old) for (const k in old) if (!(k in vars)) vars[k] = old[k]; }
+    for (const k in vars) { const v = vars[k]; if (v && v._o !== undefined) v._o = null; }   // sonradan yerinde değişmesin
+    (this.savedMats || (this.savedMats = new Map())).set(matKey(nm), vars);
+    c.saveMat(nm, vars); this.out(`'${base(nm)}' kaydedildi (${Object.keys(vars).length} değişken).\n`);
+  };
+  const fileWho = (it, a) => { const i = a.findIndex(x => isChar(x) && /^-file$/i.test(S(x))); if (i < 0) return null; const nm = a[i + 1] ? S(a[i + 1]) : ''; const vars = matVars(it, nm); if (!vars) E('MATLAB:whos:fileIsNotThere', `'${nm}' dosyası bulunamadı.`); const pats = a.filter((x, j) => j !== i && j !== i + 1).map(S); return {vars, names: Object.keys(vars).filter(k => !pats.length || pats.some(p => new RegExp('^' + p.replace(/\*/g, '.*') + '$').test(k)))}; };
+  const origWho = B.who, origWhos = B.whos;
+  B.who = function (a, no, sc) { const f = fileWho(this, a); if (!f) return origWho.call(this, a, no, sc); if (no >= 1) return {cell: true, r: f.names.length, c: 1, v: f.names.map(str)}; this.out(f.names.join('  ') + '\n'); };
+  B.whos = function (a, no, sc) {
+    const f = fileWho(this, a); if (!f) return origWhos.call(this, a, no, sc);
+    const tmp = {vars: new Map(f.names.map(k => [k, f.vars[k]]))}; return origWhos.call(this, [], no, tmp);
+  };
+  const origExist2 = B.exist; B.exist = function (a, no, sc) { if (a.length && isChar(a[0]) && /\.mat$/i.test(S(a[0])) && savedOf(this, S(a[0])) && !(a.length > 1 && /^(var|dir|builtin)$/i.test(S(a[1])))) return num(2); return origExist2.call(this, a, no, sc); };
   // load: VFS'teki .mat (ana iş parçacığı çözer)
   const origLoad = B.load;
   B.load = function (a, no, sc) {
+    if (a.length && isChar(a[0]) && savedOf(this, S(a[0]))) { const vars = savedOf(this, S(a[0])), want = a.slice(1).map(S).filter(x => !x.startsWith('-')); const o = Object.create(null); for (const k in vars) if (!want.length || want.includes(k)) o[k] = vars[k]; if (no >= 1) return {sa: true, r: 1, c: 1, v: [o]}; for (const k in o) this.setVar(sc, k, o[k]); return; }
     if (a.length && isChar(a[0])) { const nm = S(a[0]); const has = this.ctx.loadMat && (this.ctx.loadMat(nm) || this.ctx.loadMat(base(nm))); if (!has && this.ctx.loadMatRpc) { const vars = this.ctx.loadMatRpc(base(nm)); if (vars) { const want = a.slice(1).map(S).filter(x => !x.startsWith('-')); const o = Object.create(null); for (const k in vars) if (!want.length || want.includes(k)) o[k] = vars[k]; if (no >= 1) return {sa: true, r: 1, c: 1, v: [o]}; for (const k in o) this.setVar(sc, k, o[k]); return; } } if (!has && this.ctx.loadMat) { const v2 = this.ctx.loadMat(base(nm)); if (v2) { a = [str(base(nm)), ...a.slice(1)]; } } }
-    const r = origLoad.call(this, a, no, sc);
-    if (no < 1 && sc !== this.base && r === undefined) { /* origLoad taban çalışma alanına yazar; işlev içindeyse yerel alana da kopyala */ }
-    return r;
+    if (no < 1 && sc && sc !== this.base) { const r = origLoad.call(this, a, 1, sc); for (const k in r.v[0]) this.setVar(sc, k, r.v[0][k]); return; }   // işlev içinde: yerel çalışma alanına
+    return origLoad.call(this, a, no, sc);
   };
   /* ---------- eval / assignin / evalin ---------- */
   ML.evalString = function (it, src, sc, nargout) {
@@ -444,6 +494,12 @@
   B.remove = function (a) { const m = a[0]; if (!m || !m.map) E('MATLAB:remove', 'remove: containers.Map bekleniyordu.'); for (const k of isCell(a[1]) ? a[1].v : [a[1]]) m.m.delete(keyOf(m, k)); return m; };
   B.length = function (a, no) { if (a[0] && a[0].map) return num(a[0].m.size); return origLength.call(this, a, no); };
   const origIsobj = B.isobject; B.isobject = a => bool(!!(a[0] && (a[0].map || a[0].gh)));
+  B.datacursormode = function (a, no) {   // nesne döndürür: set(dcm,'UpdateFcn',@f) / getCursorInfo(dcm) çalışsın; imleç bilgisi boş
+    const g = G(this); let o = g.dcm; if (!o || o.deleted) { o = mkObj(this, 'datacursormode', 0, {Enable: str('off'), UpdateFcn: empty(), SnapToDataVertex: str('on'), DisplayStyle: str('datatip')}); g.dcm = o; }
+    for (const x of a) if (isChar(x) && /^(on|off|toggle)$/i.test(S(x))) o.props.Enable = str(/^on$/i.test(S(x)) ? 'on' : /^off$/i.test(S(x)) ? 'off' : (S(o.props.Enable) === 'on' ? 'off' : 'on'));
+    if (no >= 1) return gh(this, o.id);
+  };
+  B.getCursorInfo = function () { return {sa: true, r: 0, c: 1, v: [], fields: ['Target', 'Position', 'DataIndex']}; };
   for (const n of ['zoom', 'pan', 'datacursormode', 'linkaxes', 'brush', 'rotate3d', 'colorbar', 'colormap', 'box', 'axis_', 'shg', 'refresh', 'figure_', 'uisetcolor_']) if (!B[n]) B[n] = () => {};
   delete B.axis_; delete B.figure_; delete B.uisetcolor_;
 })(MLAB);
