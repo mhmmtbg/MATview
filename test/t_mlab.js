@@ -28,7 +28,7 @@ eq('sprintf vec','s=sprintf("%d,",[1 2 3]); disp(s)','1,2,3,');
 eq('try','try, error("myid:x","boom %d",3); catch e, disp(e.message); disp(e.identifier); end','boom 3 myid:x');
 eq('switch','x="a"; switch x, case "b", disp(1); case {"a","c"}, disp(2); end','2');
 eq('complex','z=3+4i; disp(abs(z))','5');
-eq('undefined','disp(foo(1))',"ERR:'foo' tanımsız: değişken ya da işlev bulunamadı (satır 1).");
+eq('undefined','disp(foo(1))',"ERR:'foo' tanımsız: değişken ya da işlev bulunamadı (satır 1). Kendi işlevinizse foo.m dosyasını da Kod sekmesinde açın; açık sekmelerdeki işlev ve betikler otomatik kullanılır.");
 eq('idx0','a=1:3; a(0)','ERR:Dizin pozitif tamsayı olmalı: 0 geçersiz (MATLAB dizinleri 1\'den başlar).');
 eq('dim','[1 2 3]+[1 2]','ERR:Matris boyutları uyuşmuyor (1×3 ile 1×2).');
 eq('bcast','a=[1 2 3]+[10;20]; disp(a)','11 12 13 21 22 23');
