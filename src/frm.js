@@ -76,6 +76,28 @@ const FRM = (() => {
     const at = []; for (const v of vals) { let r = c.fn(0, [], v); if (typeof r !== 'number' || !Number.isFinite(r) || r < 0) return {error: `Tekrar ifadesi ${m[1]}=${v} için geçerli sayı vermedi`}; r = +r.toPrecision(12); const byte = Math.floor(r), bit = Math.round((r - byte) * 10); if (bit > 7) return {error: `${m[1]}=${v} için index ${r} geçersiz`}; at.push({val: v, byte, bit}); }
     return {rep: {v: m[1], at}};
   }
+  /* ---- Çerçeve_Ayarları sayfası: Ayar | Değer satırları → düzen ayarları (yoksa null) ---- */
+  const isSettingsSheet = sh => /^(cerceveayar|cerceveayarlari|frameayar|framesettings|ayarlar|settings|duzen|cerceveduzeni)$/.test(fold(sh && sh.name));
+  function settings(sheets) {
+    const sh = (sheets || []).find(isSettingsSheet); if (!sh) return null;
+    const o = {}, bad = [], yes = v => /^(1|evet|yes|true|var|acik|on)$/.test(fold(v));
+    for (const r of (sh.rows || []).slice(1)) {
+      const k = fold(r && r[0]), v = r ? r[1] : null; if (!k || v == null || v === '') continue;
+      if (/^(sutun|sutunsayisi|cols|columns)$/.test(k)) o.cols = num(v) | 0;
+      else if (/^(satir|satirsayisi|rows)$/.test(k)) o.rows = num(v) | 0;
+      else if (/^(sutunoncelikli|transpoze|transpose|columnmajor)$/.test(k)) o.transpose = yes(v);
+      else if (/^(senkron|senkronhex|sync|synchex|header|baslik)$/.test(k)) { try { parseHex(v); o.header = str(v); } catch (e) { bad.push(String(r[0])); } }
+      else if (/^(senkronkonumu|synckonumu|syncposition|headerpos|baslikkonumu)$/.test(k)) o.headerPos = /^(son|end|sonda|sonunda)$/.test(fold(v)) ? 'end' : 'start';
+      else if (/^(indextabani|indexbase|tabani)$/.test(k)) o.indexBase = num(v) === 1 ? 1 : 0;
+      else if (/^(kareperiyodums|kareperiyodu|periyotms|framems|ms)$/.test(k)) o.ms = num(v);
+      else if (/^(kayma|kaymabayt|atlanacakbayt|skip|shift)$/.test(k)) o.skip = Math.max(0, num(v) | 0);
+      else if (/^(atilansutunlar|droplist|drop)$/.test(k)) o.dropList = str(v);
+      else if (/^(kayittakitoplamsutun|droptotal)$/.test(k)) o.dropTotal = num(v) | 0;
+      else if (/^(siki|strict|sikisenkron)$/.test(k)) o.strict = yes(v);
+      else bad.push(String(r[0]));
+    }
+    return {name: String(sh.name), set: o, unknown: bad};
+  }
   function isFrameBook(sheets) { return (sheets || []).some(sh => { const f = ((sh.rows && sh.rows[0]) || []).map(fold); return f.includes('index') && f.includes('degisken') && f.includes('tip'); }); }
 
   /* ---- Excel → tanım ---- */
@@ -86,6 +108,7 @@ const FRM = (() => {
     for (const sh of sheets) {
       const rows = sh.rows || [], hd = (rows[0] || []).map(fold), col = {};
       hd.forEach((h, i) => { const k = HC[h] || (h.startsWith('ornek') ? 'samples' : null); if (k && !(k in col)) col[k] = i; });
+      if (isSettingsSheet(sh)) continue;
       if (!('index' in col) || !('name' in col) || !('type' in col)) { if (rows.some(r => (r || []).some(v => v != null && v !== ''))) W('warn', String(sh.name).trim(), 0, 'Sayfa atlandı: başlık satırında Index / Değişken / Tip sütunları yok'); continue; }
       const SN = String(sh.name).trim(), g = (r, k) => k in col ? r[col[k]] : null, defs = [];
       /* 1. geçiş: satırlar */
@@ -367,6 +390,6 @@ const FRM = (() => {
     return res.sort((a, b) => b.hit - a.hit || b.exact - a.exact || b.packets - a.packets);
   }
   function frameInfo(size, L, skip) { const body = Math.max(0, size - (skip | 0)); return {frames: Math.floor(body / L), rest: body % L}; }
-  return {layout, parseCols, createScanner, locate, gather, slotOf, autoLayout, parse, parseType, parseIndex, parseHex, compile, isFrameBook, coverage, plan, extractFrames, streamScan, streamPackets, applyFormula, compact, frameInfo, fold, MAXSEP, spans};
+  return {settings, isSettingsSheet, layout, parseCols, createScanner, locate, gather, slotOf, autoLayout, parse, parseType, parseIndex, parseHex, compile, isFrameBook, coverage, plan, extractFrames, streamScan, streamPackets, applyFormula, compact, frameInfo, fold, MAXSEP, spans};
 })();
 if (typeof module !== 'undefined') module.exports = FRM;

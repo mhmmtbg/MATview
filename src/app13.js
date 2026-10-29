@@ -354,7 +354,7 @@ function codeWorkerSrc() {
       cur = Object.assign({}, cur || {chans: {}, names: [], mats: {}}); added = []; saved = []; total = 0; pend = ''; pendKind = 'o';
       it.ctx = mkCtx(); it.out = out; it.stop = false; it.deadline = Date.now() + 3600000;
       let err = null;
-      try { if (d.props) MLAB.guiSetFromUI(it, d.oid, d.props); MLAB.guiCallback(it, d.oid, d.kind); } catch (e) { err = errOf(e, 0); }
+      try { if (d.props) MLAB.guiSetFromUI(it, d.oid, d.props); MLAB.guiCallback(it, d.oid, d.kind, d.props && d.props.Indices ? {Indices: d.props.Indices} : null); } catch (e) { err = errOf(e, 0); }
       finish(d, err); return;
     }
     cur = d; added = []; saved = []; total = 0; pend = ''; pendKind = 'o';
@@ -406,7 +406,7 @@ async function codeFinish(m) {
   } else { CODE.errLine = 0; if (codeDoc()) codeDoc().errLine = 0; codeRefreshEd(); }
   CODE.ws = m.ws || []; codeRenderWs();
   if (m.added && m.added.length) { let n = 0; for (const a of m.added) { const src = CODE.srcFor && CODE.srcFor.find(c => c.n === a.y.length); const c = addDerived(cleanName(a.n), a.y, null); if (src && src.n === a.y.length && Math.abs(src.fs - a.fs) < 1e-9 * Math.max(1, a.fs)) c.copyTiming(src); else { c.g = null; c.t0 = 0; c.dtS = 1 / a.fs; } if (src && src.unit) c.unit = src.unit; n++; } toast(n + ' kanal eklendi (Türetilmiş kanallar)'); }
-  for (const sv of m.saved || []) { if (typeof wspWriteOut === 'function' && wspCanWrite()) { const fn = sv.name.split(/[\\/]/).pop(); if (await wspWriteOut(fn, mlWriteMat(sv.trees))) { if (sv.skipped.length) codeOut(`Uyarı: ${sv.name} içine yazılamayan değerler atlandı: ${sv.skipped.slice(0, 8).join(', ')}\n`, 'warn'); continue; } } try { const fn = sv.name.split(/[\\/]/).pop(), a = document.createElement('a'); a.href = URL.createObjectURL(mlWriteMat(sv.trees)); a.download = fn; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); codeOut(`${fn} indirildi (tarayıcının İndirilenler klasörü).\n`, 'warn'); if (sv.skipped.length) codeOut(`Uyarı: ${sv.name} içine yazılamayan değerler atlandı: ${sv.skipped.slice(0, 8).join(', ')}${sv.skipped.length > 8 ? '…' : ''} (işlev tutamacı vb.)\n`, 'warn'); } catch (e) { codeOut('Kaydedilemedi: ' + e.message + '\n', 'err'); } }
+  for (const sv of m.saved || []) await codeSavedMat(sv);
   if (m.figs) { CODE.figs = m.figs; CODE.figIdx = Math.max(0, m.figs.findIndex(f => f.id === m.curFig)); const fb = document.querySelector('#viewtabs button[data-v=fig]'); if (fb) fb.classList.toggle('hidden', !m.figs.length); if (m.figs.length && CODE.figsTouched) switchView('fig'); }
   CODE.figsTouched = false;
   guiAfterRun();
@@ -417,6 +417,20 @@ function codeStop() {
   else if (CODE.mainIt) CODE.mainIt.stop = true;
 }
 function codeReset() { if (CODE.running) return toast('Önce çalışmayı durdurun'); if (CODE.worker) CODE.worker.postMessage({t: 'reset'}); CODE.mainIt = null; CODE.ws = []; CODE.figs = []; const fb = document.querySelector('#viewtabs button[data-v=fig]'); if (fb) fb.classList.add('hidden'); codeRenderWs(); codeOut('Çalışma alanı temizlendi.\n', 'warn'); }
+/* ---------- koddan kaydedilen .mat: klasöre yaz / indir / bellekte tut ---------- */
+// save('ad.mat') yalnız adla (dizin yok) ve yazılabilir klasör yoksa: indirme yağmuru olmasın diye bellekte tutulur (load/who -file aynı oturumda okur), konsolda “indir” bağlantısı verilir.
+// Dizinli ad (uiputfile + fullfile gibi) ya da klasör açık: dosyaya yazılır / indirilir.
+async function codeSavedMat(sv) {
+  const fn = sv.name.split(/[\\/]/).pop(), explicit = /[\\/]/.test(sv.name), warnSk = () => { if (sv.skipped.length) codeOut(`Uyarı: ${fn} içine yazılamayan değerler atlandı: ${sv.skipped.slice(0, 8).join(', ')}${sv.skipped.length > 8 ? '…' : ''} (işlev tutamacı vb.)\n`, 'warn'); };
+  let blob; try { blob = mlWriteMat(sv.trees); } catch (e) { codeOut('Kaydedilemedi: ' + e.message + '\n', 'err'); return; }
+  CODE.matFiles.set(fn.toLowerCase(), sv.trees);
+  if (typeof wspWriteOut === 'function' && wspCanWrite()) { if (await wspWriteOut(fn, blob)) { warnSk(); return; } }
+  const dl = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fn; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); };
+  if (explicit) { dl(); codeOut(`${fn} indirildi (tarayıcının İndirilenler klasörü).\n`, 'warn'); warnSk(); return; }
+  const o = $('#codeOut');
+  if (o) { o.append(h('span', {class: 'cwarn'}, `${fn} bu oturumda bellekte tutuluyor (load / who -file okur). `), h('button', {class: 'mini noic', title: fn + ' dosyasını indir', onclick: dl}, 'indir'), h('span', {class: 'cwarn'}, ' · Dosyaya yazmak için soldaki Klasör panelinden bir klasör açın.\n')); const c = o.parentElement; if (c) c.scrollTop = c.scrollHeight; }
+  warnSk();
+}
 /* ---------- .mat dosyalarını çalışma alanına yükleme ---------- */
 CODE.matFiles = new Map();   // ad → ağaç listesi (load('ad') için)
 async function matTrees(m, fname) {
@@ -646,6 +660,7 @@ function guiRenderBar() {
     btn('Kapat', () => { const f = G.figs[G.cur]; if (!f) return; if (CODE.running) return toast('İşlem sürüyor'); codeGuiEvent(null, null, null, `close(${f.id})`); }), fin);
 }
 function guiUpdate(figs) {
+  if (!figs.length && CODE.gui.tsel) CODE.gui.tsel.clear();
   const G = CODE.gui, prev = G.figs; guiEnsureView();
   // eksen izleri yalnız değiştiğinde gelir: önceki izleri koru
   for (const f of figs) { const p = prev.find(x => x.id === f.id); for (const a of f.axes) if (a.traces == null) { const pa = p && p.axes.find(x => x.oid === a.oid); a.traces = pa ? pa.traces : []; a.same = !!pa; } }
@@ -702,7 +717,7 @@ function guiBuild(stage, f, byId, fo, W, H) {
       else el = h('div', {class: 'gc gframe', style: sty});
       function fireSel(v) { const par = byId.get(o.parent); if (par && par.type === 'uibuttongroup') codeGuiEvent(o.id, 'SelectionChangedFcn', {Value: [v]}); else fire({Value: [v]}); }
     } else return;
-    el.dataset.oid = o.id; parentEl.append(el); G.els.set(o.id, {el, o, inner});
+    el.dataset.oid = o.id; if (o.props && o.props.Tag) el.dataset.tag = String(o.props.Tag); parentEl.append(el); G.els.set(o.id, {el, o, inner});
     const kidsEl = inner || el, cw = r[2], ch = inner ? Math.max(2, r[3] - fpx * 0.9) : r[3];
     for (const c of o.children.slice().reverse()) { const k = byId.get(c); if (k) place(k, kidsEl, cw, ch); }
   };
@@ -735,7 +750,23 @@ function guiTable(el, o) {
   const cn = p.ColumnName === 'numbered' || p.ColumnName == null ? Array.from({length: nC}, (_, i) => String(i + 1)) : guiLines(p.ColumnName);
   const rn = p.RowName === 'numbered' || p.RowName == null ? data.map((_, i) => String(i + 1)) : guiLines(p.RowName);
   const fmt = x => typeof x === 'number' ? (Number.isInteger(x) ? String(x) : (+x.toPrecision(6)).toString()) : typeof x === 'boolean' ? (x ? '☑' : '☐') : String(x);
-  el.replaceChildren(h('table', null, h('tr', null, h('th'), ...cn.slice(0, Math.max(nC, cn.length)).map(c => h('th', null, c))), ...data.slice(0, 2000).map((r, i) => h('tr', null, h('th', null, rn[i] || ''), ...r.map(x => h('td', null, fmt(x)))))));
+  const TS = CODE.gui.tsel || (CODE.gui.tsel = new Map()); if (!TS.has(o.id)) TS.set(o.id, {sel: [], anchor: null});   // seçim, arayüz yeniden kurulsa da korunur
+  const st = TS.get(o.id), sel = st.sel; if (sel.some(q => q[0] > data.length)) sel.length = 0;
+  const on = (i, j) => sel.some(q => q[0] === i + 1 && q[1] === j + 1);
+  el.replaceChildren(h('table', null, h('tr', null, h('th'), ...cn.slice(0, Math.max(nC, cn.length)).map(c => h('th', null, c))), ...data.slice(0, 2000).map((r, i) => h('tr', null, h('th', null, rn[i] || ''), ...r.map((x, j) => h('td', {class: on(i, j) ? 'gsel' : null, 'data-r': i + 1, 'data-c': j + 1}, fmt(x)))))));
+  if (!el._selBound) {   // hücre seçimi: tık = tek, Ctrl = ekle/çıkar, Shift = aralık → CellSelectionCallback (eventdata.Indices)
+    el._selBound = true;
+    el.addEventListener('mousedown', e => {
+      const td = e.target.closest('td[data-r]'); if (!td) return; e.preventDefault();
+      const r = +td.dataset.r, c = +td.dataset.c, ST = CODE.gui.tsel.get(el._oid), S = ST.sel;
+      if (e.shiftKey && ST.anchor) { const [r0, c0] = ST.anchor; S.length = 0; for (let i = Math.min(r0, r); i <= Math.max(r0, r); i++) for (let j = Math.min(c0, c); j <= Math.max(c0, c); j++) S.push([i, j]); }
+      else if (e.ctrlKey || e.metaKey) { const k = S.findIndex(q => q[0] === r && q[1] === c); if (k >= 0) S.splice(k, 1); else S.push([r, c]); ST.anchor = [r, c]; }
+      else { S.length = 0; S.push([r, c]); ST.anchor = [r, c]; }
+      for (const t of el.querySelectorAll('td[data-r]')) t.classList.toggle('gsel', S.some(q => q[0] === +t.dataset.r && q[1] === +t.dataset.c));
+      if (el._oid != null) codeGuiEvent(el._oid, 'CellSelectionCallback', {Indices: S.map(q => q.slice())});
+    });
+  }
+  el._oid = o.id;
 }
 function guiAxes(a) {
   const G = CODE.gui, rec = G.els.get(a.oid); if (!rec) return; const cv = rec.el.querySelector('canvas');
@@ -813,14 +844,17 @@ function guiAsk(title, defs, prompts) {
   return new Promise(res => { modal(title, h('div', {style: 'min-width:320px'}, ...ins.flatMap((inp, i) => [h('div', {class: 'note', style: 'margin-top:6px'}, prompts[i] || ''), inp])), [{t: 'Tamam', primary: true, fn: () => res(ins.map(x => x.value))}, {t: 'Vazgeç', fn: () => res(null)}]); $('#mclose').onclick = () => { $('#modal').classList.add('hidden'); res(null); }; setTimeout(() => ins[0] && ins[0].focus(), 50); });
 }
 function guiPickFile(p) {
-  const pats = String(p.filter || '*.*').split(/[;,]/).map(x => x.trim()).filter(Boolean);
+  const pats = String(p.filter || '*.*').split(/[;,]/).map(x => x.trim().replace(/^.*[\\/]/, '')).filter(Boolean);   // 'C:\\yol\\*.binary' → '*.binary'
   const re = pats.map(x => new RegExp('^' + x.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i'));
   const known = [...CODE.vfs.values()].filter(f => re.some(r => r.test(f.name)));
+  const inFolder = typeof WSP !== 'undefined' && WSP.mode ? WSP.items.filter(it => !it.dir && re.some(r => r.test(it.name)) && !known.some(f => f.name.toLowerCase() === it.name.toLowerCase())) : [];
   return new Promise(res => {
     let done = false; const fin = v => { if (!done) { done = true; res(v); } };
     const inp = h('input', {type: 'file', multiple: !!p.multi, accept: pats.filter(x => /^\*\.\w+$/.test(x)).map(x => x.slice(1)).join(','), onchange: e => { const fs = [...e.target.files]; if (!fs.length) return; for (const f of fs) CODE.vfs.set(f.name, f); $('#modal').classList.add('hidden'); guiRenderBar(); fin(fs.map(f => f.name)); }});
     const list = known.length ? h('div', {style: 'margin-top:8px'}, h('div', {class: 'note'}, 'Daha önce eklenenler:'), ...known.map(f => h('button', {style: 'display:block;margin:3px 0', onclick: () => { $('#modal').classList.add('hidden'); fin([f.name]); }}, f.name + ' (' + fmtCnt(f.size) + ' bayt)'))) : null;
-    modal(p.title || 'Dosya seçin', h('div', {style: 'min-width:340px'}, h('div', {class: 'note'}, 'Filtre: ' + pats.join('; ')), h('div', {style: 'margin-top:8px'}, btn('Bilgisayardan seç…', () => inp.click(), 'primary')), list, inp), [{t: 'Vazgeç', fn: () => fin(null)}]);
+    const pickF = async it => { $('#modal').classList.add('hidden'); const f = await busy('Okunuyor: ' + it.name, () => wspGetFile(it.name)); if (!f) { toast('Okunamadı: ' + it.name); fin(null); return; } CODE.vfs.set(f.name, f); codeVfsPush(f.name, f); guiRenderBar(); fin([f.name]); };
+    const fl = inFolder.length ? h('div', {style: 'margin-top:8px'}, h('div', {class: 'note'}, 'Çalışma klasöründe (' + wspDir() + '):'), h('div', {style: 'max-height:40vh;overflow:auto'}, ...inFolder.slice(0, 300).map(it => h('button', {class: 'noic', style: 'display:block;margin:3px 0;text-align:left', onclick: () => pickF(it)}, it.name + (it.size != null ? '  (' + wspFmtSize(it.size) + ')' : ''))))) : null;
+    modal(p.title || 'Dosya seçin', h('div', {style: 'min-width:340px'}, h('div', {class: 'note'}, 'Filtre: ' + pats.join('; ')), fl, h('div', {style: 'margin-top:8px'}, btn('Bilgisayardan seç…', () => inp.click(), inFolder.length ? '' : 'primary')), list, inp), [{t: 'Vazgeç', fn: () => fin(null)}]);
     $('#mclose').onclick = () => { $('#modal').classList.add('hidden'); fin(null); };
   });
 }

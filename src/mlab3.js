@@ -216,7 +216,15 @@
     if (no >= 2) return [mk(ix.map(i => i % m.r + 1)), mk(ix.map(i => Math.floor(i / m.r) + 1))]; return mk(ix.map(i => i + 1));
   };
   B.unique = function (a, no) {
-    const x = a[0]; if (isCell(x)) { const strs = Array.from(new Set(x.v.map(S))).sort(); return {cell: true, r: strs.length, c: 1, v: strs.map(str)}; }
+    const x = a[0]; if (isCell(x)) {   // hücre dizisi: sıralı (varsayılan) ya da 'stable'; satır girişte satır çıkış; [C, ia, ic]
+      const isC = o => o instanceof M && o.t === 'c', stable = a.slice(1).some(o => isC(o) && S(o).toLowerCase() === 'stable'), lastO = a.slice(1).some(o => isC(o) && S(o).toLowerCase() === 'last');
+      const all = x.v.map(S), firstIx = new Map(), lastIx = new Map(); all.forEach((t, i) => { if (!firstIx.has(t)) firstIx.set(t, i); lastIx.set(t, i); });
+      let strs = [...firstIx.keys()]; if (!stable) strs.sort((p, q) => p < q ? -1 : p > q ? 1 : 0);
+      const row = x.r === 1 && x.c > 1, pos = new Map(strs.map((t, i) => [t, i + 1])), mk = arr => row ? rowv(arr) : colv(arr);
+      const C = {cell: true, r: row ? 1 : strs.length, c: row ? strs.length : 1, v: strs.map(str)};
+      if (no <= 1) return C;
+      return [C, colv(strs.map(t => (lastO ? lastIx : firstIx).get(t) + 1)), colv(all.map(t => pos.get(t)))].slice(0, no);
+    }
     const m = mat(x); const pairs = Array.from(m.re, (v, i) => [v, i]).sort((p, q) => p[0] - q[0] || p[1] - q[1]); const vals = [], first = [], last = []; const inv = new Float64Array(m.re.length);
     for (const [v, i] of pairs) { if (!vals.length || vals[vals.length - 1] !== v) { vals.push(v); first.push(i); last.push(i); } else last[last.length - 1] = i; inv[i] = vals.length; }
     const row = m.r === 1 && m.c > 1; const mk = arr => row ? rowv(arr, m.t) : colv(arr, m.t);

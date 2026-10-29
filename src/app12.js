@@ -15,9 +15,17 @@ function frmPersist(on) {
 async function frmLoadExcel(file) {
   try {
     const sheets = await XLSX.read(file), src = sheets.map(x => ({name: x.name, rows: (x.rows || []).map(r => (r || []).slice(0, 12).map(v => v == null ? null : v))}));
-    const def = FRM.parse(src, Object.assign({}, FS.opt, {frameBytes: (FS.lay.cols | 0) * (FS.lay.rows | 0)})); FS.src = src; FS.def = def; FS.name = file.name; FS.perm = false;
+    const cs = FRM.settings(src); let csMsg = '';
+    if (cs) {   // Excel'deki Çerçeve_Ayarları sayfası düzeni belirler
+      const o = cs.set, y = FS.lay;
+      for (const k of ['cols', 'rows', 'transpose', 'header', 'headerPos', 'dropList', 'dropTotal', 'strict']) if (o[k] !== undefined) y[k] = o[k];
+      if (o.header === undefined && (o.cols || o.transpose !== undefined)) y.header = '';
+      if (o.indexBase !== undefined) FS.opt.indexBase = o.indexBase; if (o.ms > 0) FS.ms = o.ms; if (o.skip !== undefined) FS.skip = o.skip; else if (o.header) FS.skip = 0;
+      csMsg = ` · düzen “${cs.name}” sayfasından: ${y.cols}×${y.rows}, ${y.transpose ? 'sütun öncelikli' : 'satır öncelikli'}${y.header ? ', senkron ' + y.header + (y.headerPos === 'end' ? ' (sonda)' : ' (başta)') : ', kayma ' + FS.skip}` + (cs.unknown.length ? ` (tanınmayan ayar: ${cs.unknown.join(', ')})` : '');
+    }
+    const def = FRM.parse(src, Object.assign({}, FS.opt, {frameBytes: (FS.lay.cols | 0) * (FS.lay.rows | 0)})); FS.src = src; FS.def = def; FS.name = file.name; FS.perm = false; FS.csMsg = csMsg; FS.autoMsg = csMsg ? 'Düzen Excel’deki ayar sayfasından alındı' + csMsg.replace(/^ · düzen “[^”]*” sayfasından/, '') + '.' : FS.autoMsg;
     const err = def.warns.filter(w => w.lvl === 'err').length, wr = def.warns.filter(w => w.lvl === 'warn').length;
-    toast(`${file.name}: ${def.sheets.length} alt sistem, ${fmtCnt(def.sheets.reduce((s, x) => s + x.vars.length, 0))} değişken` + (err ? ` · ${err} hata` : '') + (wr ? ` · ${wr} uyarı` : ''), 6000);
+    toast(`${file.name}: ${def.sheets.length} alt sistem, ${fmtCnt(def.sheets.reduce((s, x) => s + x.vars.length, 0))} değişken` + (err ? ` · ${err} hata` : '') + (wr ? ` · ${wr} uyarı` : '') + csMsg, csMsg ? 9000 : 6000);
     return true;
   } catch (e) { console.error(e); toast('Çerçeve Excel\'i okunamadı: ' + (e.message || e), 9000); return false; }
 }
@@ -93,7 +101,7 @@ function frmDialog(pre) {
 async function frmAuto() {
   if (!FS.def) throw new Error('Önce çerçeve Excel\'ini seçin'); if (!FS.bin) throw new Error('Önce binary dosya seçin');
   const n = Math.min(FS.bin.size, 8 << 20), u8 = new Uint8Array(await FS.bin.slice(0, n).arrayBuffer()), r = FRM.autoLayout(u8, FS.def, {cols: FS.lay.cols, rows: FS.lay.rows});
-  if (!r.length || !r[0].hit) { FS.autoMsg = 'Akış başlıkları hiçbir düzende bulunamadı. Excel\'deki "Undersample Header" değerlerini, sütun/satır sayısını ve Index tabanını kontrol edin.'; return; }
+  if (!r.length || !r[0].hit) { FS.autoMsg = 'Akış başlıkları hiçbir düzende bulunamadı. Excel\'deki "Undersample Header" değerlerini, sütun/satır sayısını ve Index tabanını kontrol edin. Akış başlığı olmayan çerçevelerde düzeni Excel\'e “Cerceve_Ayarlari” sayfası ekleyerek (Sütun sayısı, Satır sayısı, Sütun öncelikli, Senkron (hex), Senkron konumu, Kayma) ya da aşağıdaki alanlardan elle verin.'; return; }
   const b = r[0]; FS.lay.transpose = b.transpose; FS.lay.header = ''; FS.skip = b.shift;
   FS.autoMsg = `Önerilen düzen uygulandı: ${b.transpose ? 'sütun öncelikli' : 'satır öncelikli'}, kayma ${b.shift} bayt (satır ${b.row}, sütun ${b.col}); ${b.total} akıştan ${b.hit}'inde başlık bulundu (` + b.per.map(x => `${x.unit}: ${x.packets}`).join(', ') + ` paket, ilk ${fmtCnt(Math.min(400, Math.floor(u8.length / (FS.lay.cols * FS.lay.rows))))} kare).`;
   if (FS.perm) frmPersist(true);

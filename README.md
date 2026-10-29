@@ -25,7 +25,26 @@ MATLAB'daki *Current Folder* gibi çalışır. Sol paneldeki **Veri / Klasör** 
 - **Dosyalar:** çift tık ya da Enter — `.mat` kanalları açar (Kod görünümündeyken çalışma alanına yükler), `.bin` Excel çerçeveyle çözme penceresini açar, `.m` düzenleyicide açılır, `.fig` arayüz önizlemesi. Sağ tık menüsünde diğer seçenekler; dosyayı grafiğe ya da editöre sürükleyebilirsiniz.
 - **Kodla birlikte:** klasördeki `.m` işlevleri ve betikleri adlarıyla çağrılır (MATLAB yolu gibi), `load('veri.mat')`, `fopen('ham.bin')` klasörden okur; `pwd`, `cd alt`, `cd ..`, `dir`, `ls`, `exist`, `isfile`, `isfolder` klasörü görür. Yazılabilir klasörde `save`, `fwrite` çıktıları ve **Kaydet (Ctrl+S)** doğrudan klasöre yazılır.
 - **Kod sekmeleri:** sekme çubuğundaki “Tümünü kapat” ya da sekmeye sağ tık → Kapat / Diğerlerini kapat / Sağdakileri kapat / Tümünü kapat. Kaydedilmemiş sekmeler tek pencerede listelenir. Orta tık sekmeyi kapatır.
+- **Kod oturumunda kaydedilen .mat:** `save('ad.mat', ...)` aynı oturumda `load`, `who('-file')`, `whos('-file')` ve `exist` ile hemen okunur. Yazılabilir klasör açıksa dosya oraya yazılır; açık değilse indirme yağdırmamak için bellekte tutulur ve konsolda "indir" bağlantısı verilir. `uiputfile` ile seçilen (dizinli) adlar doğrudan indirilir. `save -struct`, `-append` ve `load ad.mat x` gibi komut sözdizimi desteklenir.
+- **Arayüz tabloları:** `uitable` hücreleri tıklanarak (Ctrl ile ekle/çıkar, Shift ile aralık) seçilir; `CellSelectionCallback` MATLAB'daki gibi `eventdata.Indices` ile çağrılır.
 - **Exe'ye bırakma:** dosyaları `MATView.exe` simgesinin üzerine bırakınca açılır, bulundukları klasör çalışma klasörü olur.
+
+### Çerçeve ayar sayfası (`Cerceve_Ayarlari`)
+
+Akış başlığı (Undersample Header) olmayan çerçevelerde "Düzeni otomatik bul" konum bulamaz. Excel'e `Cerceve_Ayarlari` adlı bir sayfa eklenirse MATView düzeni bu sayfadan uygular (A sütunu ayar, B sütunu değer):
+
+| Ayar | Örnek | Anlamı |
+|---|---|---|
+| Sütun sayısı | 125 | Bir alt çerçevenin (satırın) bayt sayısı |
+| Satır sayısı | 100 | Ana çerçevedeki alt çerçeve sayısı |
+| Sütun öncelikli | 1 | Index = sütun × satır sayısı + satır (MATLAB `X(:)` sırası) |
+| Senkron (hex) | AB CD EF 01 | Ana çerçeve senkron kelimesi |
+| Senkron konumu | son / baş | Senkron çerçevenin sonunda mı başında mı |
+| Kayma | 0 | Senkron yoksa dosya başında atlanacak bayt |
+| Index tabanı | 0 | 0 ya da 1 |
+| Kare periyodu (ms) | 10 | Zaman ekseni |
+
+Not: **Byte Endian** sütunu boş bırakılan çok baytlı alanlar *little-endian* okunur. MATLAB'da `a*256+b` biçiminde birleştirilen alanlar için bu sütuna `big` yazın.
 
 ## Derleme
 ```

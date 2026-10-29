@@ -30,6 +30,8 @@ async def main():
         ws = await pg.evaluate("CODE.ws.map(v=>v.n+':'+v.sz+':'+v.cls)"); print(ws); assert 'TM:20×25×160:uint8' in ws and any(w.startswith('yap:') for w in ws) and 'etiket:1×6:char' in ws
         await pg.evaluate("window.showSaveFilePicker=undefined; CODE.cur = CODE.docs.findIndex(d=>d.name==='ana.m'); codeShowDoc(); codeRun('all')"); await pg.wait_for_timeout(2500)
         out = await pg.evaluate("$('#codeOut').innerText"); print(out[-400:]); assert 'tamam 20 160' in out, out
+        assert 'bellekte tutuluyor' in out and not dls, 'yalnız adla save klasör yokken indirmemeli'
+        await pg.click('#codeOut button[title="sonuc.mat dosyasını indir"]'); await pg.wait_for_timeout(800)
         assert dls and dls[0].suggested_filename == 'sonuc.mat'; await dls[0].save_as(T + 'sonuc.mat')
         m = sio.loadmat(T + 'sonuc.mat'); print(sorted(k for k in m if not k.startswith('__')))
         R = TM.reshape(500, 160, order='F'); D = R[10:30, :]; v = (D[0].astype(float) * 256 + D[1]) * 2
