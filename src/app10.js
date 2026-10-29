@@ -94,6 +94,7 @@ function selOf(f) { return chsFromSel().filter(c => !f || c.file === f); }
 function fileMenu(f, x, y) {
   const items = []; if (f.binary) items.push({t: 'Tüm binary dosyayı .mat olarak kaydet…', ic: 'download', fn: () => matDlg(f, {t: 'all'})}, {t: 'Alt sistemleri ayrı .mat olarak kaydet (zip)…', ic: 'download', fn: () => matDlg(f, {t: 'all'})});
   const k = chsFromSel().length; items.push({t: 'Seçili kanalları .mat olarak kaydet' + (k ? ' (' + k + ')' : '') + '…', ic: 'download', fn: () => matSelExport(chsFromSel())});
+  if (typeof tlmSessionMenu === 'function') tlmSessionMenu(f, items);
   if (!f.derived) items.push('-', {t: 'Dosyayı kapat', ic: 'close', fn: () => closeFile(f)}); ctxMenu(x, y, items);
 }
 function devMenu(f, dev, x, y) {

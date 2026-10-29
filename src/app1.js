@@ -126,7 +126,17 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 
 /* ---------- dosya işlemleri ---------- */
 async function openFiles(files) {
-  files = [...files]; { const ms = files.filter(f => /\.(m|fig)$/i.test(f.name)); if (ms.length) { files = files.filter(f => !ms.includes(f)); if (typeof codeOpenM === 'function') codeOpenM(ms); if (!files.length) return; } } if (files.some(f => /\.tdms_index$/i.test(f.name))) { toast('.tdms_index dosyası atlandı (yalnızca dizin; .tdms dosyası okunur)', 5000); files = files.filter(f => !/\.tdms_index$/i.test(f.name)); } const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)); const tdmss = files.filter(f => /\.tdms$/i.test(f.name)), mdfs = files.filter(f => /\.(mf4|mdf)$/i.test(f.name)); let other = files.filter(f => !/\.(mat|unv|uff|tdms|mf4|mdf)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
+  files = [...files];
+  { // Telemetri: çerçeve tipli binary, telemetryParser ayar JSON'u, kamera videosu
+    const vids = files.filter(f => /\.(h264|264|mp4)$/i.test(f.name)); if (vids.length && typeof tlmPlayVideo === 'function') { tlmPlayVideo(vids[0]); files = files.filter(f => !vids.includes(f)); }
+    const js = files.filter(f => /\.json$/i.test(f.name)); for (const j of js) { files = files.filter(f => f !== j); if (tlmIsSettingsJson(await j.text())) await tlmImportSettings(j); else toast(j.name + ': tanınmayan JSON (telemetri ayar dosyası değil)', 6000); }
+    // telemetryParser biçimli template: Telemetri'de çerçeve tipi tanımlıysa ya da görünüm açıksa oraya, değilse (geriye uyum) Excel çerçeve akışına
+    const tpl = [], toTlm = typeof tlmPrefers === 'function' && tlmPrefers();
+    if (toTlm) for (const f of files.filter(f => /\.xlsx$/i.test(f.name))) { try { const sh = await XLSX.read(f); if (FRM.isFrameBook(sh) && !sh.some(x => /cerceve_?ayar/.test(FRM.fold(x.name)) || /^(cerceve|çerçeve|frame)/i.test(x.name))) tpl.push(f); } catch (_) {} }
+    if (tpl.length && typeof tlmAddTemplates === 'function') { await tlmAddTemplates(tpl); files = files.filter(f => !tpl.includes(f)); }
+    const bins = files.filter(f => /\.(bin|binary)$/i.test(f.name)), oldFrm = files.some(f => /\.xlsx$/i.test(f.name)) && bins.length;
+    if (bins.length && !oldFrm && toTlm) { tlmOpenBins(bins, 'decode'); files = files.filter(f => !bins.includes(f)); }
+    if (!files.length) return; } { const ms = files.filter(f => /\.(m|fig)$/i.test(f.name)); if (ms.length) { files = files.filter(f => !ms.includes(f)); if (typeof codeOpenM === 'function') codeOpenM(ms); if (!files.length) return; } } if (files.some(f => /\.tdms_index$/i.test(f.name))) { toast('.tdms_index dosyası atlandı (yalnızca dizin; .tdms dosyası okunur)', 5000); files = files.filter(f => !/\.tdms_index$/i.test(f.name)); } const unvs = files.filter(f => /\.(unv|uff)$/i.test(f.name)); const tdmss = files.filter(f => /\.tdms$/i.test(f.name)), mdfs = files.filter(f => /\.(mf4|mdf)$/i.test(f.name)); let other = files.filter(f => !/\.(mat|unv|uff|tdms|mf4|mdf)$/i.test(f.name)); files = files.filter(f => /\.mat$/i.test(f.name));
   const tabs = other.filter(f => /\.(csv|tsv|txt)$/i.test(f.name)), wavs = other.filter(f => /\.wav$/i.test(f.name)); other = other.filter(f => !tabs.includes(f) && !wavs.includes(f)); for (const w of wavs) await wavOpen(w); for (const t of tdmss) await tdmsOpen(t); for (const m of mdfs) await mdfOpen(m); const tabsX = [];
   const frmX = []; { const xls = other.filter(f => /\.xlsx$/i.test(f.name)), nonx = other.filter(f => !/\.xlsx$/i.test(f.name)), keep = [];
     for (const f of xls) { try { const sh = await XLSX.read(f); if (FRM.isFrameBook(sh) && !sh.some(s => /^(cerceve|çerçeve|frame)/i.test(s.name))) frmX.push(f); else if (nonx.length || sh.some(s => /cerceve|çerçeve|frame/i.test(s.name))) keep.push(f); else tabsX.push([f, sh]); } catch (e) { toast('Excel okunamadı: ' + (e.message || e), 7000); } }
@@ -244,7 +254,8 @@ function setMode(m) {
 }
 function switchView(v) {
   S.view = v; for (const b of $('#viewtabs').children) b.classList.toggle('on', b.dataset.v === v);
-  for (const id of ['time', 'spec', 'sgram', 'xy', 'code', 'fig', 'gui']) $('#v-' + id).classList.toggle('hidden', id !== v);
-  $('#toolbar').style.display = (v === 'sgram' || v === 'code' || v === 'fig' || v === 'gui') ? 'none' : '';
+  for (const id of ['time', 'spec', 'sgram', 'xy', 'code', 'fig', 'gui', 'tlm']) $('#v-' + id).classList.toggle('hidden', id !== v);
+  $('#toolbar').style.display = (v === 'sgram' || v === 'code' || v === 'fig' || v === 'gui' || v === 'tlm') ? 'none' : '';
+  document.body.classList.toggle('tlm-on', v === 'tlm'); if (v === 'tlm' && typeof tlmShown === 'function') tlmShown();
   S.plot.resize(); S.specPlot.resize(); S.specView.resize(); if (S.xyPlot) S.xyPlot.resize(); if (v === 'fig' && typeof figShown === 'function') figShown(); if (v === 'code' && typeof codeShown === 'function') codeShown(); if (v === 'gui' && typeof guiShown === 'function') guiShown(); if (typeof syncWelcome === 'function') syncWelcome(); updateStats();
 }
