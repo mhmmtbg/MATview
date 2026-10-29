@@ -61,10 +61,10 @@ const codeLibSet = v => { try { localStorage.setItem(CODE_LIB_KEY, JSON.stringif
 let CODE_DOC_SEQ = 1;
 function codeDocsLoad() {
   let d = null; try { d = JSON.parse(localStorage.getItem(CODE_DOCS_KEY) || 'null'); } catch (_) {}
-  if (d && Array.isArray(d.docs) && d.docs.length) { CODE.docs = d.docs.map(x => ({id: CODE_DOC_SEQ++, name: String(x.name || 'betik.m'), text: String(x.text || ''), dirty: !!x.dirty})); CODE.cur = Math.min(Math.max(0, d.cur | 0), CODE.docs.length - 1); }
+  if (d && Array.isArray(d.docs) && d.docs.length) { CODE.docs = d.docs.map(x => ({id: CODE_DOC_SEQ++, name: String(x.name || 'betik.m'), text: String(x.text || ''), dirty: !!x.dirty, src: x.src && x.src.mode === 'path' && typeof x.src.dir === 'string' ? x.src : null})); CODE.cur = Math.min(Math.max(0, d.cur | 0), CODE.docs.length - 1); }
   else { let old = ''; try { old = localStorage.getItem('mv.code.cur') || ''; } catch (_) {} CODE.docs = [{id: CODE_DOC_SEQ++, name: 'betik1.m', text: old || CODE_EXAMPLES[0][1], dirty: false}]; CODE.cur = 0; }
 }
-function codeDocsSave() { clearTimeout(codeDocsSave._t); codeDocsSave._t = setTimeout(() => { try { localStorage.setItem(CODE_DOCS_KEY, JSON.stringify({cur: CODE.cur, docs: CODE.docs.map(d => ({name: d.name, text: d.text.length < 2e6 ? d.text : '', dirty: d.dirty}))})); } catch (_) {} }, 300); }
+function codeDocsSave() { clearTimeout(codeDocsSave._t); codeDocsSave._t = setTimeout(() => { try { localStorage.setItem(CODE_DOCS_KEY, JSON.stringify({cur: CODE.cur, docs: CODE.docs.map(d => ({name: d.name, text: d.text.length < 2e6 ? d.text : '', dirty: d.dirty, src: d.src && d.src.mode === 'path' ? {mode: 'path', dir: d.src.dir, name: d.src.name, where: d.src.where} : undefined}))})); } catch (_) {} }, 300); }
 const codeDoc = () => CODE.docs[CODE.cur];
 const codeIsFuncFile = t => /^\s*function\b/.test(String(t).replace(/^(\s*(%[^\n]*)?\n)*/, '').replace(/^\s*%\{[\s\S]*?%\}\s*/, ''));
 function codeNewDoc(name, text, opt) {
@@ -74,22 +74,48 @@ function codeNewDoc(name, text, opt) {
   else { let nm = name; if (ex >= 0) { let k = 2; const b = name.replace(/\.m$/i, ''); while (CODE.docs.some(d => d.name.toLowerCase() === (b + '_' + k + '.m').toLowerCase())) k++; nm = b + '_' + k + '.m'; } CODE.docs.push({id: CODE_DOC_SEQ++, name: nm, text, dirty: !!opt.dirty}); CODE.cur = CODE.docs.length - 1; }
   codeShowDoc(); codeDocsSave();
 }
-function codeCloseDoc(i) {
-  const d = CODE.docs[i]; if (!d) return;
-  const doIt = () => { CODE.docs.splice(i, 1); if (!CODE.docs.length) CODE.docs.push({id: CODE_DOC_SEQ++, name: 'betik1.m', text: '', dirty: false}); CODE.cur = Math.min(CODE.cur >= i ? Math.max(0, CODE.cur - 1) : CODE.cur, CODE.docs.length - 1); codeShowDoc(); codeDocsSave(); };
-  if (d.dirty && d.text.trim()) modal('Sekmeyi kapat', h('div', null, `“${d.name}” kaydedilmemiş değişiklikler içeriyor. Yine de kapatılsın mı?`), [{t: 'Kaydet (.m)', fn: () => { codeSaveM(i); doIt(); }}, {t: 'Kaydetmeden kapat', primary: true, fn: doIt}, {t: 'Vazgeç'}]);
-  else doIt();
+function codeCloseDoc(i) { codeCloseDocs([i]); }
+// Birden çok sekmeyi tek onayla kapatır (kaydedilmemiş olanlar tek pencerede listelenir)
+function codeCloseDocs(idx) {
+  codeStoreCur(); const docs = [...new Set(idx)].map(i => CODE.docs[i]).filter(Boolean); if (!docs.length) return;
+  const doIt = () => {
+    const curDoc = codeDoc(), oldCur = CODE.docs.indexOf(curDoc), before = CODE.docs.filter((d, k) => k < oldCur && docs.includes(d)).length;
+    CODE.docs = CODE.docs.filter(d => !docs.includes(d));
+    if (!CODE.docs.length) { CODE.docs.push({id: CODE_DOC_SEQ++, name: 'betik1.m', text: '', dirty: false}); CODE.cur = 0; }
+    else { const k = CODE.docs.indexOf(curDoc); CODE.cur = k >= 0 ? k : Math.max(0, Math.min(oldCur - before, CODE.docs.length - 1)); }
+    codeShowDoc(); codeDocsSave();
+  };
+  const dirty = docs.filter(d => d.dirty && d.text.trim());
+  if (!dirty.length) return doIt();
+  const one = docs.length === 1;
+  const msg = one ? `“${dirty[0].name}” kaydedilmemiş değişiklikler içeriyor. Yine de kapatılsın mı?` : h('div', null, `${dirty.length} sekmede kaydedilmemiş değişiklik var:`, h('ul', {style: 'margin:6px 0 0 18px;padding:0'}, dirty.map(d => h('li', null, d.name))));
+  modal(one ? 'Sekmeyi kapat' : docs.length + ' sekmeyi kapat', h('div', null, msg), [
+    {t: one ? 'Kaydet ve kapat' : 'Hepsini kaydet ve kapat', fn: () => { (async () => { for (const d of dirty) { const ok = await codeSaveM(CODE.docs.indexOf(d)); if (ok === false) return; } doIt(); })(); }},
+    {t: 'Kaydetmeden kapat', primary: true, fn: doIt}, {t: 'Vazgeç'}]);
+}
+function codeTabMenu(i, x, y) {
+  const n = CODE.docs.length, d = CODE.docs[i], all = CODE.docs.map((_, k) => k);
+  const items = [{t: 'Kapat', ic: 'close', fn: () => codeCloseDocs([i])}];
+  if (n > 1) items.push({t: 'Diğerlerini kapat', fn: () => codeCloseDocs(all.filter(k => k !== i))});
+  if (i < n - 1) items.push({t: 'Sağdakileri kapat', fn: () => codeCloseDocs(all.filter(k => k > i))});
+  items.push({t: 'Tümünü kapat', ic: 'clear', fn: () => codeCloseDocs(all)});
+  if (CODE.docs.some(x => !x.dirty) && n > 1) items.push({t: 'Kaydedilmiş olanları kapat', fn: () => codeCloseDocs(all.filter(k => !CODE.docs[k].dirty))});
+  items.push('-', {t: 'Kaydet', ic: 'download', fn: () => codeSaveM(i)}, {t: 'Yeniden adlandır…', fn: () => codeRenameDoc(i)});
+  if (d && d.src && typeof wspReveal === 'function') items.push({t: 'Klasörde göster', ic: 'open', fn: () => wspReveal(d)});
+  ctxMenu(x, y, items);
 }
 function codeRenderTabs() {
   const tb = $('#codeTabs'); if (!tb) return;
-  tb.replaceChildren(...CODE.docs.map((d, i) => h('div', {class: 'ctab' + (i === CODE.cur ? ' on' : ''), title: d.name + (codeIsFuncFile(d.text) ? ' (işlev dosyası)' : ' (betik)'), onclick: () => { if (i !== CODE.cur) { codeStoreCur(); CODE.cur = i; codeShowDoc(); codeDocsSave(); } }, ondblclick: () => codeRenameDoc(i)},
+  tb.replaceChildren(...CODE.docs.map((d, i) => h('div', {class: 'ctab' + (i === CODE.cur ? ' on' : ''), title: (d.src ? d.src.where : d.name) + (codeIsFuncFile(d.text) ? ' (işlev dosyası)' : ' (betik)') + '\nSağ tık: kapatma seçenekleri · Orta tık: kapat', onclick: () => { if (i !== CODE.cur) { codeStoreCur(); CODE.cur = i; codeShowDoc(); codeDocsSave(); } }, ondblclick: () => codeRenameDoc(i),
+    oncontextmenu: e => { e.preventDefault(); codeTabMenu(i, e.clientX, e.clientY); }, onauxclick: e => { if (e.button === 1) { e.preventDefault(); codeCloseDocs([i]); } }},
     h('span', {class: 'cti'}, codeIsFuncFile(d.text) ? 'ƒ' : 'M'), h('span', null, d.name), d.dirty ? h('span', {class: 'cdot', title: 'Kaydedilmedi'}, '•') : null,
     h('button', {class: 'cx', title: 'Kapat', onclick: e => { e.stopPropagation(); codeCloseDoc(i); }}, '×'))),
-    h('button', {class: 'ctab add', title: 'Yeni betik', onclick: () => { codeStoreCur(); let k = CODE.docs.length + 1; while (CODE.docs.some(d => d.name === 'betik' + k + '.m')) k++; codeNewDoc('betik' + k + '.m', ''); }}, '+'));
+    h('button', {class: 'ctab add', title: 'Yeni betik', onclick: () => { codeStoreCur(); let k = CODE.docs.length + 1; while (CODE.docs.some(d => d.name === 'betik' + k + '.m')) k++; codeNewDoc('betik' + k + '.m', ''); }}, '+'),
+    CODE.docs.length > 1 ? h('button', {class: 'ctab closeall noic', id: 'codeCloseAll', title: 'Tüm sekmeleri kapat (kaydedilmemiş olanlar için bir kez sorulur)', onclick: () => codeCloseDocs(CODE.docs.map((_, k) => k))}, 'Tümünü kapat') : null);
 }
 function codeRenameDoc(i) {
   const d = CODE.docs[i], inp = h('input', {type: 'text', value: d.name, style: 'width:100%'});
-  modal('Sekmeyi yeniden adlandır', h('div', null, inp, h('div', {class: 'note'}, 'Ad, betiği başka betikten çağırmak için de kullanılır (ör. analiz.m → analiz).')), [{t: 'Tamam', primary: true, fn: () => { let n = inp.value.trim(); if (!n) return false; if (!/\.m$/i.test(n)) n += '.m'; d.name = n; codeRenderTabs(); codeDocsSave(); }}, {t: 'Vazgeç'}]);
+  modal('Sekmeyi yeniden adlandır', h('div', null, inp, h('div', {class: 'note'}, 'Ad, betiği başka betikten çağırmak için de kullanılır (ör. analiz.m → analiz).')), [{t: 'Tamam', primary: true, fn: () => { let n = inp.value.trim(); if (!n) return false; if (!/\.m$/i.test(n)) n += '.m'; if (d.src && d.src.name.toLowerCase() !== n.toLowerCase()) { d.src = null; d.dirty = true; } d.name = n; codeRenderTabs(); codeDocsSave(); }}, {t: 'Vazgeç'}]);
   setTimeout(() => { inp.focus(); inp.select(); }, 50);
 }
 function codeStoreCur() { const ed = $('#codeEd'), d = codeDoc(); if (ed && d) { d.text = ed.value; d.sel = [ed.selectionStart, ed.selectionEnd]; d.scroll = ed.scrollTop; } }
@@ -214,10 +240,13 @@ function codeSaveLib() {
   setTimeout(() => inp.focus(), 50);
 }
 async function codeSaveM(i) {
-  codeStoreCur(); const d = CODE.docs[i]; if (!d) return;
+  codeStoreCur(); const d = CODE.docs[i]; if (!d) return false;
   // Windows'ta MATLAB eski sürümleri .m dosyalarını Windows-1254 bekleyebilir; UTF-8 (BOM'suz) yazılır, MATLAB R2020a+ bunu okur
-  await saveBlob(new Blob([d.text.replace(/\n/g, '\r\n')], {type: 'text/plain'}), d.name);
-  d.dirty = false; codeRenderTabs(); codeDocsSave();
+  const text = d.text.replace(/\n/g, '\r\n');
+  const r = typeof wspSaveDoc === 'function' ? await wspSaveDoc(d, text) : null;   // açık klasöre yaz (bağlıysa ya da kullanıcı onaylarsa)
+  if (r === 'cancel') return false;
+  if (r !== 'saved' && await saveBlob(new Blob([text], {type: 'text/plain'}), d.name) === false) return false;
+  d.dirty = false; codeRenderTabs(); codeDocsSave(); return true;
 }
 async function codeReadM(f) {
   const b = new Uint8Array(await f.arrayBuffer());
@@ -331,6 +360,7 @@ function codeWorkerSrc() {
     cur = d; added = []; saved = []; total = 0; pend = ''; pendKind = 'o';
     const ctx = mkCtx();
     if (!it) it = new MLAB.Interp({out, ctx}); else { it.ctx = ctx; it.out = out; }
+    it.folder = d.folder || null;
     it.stop = false; it.deadline = Date.now() + (d.timeout || 600000); it.figs = it.figs || new Map(); it.curFile = d.label;
     let err = null;
     try {
@@ -376,7 +406,7 @@ async function codeFinish(m) {
   } else { CODE.errLine = 0; if (codeDoc()) codeDoc().errLine = 0; codeRefreshEd(); }
   CODE.ws = m.ws || []; codeRenderWs();
   if (m.added && m.added.length) { let n = 0; for (const a of m.added) { const src = CODE.srcFor && CODE.srcFor.find(c => c.n === a.y.length); const c = addDerived(cleanName(a.n), a.y, null); if (src && src.n === a.y.length && Math.abs(src.fs - a.fs) < 1e-9 * Math.max(1, a.fs)) c.copyTiming(src); else { c.g = null; c.t0 = 0; c.dtS = 1 / a.fs; } if (src && src.unit) c.unit = src.unit; n++; } toast(n + ' kanal eklendi (Türetilmiş kanallar)'); }
-  for (const sv of m.saved || []) { try { const fn = sv.name.split(/[\\/]/).pop(), a = document.createElement('a'); a.href = URL.createObjectURL(mlWriteMat(sv.trees)); a.download = fn; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); codeOut(`${fn} indirildi (tarayıcının İndirilenler klasörü).\n`, 'warn'); if (sv.skipped.length) codeOut(`Uyarı: ${sv.name} içine yazılamayan değerler atlandı: ${sv.skipped.slice(0, 8).join(', ')}${sv.skipped.length > 8 ? '…' : ''} (işlev tutamacı vb.)\n`, 'warn'); } catch (e) { codeOut('Kaydedilemedi: ' + e.message + '\n', 'err'); } }
+  for (const sv of m.saved || []) { if (typeof wspWriteOut === 'function' && wspCanWrite()) { const fn = sv.name.split(/[\\/]/).pop(); if (await wspWriteOut(fn, mlWriteMat(sv.trees))) { if (sv.skipped.length) codeOut(`Uyarı: ${sv.name} içine yazılamayan değerler atlandı: ${sv.skipped.slice(0, 8).join(', ')}\n`, 'warn'); continue; } } try { const fn = sv.name.split(/[\\/]/).pop(), a = document.createElement('a'); a.href = URL.createObjectURL(mlWriteMat(sv.trees)); a.download = fn; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); codeOut(`${fn} indirildi (tarayıcının İndirilenler klasörü).\n`, 'warn'); if (sv.skipped.length) codeOut(`Uyarı: ${sv.name} içine yazılamayan değerler atlandı: ${sv.skipped.slice(0, 8).join(', ')}${sv.skipped.length > 8 ? '…' : ''} (işlev tutamacı vb.)\n`, 'warn'); } catch (e) { codeOut('Kaydedilemedi: ' + e.message + '\n', 'err'); } }
   if (m.figs) { CODE.figs = m.figs; CODE.figIdx = Math.max(0, m.figs.findIndex(f => f.id === m.curFig)); const fb = document.querySelector('#viewtabs button[data-v=fig]'); if (fb) fb.classList.toggle('hidden', !m.figs.length); if (m.figs.length && CODE.figsTouched) switchView('fig'); }
   CODE.figsTouched = false;
   guiAfterRun();
@@ -415,6 +445,7 @@ async function codeGather(src) {
   for (const lit of lits) {
     const low = lit.toLowerCase(), lowM = /\.mat$/.test(low) ? low : low + '.mat';
     if (CODE.matFiles.has(lowM)) { mats[lit] = CODE.matFiles.get(lowM); continue; }
+    if (typeof wspMatTrees === 'function') { const wt = await wspMatTrees(lit); if (wt) { mats[lit] = wt; continue; } }
     const f = S.files.find(x => x.mat && x.name.toLowerCase() === lowM);
     if (f) { try { const trees = await matTrees(f.mat, f.name); CODE.matFiles.set(lowM, trees); mats[lit] = trees; } catch (_) {} continue; }
     if (/\.mat$/.test(low)) continue;
@@ -451,9 +482,11 @@ async function codeRunText(code, lineOff, label, what, docIdx, asFunc) {
   codeOut(label === '>>' ? '>> ' + code + '\n' : `>> ${label}: ${what} çalıştırılıyor\n`, 'cmd');
   const libs = [], scripts = {}; let allSrc = code;
   CODE.docs.forEach((x, i) => { if (i === docIdx && what === 'betik') return; const nm = x.name.replace(/\.m$/i, ''); if (codeIsFuncFile(x.text)) { libs.push({name: x.name, text: x.text}); allSrc += '\n' + x.text; } else if (/^[A-Za-z]\w*$/.test(nm)) { scripts[nm] = x.text; if (new RegExp('\\b' + nm + '\\b').test(code)) allSrc += '\n' + x.text; } });
+  if (typeof wspCodeLibs === 'function') { try { allSrc = await wspCodeLibs(allSrc, libs, scripts, docIdx); } catch (e) { codeOut('Klasördeki işlevler okunamadı: ' + e.message + '\n', 'warn'); } }
   let g; try { g = await codeGather(allSrc); } catch (e) { codeOut('Hata: ' + e.message + '\n', 'err'); codeRunUI(false); return; }
   CODE.srcFor = g.srcFor; CODE.figsTouched = /\b(plot|figure|subplot|semilogx|semilogy|loglog|bar|hist|histogram|stem|scatter|nexttile)\s*[\(\s;,]/.test(allSrc);
-  const msg = {t: 'run', id: ++CODE.runId, code, lineOff, label, docIdx: docIdx == null ? -1 : docIdx, libs, scripts, chans: g.chans, names: g.names, mats: g.mats, figs: Object.fromEntries(CODE.figFiles), timeout: 3600000};
+  const msg = {t: 'run', id: ++CODE.runId, code, lineOff, label, docIdx: docIdx == null ? -1 : docIdx, libs, scripts, chans: g.chans, names: g.names, mats: g.mats, figs: Object.fromEntries(CODE.figFiles), timeout: 3600000, folder: typeof wspFolderInfo === 'function' ? wspFolderInfo() : null};
+  if (codeEnsureWorker() && typeof wspPushFiles === 'function') { try { await wspPushFiles(allSrc); } catch (_) {} }
   if (codeEnsureWorker()) { CODE.pendingRun = msg; CODE.worker.postMessage(msg); } else { CODE.pendingRun = msg; codeRunMain(msg); }
 }
 function codeMainLib() { return MLAB; }
@@ -463,7 +496,7 @@ async function codeRunMain(msg) {
   const ctx = {getChannel: n => msg.chans[n] || null, listChannels: () => msg.names, scripts: msg.scripts, addChannel: (n, y, fs) => added.push({n, y, fs}),
     loadMat: n => { const m = msg.mats[n]; if (!m) return null; const o = Object.create(null); for (const t of m) { const v = T.mlFromTree(t); if (v != null) o[t.name] = v; } return o; },
     saveMat: (n, vars) => { const sk = [], trees = []; for (const k in vars) { const t = T.mlToTree(vars[k], sk, k); if (t) { t.name = k; trees.push(t); } } saved.push({name: n, trees, skipped: sk}); }};
-  if (!CODE.mainIt) CODE.mainIt = new ML.Interp({out: (s, k) => codeOut(s, k === 'e' ? 'err' : k), ctx}); const it = CODE.mainIt; it.ctx = ctx; it.stop = false; it.deadline = Date.now() + 60000; it.figs = it.figs || new Map();
+  if (!CODE.mainIt) CODE.mainIt = new ML.Interp({out: (s, k) => codeOut(s, k === 'e' ? 'err' : k), ctx}); const it = CODE.mainIt; it.ctx = ctx; it.folder = msg.folder || null; it.stop = false; it.deadline = Date.now() + 60000; it.figs = it.figs || new Map();
   try { for (const lib of msg.libs) it.loadFile(lib.text, lib.name); it.run(msg.code); } catch (e) { if (e instanceof ML.MLError) { const ln = e.mline || it.cur || 0; err = {msg: e.message, file: e.mfile || '', fn: e.mfn || '', line: e.mfile ? ln : (ln ? ln + msg.lineOff : 0)}; } else err = {msg: 'İç hata: ' + e.message, line: 0}; }
   const ws = []; for (const [k, v] of it.base.vars) { const sz = ML.sizeOf(v); let val = ''; if (v instanceof ML.M && v.re.length === 1) val = ML.fmtScalar(v, 0); else if (v instanceof ML.M && v.t === 'c') val = "'" + ML.toStr(v).slice(0, 60) + "'"; ws.push({n: k, sz: sz.join('×'), cls: ML.classOf(v), val}); } ws.sort((a, b) => a.n < b.n ? -1 : 1);
   const figs = []; for (const [id, f] of it.figs) figs.push({id, rows: f.rows, cols: f.cols, title: f.title, axes: f.axes});
@@ -734,6 +767,9 @@ function guiAfterRun() { const s = $('#guiStatus'); if (s) s.textContent = ''; c
 function guiNote(kind, p) {
   if (kind === 'msg') { const icon = p.kind === 'error' ? 'Hata' : p.kind === 'warn' ? 'Uyarı' : 'Bilgi'; modal(p.title || icon, h('div', {style: 'white-space:pre-wrap;min-width:260px'}, p.text), [{t: 'Tamam', primary: true}]); if (p.kind === 'error') codeOut(`[${icon}] ${p.text}\n`, 'err'); return; }
   if (kind === 'progress') { const s = $('#guiStatus'); if (s) s.textContent = `${p.msg ? p.msg + ' ' : ''}%${Math.round((p.x || 0) * 100)}`; return; }
+  if (kind === 'cd') { if (typeof wspCd === 'function') wspCd(p); return; }
+  if (kind === 'download' && typeof wspWriteOut === 'function' && wspCanWrite()) { wspWriteOut(p.name, new Blob([p.bytes])).then(ok => { if (!ok) guiNote('download!', p); }); return; }
+  if (kind === 'download!') kind = 'download';
   if (kind === 'download') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([p.bytes])); a.download = p.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); codeOut(`${p.name} indirildi.\n`, 'warn'); return; }
   if (kind === 'guiopen') { codeOut(`Arayüz açıldı: ${p.name}\n`, 'warn'); return; }
 }
@@ -747,11 +783,12 @@ function guiReply(obj, bin) {
 function guiFindFile(name) { const b = String(name).replace(/^.*[\\/]/, '').toLowerCase(); for (const [k, f] of CODE.vfs) if (k.toLowerCase() === b) return f; return null; }
 async function guiRpc(kind, p) {
   try {
-    if (kind === 'stat') { const f = guiFindFile(p); return guiReply({v: f ? {name: f.name, size: f.size} : null}); }
-    if (kind === 'read') { const f = guiFindFile(p.name); if (!f) return guiReply({err: 'Dosya yok: ' + p.name}); const b = new Uint8Array(await f.slice(p.off, p.off + p.len).arrayBuffer()); return guiReply(null, b); }
+    if (kind === 'stat') { const f = guiFindFile(p) || (typeof wspStatFile === 'function' ? wspStatFile(p) : null); return guiReply({v: f ? {name: f.name, size: f.size} : null}); }
+    if (kind === 'read') { const f = guiFindFile(p.name) || (typeof wspGetFile === 'function' ? await wspGetFile(p.name) : null); if (!f) return guiReply({err: 'Dosya yok: ' + p.name}); const b = new Uint8Array(await f.slice(p.off, p.off + p.len).arrayBuffer()); return guiReply(null, b); }
     if (kind === 'blob') { const b = CODE.blob || new Uint8Array(0); return guiReply(null, b.subarray(p.off, p.off + p.len)); }
     if (kind === 'loadmat') {
       const nm = String(p).toLowerCase(); let trees = CODE.matFiles.get(nm) || CODE.matFiles.get(nm + '.mat');
+      if (!trees && typeof wspMatTrees === 'function') trees = await wspMatTrees(String(p));
       if (!trees) { const f = guiFindFile(p) || guiFindFile(p + '.mat'); if (f) { const m = await MAT.open(f); trees = await matTrees(m, f.name); CODE.matFiles.set(f.name.toLowerCase(), trees); } }
       if (!trees) { const sf = S.files.find(x => x.mat && x.name.toLowerCase() === (/\.mat$/.test(nm) ? nm : nm + '.mat')); if (sf) trees = await matTrees(sf.mat, sf.name); }
       if (!trees) return guiReply({v: null});

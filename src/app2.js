@@ -577,6 +577,8 @@ function init() {
     e.preventDefault(); dragDepth = 0; $('#dropmsg').classList.add('hidden');
     const ids = e.dataTransfer.getData('text/matview');
     if (ids) { const chs = JSON.parse(ids).map(chByUid).filter(Boolean); const r = $('#cv-time').getBoundingClientRect(); const inside = S.view === 'time' && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; if (!inside) return; const hh = S.plot.hit(e); if (hh) addToAxes(hh.ax, chs); else addToNewAxes(chs); return; }
+    const wn = e.dataTransfer.getData('text/matview-wsp'); if (wn) { if (!(e.target.closest && e.target.closest('#lp-folder'))) wspDropName(wn, e); return; }
+    if (typeof wspDropItems === 'function' && wspDropItems(e.dataTransfer)) return;
     if (e.dataTransfer.files && e.dataTransfer.files.length) openFiles(e.dataTransfer.files);
   });
   window.addEventListener('keydown', e => {

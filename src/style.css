@@ -251,3 +251,37 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 #app.wide{grid-template-columns:0 1fr 0 !important}
 #app.wide #left,#app.wide #right{display:none}
 #app.wide #center{grid-column:1/-1}
+/* sol panel: Veri / Klasör */
+.lptabs{display:flex;border-bottom:1px solid var(--border);flex:none}
+.lptabs button{flex:1;border:0;border-radius:0;padding:8px 6px;font-weight:600;color:var(--muted);background:none;border-bottom:2px solid transparent;margin-bottom:-1px}
+.lptabs button.on{color:var(--fg);border-bottom-color:var(--accent);background:none}
+.lptabs button:hover{background:var(--hover)}
+.lpane{display:flex;flex-direction:column;flex:1;min-height:0}
+.wsbar{display:flex;gap:3px;align-items:center;padding:6px 8px 4px;flex:none}
+.wsbar button{padding:3px 6px;display:flex;align-items:center}
+.wsbar input{flex:1;font:12px ui-monospace,Consolas,monospace}
+.wsbar2{display:flex;gap:4px;align-items:center;padding:0 8px 6px;border-bottom:1px solid var(--border);flex:none;font-size:12px}
+.wsbar2 select{flex:1;font-size:12px;padding:2px 4px}
+.wsbar2 input{flex:1;font-size:12px}
+.wscrumb{display:flex;flex-wrap:wrap;gap:0 2px;padding:0 8px 4px;font-size:12px;color:var(--muted);flex:none}
+.wscrumb a{cursor:pointer;color:var(--muted);text-decoration:none;padding:0 2px;border-radius:3px}
+.wscrumb a:hover{color:var(--fg);background:var(--hover)}
+.wscrumb a.cur{color:var(--fg);font-weight:600}
+.wslist{flex:1;overflow:auto;outline:none;min-height:0}
+.wsrow{display:flex;align-items:center;gap:6px;padding:2px 8px;cursor:default;white-space:nowrap;user-select:none}
+.wsrow:hover{background:var(--hover)}
+.wsrow.sel{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.wsrow .nm{flex:1;overflow:hidden;text-overflow:ellipsis}
+.wsrow .meta{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.wsrow .fi{width:22px;flex:none;text-align:center;font:600 10px ui-monospace,Consolas,monospace;color:var(--muted);display:flex;justify-content:center}
+.wsrow .fi.m{color:var(--accent)}.wsrow .fi.d{color:#c28a00}.wsrow .fi.mat{color:#2e8b57}.wsrow .fi.bin{color:#8a5cc2}
+.wsrow.dim .nm{color:var(--muted)}
+.wsrow.open .nm{font-weight:600}
+.wsfoot{padding:5px 8px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;flex:none}
+.wsfoot span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wsempty{padding:14px 12px;color:var(--muted);font-size:12px;line-height:1.5}
+.wsempty button{margin-top:8px;display:flex;align-items:center;gap:4px}
+.wsbadge{font-size:11px;border:1px solid var(--border);border-radius:3px;padding:0 4px;color:var(--muted)}
+.wsrow.drop,.wslist.drop{outline:2px dashed var(--accent);outline-offset:-2px}
+.ctab.closeall{margin-left:auto;padding:3px 8px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);background:none;border-color:transparent;align-self:center;margin-bottom:2px}
+.ctab.closeall:hover{color:var(--fg);background:var(--hover)}
