@@ -232,7 +232,7 @@
   };
   B.delete = function (a) { if (isChar(a[0])) return; for (const o of handlesArg(this, a[0])) delObj(this, o); };
   B.uiwait = B.uiresume = B.waitfor = () => {};
-  B.movegui = B.uistack = B.setappdata_ = () => {}; delete B.setappdata_;
+  B.movegui = B.uistack = B.setappdata_ = () => {}; B.movegui = function (a, no) { if (no >= 1) return a.length && !isChar(a[0]) ? a[0] : empty(); }; delete B.setappdata_;
   B.setappdata = function (a) { const o = objOf(this, a[0]); (o.app || (o.app = Object.create(null)))[S(a[1])] = a[2]; };
   B.getappdata = function (a) { const o = objOf(this, a[0]); if (a.length < 2) { const q = Object.create(null); Object.assign(q, o.app || {}); return {sa: true, r: 1, c: 1, v: [q]}; } return (o.app && o.app[S(a[1])]) || empty(); };
   B.isappdata = function (a) { const o = objOf(this, a[0]); return bool(!!(o.app && S(a[1]) in o.app)); };

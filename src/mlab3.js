@@ -261,7 +261,10 @@
     if (a[0] instanceof M && a[0].t === 'c' && a.length >= 1) { let id = 'MATLAB:error', msg = S(a[0]), rest = a.slice(1); if (/^[A-Za-z]\w*(:\w+)+$/.test(msg) && a.length > 1) { id = msg; msg = S(a[1]); rest = a.slice(2); } E(id, rest.length || /%/.test(msg) ? ML.sprintfImpl(msg, rest) : msg); }
     if (isSA(a[0])) E('MATLAB:error', S(a[0].v[0].message)); E('MATLAB:error', 'Hata');
   };
-  B.warning = function (a) { if (a[0] instanceof M && a[0].t === 'c') { const s = S(a[0]); if (s === 'off' || s === 'on') return; let msg = s, rest = a.slice(1); if (/^[A-Za-z]\w*(:\w+)+$/.test(s) && a.length > 1) { msg = S(a[1]); rest = a.slice(2); } this.out('Uyarı: ' + ML.sprintfImpl(msg, rest) + '\n', 'warn'); } };
+  B.warning = function (a, no) {
+    if (!a.length || (a[0] instanceof M && a[0].t === 'c' && /^(off|on|query)$/.test(S(a[0])))) { const st = () => { const q = Object.create(null); q.identifier = str(a.length > 1 ? S(a[1]) : 'all'); q.state = str('on'); return {sa: true, r: 1, c: 1, v: [q]}; }; return no >= 1 ? st() : undefined; }
+    if (isSA(a[0])) return;   // warning(eskiDurum): geri yükleme
+    if (a[0] instanceof M && a[0].t === 'c') { const s = S(a[0]); let msg = s, rest = a.slice(1); if (/^[A-Za-z]\w*(:\w+)+$/.test(s) && a.length > 1) { msg = S(a[1]); rest = a.slice(2); } this.out('Uyarı: ' + ML.sprintfImpl(msg, rest) + '\n', 'warn'); } };
   B.assert = function (a) { if (!isTrue(a[0])) E('MATLAB:assertion:failed', a[1] ? ML.sprintfImpl(S(a[1]), a.slice(2)) : 'Doğrulama (assert) başarısız.'); };
   B.MException = a => { const o = Object.create(null); o.identifier = a[0]; o.message = str(ML.sprintfImpl(S(a[1]), a.slice(2))); return {sa: true, r: 1, c: 1, v: [o]}; };
   B.rethrow = B.throw = a => E(a[0].v[0].identifier ? S(a[0].v[0].identifier) : 'MATLAB:error', S(a[0].v[0].message));
@@ -328,7 +331,7 @@
   B.nargin = function (a, no, sc) { return num(sc.nargin); }; B.nargout = function (a, no, sc) { return num(sc.nargout); };
   B.exist = function (a, no, sc) { const n = S(a[0]); return num(this.hasVar(sc, n) ? 1 : this.funcs.has(n) ? 103 : B[n] ? 5 : 0); };
   B.isvarname = a => bool(/^[A-Za-z]\w*$/.test(S(a[0])));
-  B.tic = function () { this.ticT = performance.now(); }; B.toc = function (a, no) { const t = (performance.now() - this.ticT) / 1000; if (no >= 1) return num(t); this.out(`Geçen süre ${t.toFixed(6)} saniye.\n`); };
+  B.tic = function (a, no) { this.ticT = performance.now(); if (no >= 1) return num(Math.round(this.ticT * 1000)); }; B.toc = function (a, no) { const t0 = a.length && a[0] instanceof M && a[0].re.length ? a[0].re[0] / 1000 : this.ticT; const t = (performance.now() - t0) / 1000; if (no >= 1) return num(t); this.out(`Geçen süre ${t.toFixed(6)} saniye.\n`); };
   B.clock = () => { const d = new Date(); return rowv([d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()]); }; B.now = () => num(Date.now() / 86400000 + 719529); B.cputime = () => num(performance.now() / 1000);
   B.datestr = () => str(new Date().toISOString().replace('T', ' ').slice(0, 19)); B.pause = () => {}; B.drawnow = () => {}; B.close_ = null; delete B.close_;
   B.clc = function () { this.out('', 'clc'); }; B.clear = function (a, no, sc) { if (!a.length || S(a[0]) === 'all') { sc.vars.clear(); sc.tok.clear(); } else for (const x of a) { sc.vars.delete(S(x)); } }; B.clearvars = B.clear; B.format = () => {}; B.more = () => {}; B.close = function (a) { if (this.figs) { if (a.length && S(a[0]) !== 'all') this.figs.delete(sc1(a[0])); else { this.figs.clear(); this.curFig = 0; } } }; B.rng = () => {};
@@ -526,7 +529,7 @@
   B.load = function (a, no) { const c = this.ctx; if (!c.loadMat) E('MATLAB:load', 'load: dosya erişimi yalnızca ana uygulamada (Kod sekmesinde açık .mat dosyaları) kullanılabilir. Dosyayı önce MATView içine açın, sonra load(\'dosya.mat\').'); const nm = S(a[0]); const vars = c.loadMat(nm); if (!vars) E('MATLAB:load:couldNotReadFile', `load: '${nm}' açık dosyalar arasında bulunamadı.`); const want = a.slice(1).map(S); const o = Object.create(null); for (const k in vars) { if (want.length && !want.includes(k)) continue; o[k] = vars[k]; } if (no >= 1) return {sa: true, r: 1, c: 1, v: [o]}; for (const k in o) this.setVar(this.base, k, o[k]); };
   B.save = function (a, no, sc) { const c = this.ctx; if (!c.saveMat) E('MATLAB:save', 'save: bu ortamda kullanılamıyor.'); let nm = a.length ? S(a[0]) : 'matlab.mat'; if (!/\.mat$/i.test(nm)) nm += '.mat'; const names = a.slice(1).map(S).filter(x => !x.startsWith('-')); const vars = Object.create(null); for (const n of names) if (!sc.vars.has(n)) E('MATLAB:save:couldNotFindVariable', `save: '${n}' değişkeni bulunamadı.`); for (const [k, v] of sc.vars) if (!names.length || names.includes(k)) vars[k] = v; c.saveMat(nm, vars); this.out(`'${nm}' kaydedildi (${Object.keys(vars).length} değişken).\n`); };
   B.exist_file_ = null; delete B.exist_file_;
-  B.isfile = () => bool(false); B.pwd = () => str('/'); B.cd = () => {}; B.addpath = () => {}; B.mfilename = function () { return str(String(this.curFile || 'betik').replace(/^.*[\\/]/, '').replace(/\.m$/i, '')); }; B.datenum = () => num(Date.now() / 86400000 + 719529);
+  B.isfile = () => bool(false); B.pwd = () => str('/'); B.cd = () => {}; B.addpath = B.rmpath = function (a, no) { if (no >= 1) return str(''); }; B.path = function (a, no) { if (no >= 1 || a.length) return str(''); }; B.genpath = a => str(a.length ? S(a[0]) : ''); B.mfilename = function () { return str(String(this.curFile || 'betik').replace(/^.*[\\/]/, '').replace(/\.m$/i, '')); }; B.datenum = () => num(Date.now() / 86400000 + 719529);
 
   /* ---------- figür modeli ---------- */
   function fig(it, create) { if (!it.figs) { it.figs = new Map(); it.curFig = 0; } if (!it.curFig && create !== false) { newFig(it, 1); } return it.figs.get(it.curFig); }
