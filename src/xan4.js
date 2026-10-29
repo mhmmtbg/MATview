@@ -35,6 +35,12 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.7', d: 'Telemetri: çerçeve tipleri, canlı oynatma, kamera, tek .mat', items: [
+    'Yeni: Telemetri görünümü — Telemetri Çözümleyici (telemetryParser v4.6) MATView içinde. Çerçeve tipleri ve template\'ler (belirteç index\'i ile seçim), sütun öncelikli düzen, header, sayaç, dikkate alınmayacak sütunlar, undersample paketler, multiplex formüller, tekrar index\'leri; ayar JSON\'u içe/dışa aktarma. Seri port / UDP canlı telemetri yoktur.',
+    'Yeni: “Çöz ve MATView\'de aç” — tüm parametreler kanal olur; zaman ekseni sayaçtan (kayıp çerçeveler boşluk), oversample ve koşullu / undersample örnekler doğru zamanda. Veri kanal seçildikçe okunur.',
+    'Yeni: tüm binary tek .mat dosyası (etiket başına MATLAB yapısı, t / frame_counter / ad_t alanları).',
+    'Yeni: dosyadan canlı oynatma (tablo, template çalışma kopyası, grafikler, çerçeveye git, kayıt) ve kamera videosu (RTP / H.264 → MP4 oynatıcı; canlı oynatmada anlık kamera penceresi).',
+    'Yeni: Windows simgesi (exe ve uygulama penceresi).']},
   {v: '2.6', d: 'MATLAB arayüzleri (GUIDE) çalışır, komut penceresi', items: [
     'Yeni: GUIDE arayüzleri açılır ve kullanılır — .m ile aynı adlı .fig birlikte açılıp .m sekmesinde F5 (ya da .fig önizlemesindeki “Arayüzü çalıştır”) ile arayüz “Arayüz” görünümünde açılır. Düğme, açılır menü, liste, metin kutusu, onay kutusu, kaydırıcı, panel, tablo ve eksenler çalışır; Tag_Callback işlevleri, guidata, get/set, handles.x.String gibi nokta erişimi, findobj, gcbo desteklenir. “Geniş görünüm” yan panelleri gizler.',
     'Yeni: uigetfile, uiputfile, questdlg, inputdlg, listdlg, msgbox/errordlg/warndlg, waitbar; fopen/fread/fwrite/fseek/ftell/feof/fgetl/fclose, fullfile, fileparts, dir, exist; eval, evalin, assignin; containers.Map; typecast. MATView.exe ile açıldığında dosya seçme ve soru pencereleri kod içinden açılır; matview.html doğrudan tarayıcıda açılırsa dosyalar arayüz çubuğundaki “Dosya ekle” ile önceden eklenir.',

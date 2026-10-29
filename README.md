@@ -16,6 +16,32 @@ MATLAB `.mat` dosyalarını okuyan, MATLAB benzeri grafik çizen; yakınlaştır
 - Dışa aktarma: PNG, CSV, MAT (v5), oturum.
 - **Kod** görünümü: MATLAB alt kümesini (matris, hücre, yapı, işlev, döngüler, fft/butter/filtfilt/pwelch…) kurulum olmadan çalıştırır; `ch('kanal')` ile açık kanalları okur, `addch` ile sonuç ekler; `figure/subplot/plot` ile **Figür** görünümüne çizer. `.m` dosyaları açılır/kaydedilir. GUIDE arayüzleri (`.m` + `.fig`) **Arayüz** görünümünde çalışır.
 
+## Telemetri: çerçeve tipleriyle binary çözme, dosyadan canlı oynatma, kamera
+
+Üstteki **Telemetri** sekmesi, Telemetri Çözümleyici'nin (telemetryParser v4.6) çözme motorunu ve arayüzünü MATView'e taşır. Seri port / UDP üzerinden **canlı telemetri yoktur**; geri kalan tüm özellikler vardır. Modül kendi stil ve betikleriyle bir iç çerçevede çalışır, tema MATView ile eşitlenir.
+
+**Çerçeve Ayarları** (sağ üstteki düğme): çerçeve formatı (sütun × satır, header ve konumu, sütun öncelikli düzenleme, ardışık header doğrulaması, undersample paket içi arama, dikkate alınmayacak sütunlar, *çerçeve periyodu*), **çerçeve tipleri ve template'ler** (çerçeve belirteci index'i + her tipin belirteç değeri; tip ekle / template yükle / doğrulama raporu / errorLog.txt / *Çerçeveyi Görüntüle*), çerçeve sayacı (kayıp çerçeve tespiti), çıktı (MAT, **tek .mat**, yalnız seçilen etiketler, ham veri bölgeleri), canlı görünüm, ayar JSON'u içe/dışa aktarma, örnek dosyalar ve 1000 parametreli performans testi, template formatı yardımı. Ayarlar tarayıcıda saklanır; telemetryParser'dan dışa aktarılan JSON doğrudan kullanılır.
+
+Dosyaların gelişi:
+- **Aç ▸ Telemetri binary (çerçeve tipleri)…** / **Telemetri: dosyadan canlı oynat…**, karşılama ekranındaki *Telemetri binary* kartı.
+- `.bin` / `.binary` pencereye bırakılınca ya da *Aç* ile seçilince çözme listesine eklenir (bu oturumda eski *Excel çerçeve* tanımı yüklüyse o akış kullanılır).
+- Ayar JSON'u (`telemetryParser_ayarlar_*.json`) bırakılınca ayarlar ve template'ler yüklenir; telemetryParser biçimli template `.xlsx` (Birim / Index / Değişken / Tip …) bırakılınca çerçeve tipi olarak eklenir (aynı adlı template'in yerine geçer).
+- **Klasör** panelinde `.bin` çift tık → çözme listesi; sağ tık → *Telemetri: çerçeve tipleriyle çöz*, *Telemetri: dosyadan canlı oynat*, *Binary olarak çöz (Excel çerçeve)*.
+- `.h264`, `.264`, `.mp4` → Video / Kamera sekmesi.
+
+**Dosya Çözümleme**: birden çok dosya (aynı kaydın parçaları / farklı kayıtlar / aynı kaydın kopyaları — sayaçla birleştirme), dosya başına çerçeve aralığı, ilerleme ve istatistik (çerçeve, atlanan bayt, kayıp çerçeve, tanımsız belirteç, undersample paket), işlem kaydı.
+- **Çöz ve MATView'de aç**: tüm parametreler MATView kanalı olur (sol panelde etiket/birim grupları). Veri dosyaya yazılmaz; kanal seçildikçe çözümü yapan arka plan işçisinin geçici deposundan okunur, böylece binlerce parametreli kayıtta bellekte yalnız çizilen kanallar tutulur. Dosya kapatılınca geçici depo da bırakılır.
+- **Çöz ve dosyalara yaz**: telemetryParser'daki gibi etiket başına CSV + MAT, ham veri `.bin`, video alanları için `.bin` + `.mp4`; Chrome/Edge'de seçilen klasöre, değilse ZIP.
+- **Zaman ekseni**: `t = çerçeve sırası × çerçeve periyodu`. Çerçeve sırası sayaçtan bulunur, kayıp çerçeveler boşluk olarak kalır; oversample (`B2`, `60`) örnekler çerçeve içine eşit aralıkla yerleşir. Koşullu (multiplex, `if(...)`) ve undersample (stream) değişkenlerin her örneği geldiği çerçevenin zamanını taşır.
+
+**Tek .mat (tüm binary)**: *Çıktı ▸ Tek .mat dosyası* açıkken *Çöz ve dosyalara yaz* `kayit_tum.mat` da yazar; *Çöz ve MATView'de aç* sonrasında sonuç kartındaki **Tek .mat kaydet** ya da sol panelde dosyaya sağ tık **Tüm kaydı tek .mat olarak kaydet** ile alınır (Klasör paneli yazılabilir bir klasördeyse oraya yazılır). Her etiket bir MATLAB yapısıdır: `OBC.temp`, `PSU.voltage` …; her yapıda `t` (s) ve varsa `frame_counter`, koşullu / undersample alanlar için `ad_t` bulunur. Çok elemanlı değişkenler N×eleman, byte array'ler uint8 matristir. Video alanları .mat'e girmez. Bir yapı MAT v5 sınırını (4 GB) aşarsa alanları `Etiket_ad` adıyla ayrı değişken yazılır.
+
+**Canlı Oynatma (dosyadan)**: kayıt, çerçeve periyoduna göre gerçek zamanlı akış gibi oynatılır (döngü, duraklat, kaydırıcı / ◀ ▶ / numara ile çerçeveye git). Canlı durum (veri hızı, çerçeve oranı, kayıp, atlanan), çerçeve tipi alt sekmeleri, template **çalışma kopyası** (hücre düzenleme, satır ekle/sil/taşı, sütun gizle/taşı/genişlik, etiket süzgeçleri, orijinale dön / üzerine yaz / Excel'e aktar), canlı grafikler (zoom, kaydırma, seçip silme, eksen limitleri, ayrı pencere), **canlı kamera penceresi** (video satırındaki ikon; H.264 tarayıcının donanım çözücüsüyle, WebCodecs), ham veri görünümü ve *Kayıt Başlat* ile oynatılan akışı yeni `.bin` dosyasına kaydetme.
+
+**Video / Kamera**: template'te `video` tipindeki alanlar (her çerçevede bir parça: `RTP0` + uzunluk + RTP paketi, H.264 RFC 6184 tek NAL / STAP-A / FU-A; parça sonundaki footer ve `0xAA` dolgu kendiliğinden bulunur; RTP yoksa düz H.264) MP4'e çözülür. Çözülen kamera videoları listede *Oynat* ile açılır; oynatıcıda kare kare ilerleme, hız, yakınlaştırma, ayrı pencere ve MP4 indirme vardır. Video `.bin`, `.h264` ve `.mp4` dosyaları da açılır.
+
+Kod: `src/tlm/telemetri.html` (modül: çekirdek `tp-core`, arayüz, canlı oynatma, video; `TPHost` köprüsü), `src/tlm.js` (MATView tarafı: görünüm, yönlendirmeler, kanal/zaman eşlemesi). Testler: `test/make_tlm.js` (sentetik kayıt + ffmpeg varsa H.264 kamera), `test/t_tlm.js`, `test/val_tlm.py` (scipy), `test/pw_tlm.py`.
+
 ## Çalışma klasörü (sol panel → Klasör)
 
 MATLAB'daki *Current Folder* gibi çalışır. Sol paneldeki **Veri / Klasör** sekmelerinden **Klasör**'e geçin (Ctrl+Shift+O).
@@ -48,14 +74,14 @@ Not: **Byte Endian** sütunu boş bırakılan çok baytlı alanlar *little-endia
 
 ## Derleme
 ```
-python3 build.py                      # src/* -> dist/matview.html (+ launcher/matview.html)
+python3 build.py                      # src/* (+ src/tlm/telemetri.html) -> dist/matview.html (+ launcher/matview.html)
 cd launcher
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H=windowsgui -s -w" -o ../dist/MATView.exe .
 ```
-Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwright testleri bulunur (gerçek veri dosyaları depoda yoktur).
+Go yalnızca standart kütüphaneyi kullanır. **Simge**: `launcher/matview.svg` → `launcher/matview.ico` → `launcher/rsrc_windows_amd64.syso` (`python3 launcher/make_icon.py`; Go derleyicisi `.syso` dosyasını exe'ye kendiliğinden ekler, böylece exe Explorer'da ve masaüstünde simgeli görünür). Uygulama penceresi ve görev çubuğu için aynı simge sayfaya favicon olarak gömülüdür. `test/` altında Node ve Playwright testleri bulunur (gerçek veri dosyaları depoda yoktur).
 
 ## Yapı
-`src/mat.js` (v5 okuyucu), `src/h5.js` (HDF5), `src/dsp.js`, `src/expr.js`, `src/plot.js` (grafik motoru), `src/store.js` (veri modeli), `src/app1.js`/`app2.js` (arayüz), `src/mlab1-3.js` (MATLAB alt kümesi: ayrıştırıcı, yorumlayıcı, işlev kütüphanesi), `src/app13.js` (Kod/Figür arayüzü), `src/wsp.js` (çalışma klasörü paneli), `launcher/main.go` (yerel sunucu + tarayıcı başlatıcı).
+`src/mat.js` (v5 okuyucu), `src/h5.js` (HDF5), `src/dsp.js`, `src/expr.js`, `src/plot.js` (grafik motoru), `src/store.js` (veri modeli), `src/app1.js`/`app2.js` (arayüz), `src/mlab1-3.js` (MATLAB alt kümesi: ayrıştırıcı, yorumlayıcı, işlev kütüphanesi), `src/app13.js` (Kod/Figür arayüzü), `src/wsp.js` (çalışma klasörü paneli), `src/tlm.js` + `src/tlm/telemetri.html` (Telemetri görünümü), `launcher/main.go` (yerel sunucu + tarayıcı başlatıcı).
 
 ## Testler hakkında
 `bash test/run_tests.sh` tüm testleri çalıştırır; testler yalnızca betiklerin ürettiği yapay verilerle çalışır, depoda gerçek ölçüm verisi yoktur.

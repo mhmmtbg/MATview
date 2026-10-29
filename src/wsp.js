@@ -241,6 +241,10 @@ async function wspOpenItem(item, how) {
   if (!f) return;
   if (t.k === 'fig') { codeBuildView(); switchView('code'); return figFileOpen(f); }
   if (t.k === 'mat' && (how === 'ws' || (!how && S.view === 'code'))) return codeLoadMatFiles([f]);
+  if (how === 'tlm' || how === 'play') return tlmOpenBins([f], how === 'play' ? 'play' : 'decode');
+  if (/\.(h264|264|mp4)$/i.test(item.name)) return tlmPlayVideo(f);
+  if (t.k === 'bin' && how !== 'bin' && tlmPrefers()) return tlmOpenBins([f], 'decode');
+  if (t.k === 'other' && /\.json$/i.test(item.name) && tlmIsSettingsJson(await f.text())) return tlmImportSettings(f);
   if (t.k === 'bin' || how === 'bin' || t.k === 'other') { if (FS.def) frmDropBin([f]); else { FS.bin = f; frmDialog(); } return; }
   const before = S.files.length;
   await openFiles([f]);
@@ -405,7 +409,7 @@ function wspItemMenu(it, x, y) {
   else if (t.k === 'm') items.push({t: 'Düzenleyicide aç', ic: 'file', fn: () => wspOpenM(it)}, {t: 'Çalıştır', ic: 'play', fn: () => wspOpenM(it, true)});
   else if (t.k === 'mat') items.push({t: 'Kanalları aç (grafik)', ic: 'traces', fn: () => wspOpenItem(it, 'view')}, {t: 'Kod çalışma alanına yükle', ic: 'fx', fn: () => wspOpenItem(it, 'ws')});
   else if (t.k === 'fig') items.push({t: 'Aç (arayüz önizleme)', ic: 'file', fn: () => wspOpenItem(it)});
-  else if (t.k === 'bin' || t.k === 'other') items.push({t: 'Binary olarak çöz (Excel çerçeve)…', ic: 'bin', fn: () => wspOpenItem(it, 'bin')});
+  else if (t.k === 'bin' || t.k === 'other') items.push({t: 'Telemetri: çerçeve tipleriyle çöz', ic: 'bin', fn: () => wspOpenItem(it, 'tlm')}, {t: 'Telemetri: dosyadan canlı oynat', ic: 'play', fn: () => wspOpenItem(it, 'play')}, {t: 'Binary olarak çöz (Excel çerçeve)…', ic: 'bin', fn: () => wspOpenItem(it, 'bin')});
   else items.push({t: 'Aç', ic: 'open', fn: () => wspOpenItem(it)});
   if (!it.dir && t.k !== 'bin' && t.k !== 'other' && t.k !== 'm') items.push({t: 'Binary olarak çöz…', ic: 'bin', fn: () => wspOpenItem(it, 'bin')});
   items.push('-', {t: 'Adı kopyala', ic: 'copy', fn: () => wspCopy(it.name)});
