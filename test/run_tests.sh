@@ -13,6 +13,6 @@ for t in t_dsp t_val t_auto t_an t_bin t_unv t_tdms t_h5 t_mat t_store t_nest t_
 run val_scipy python3 test/val_scipy.py
 run val_mlab python3 test/val_mlab.py
 run val_tlm python3 test/val_tlm.py
-for p in pw_qual pw_cp pw_ctl pw_rez pw_tdms pw_clr pw_unv pw_an pw_lv pw_tools pw_shth pw_batch pw_nest pw_mdf pw_frm pw_swap pw_code pw_code2 pw_gui pw_wsp pw_tsel pw_tlm; do [ -f test/$p.py ] && run $p python3 test/$p.py; done
+for p in pw_qual pw_cp pw_ctl pw_rez pw_tdms pw_clr pw_unv pw_an pw_lv pw_tools pw_shth pw_batch pw_nest pw_mdf pw_frm pw_swap pw_code pw_code2 pw_gui pw_wsp pw_tsel pw_tlm pw_faz2; do [ -f test/$p.py ] && run $p python3 test/$p.py; done
 [ -f test/extra_tests.sh ] && source test/extra_tests.sh
 echo; [ $fail = 0 ] && echo "TÜM TESTLER GEÇTİ" || echo "$fail test BAŞARISIZ"; exit $fail
