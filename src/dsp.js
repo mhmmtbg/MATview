@@ -55,34 +55,36 @@ const DSP = (() => {
 
   // Welch PSD. opt: nfft, overlap(0..0.9), win, detrend('mean'|'none'), scale('psd'|'amp')
   function welch(x, fs, opt, onProgress) {
-    const nfft = Math.min(opt.nfft, nextPow2(x.length));
+    // opt.df verilirse NFFT = fs/Δf (ikinin kuvveti olması gerekmez; Bluestein DFT) — tam Δf çözünürlüğü
+    const anyN = opt.df > 0, nfft = anyN ? Math.max(8, Math.min(Math.round(fs / opt.df), x.length)) : Math.min(opt.nfft, nextPow2(x.length)), F = anyN ? fftAny : fft;
     const w = window(opt.win || 'hann', nfft);
     let s1 = 0, s2 = 0; for (let i = 0; i < nfft; i++) { s1 += w[i]; s2 += w[i] * w[i]; }
     let hop = Math.max(1, Math.round(nfft * (1 - (opt.overlap ?? 0.5))));
     const maxSeg = opt.maxSeg || 4000;
     if ((x.length - nfft) / hop + 1 > maxSeg) hop = Math.ceil((x.length - nfft) / (maxSeg - 1));
-    const nb = nfft / 2 + 1, acc = new Float64Array(nb);
+    const nb = Math.floor(nfft / 2) + 1, acc = new Float64Array(nb), last = nfft % 2 === 0 ? nb - 1 : -1;
     const re = new Float64Array(nfft), im = new Float64Array(nfft);
     let nseg = 0;
     for (let st = 0; st + nfft <= x.length; st += hop) {
       let mean = 0;
       if (opt.detrend !== 'none') { for (let i = 0; i < nfft; i++) mean += x[st + i]; mean /= nfft; }
       for (let i = 0; i < nfft; i++) { re[i] = (x[st + i] - mean) * w[i]; im[i] = 0; }
-      fft(re, im, false);
+      F(re, im, false);
       for (let k = 0; k < nb; k++) acc[k] += re[k] * re[k] + im[k] * im[k];
       nseg++;
     }
     if (!nseg) { // veri nfft'den kısa
       for (let i = 0; i < nfft; i++) { re[i] = (i < x.length ? x[i] : 0) * w[i]; im[i] = 0; }
-      fft(re, im, false); for (let k = 0; k < nb; k++) acc[k] = re[k] * re[k] + im[k] * im[k]; nseg = 1;
+      F(re, im, false); for (let k = 0; k < nb; k++) acc[k] = re[k] * re[k] + im[k] * im[k]; nseg = 1;
     }
     const f = new Float64Array(nb), y = new Float64Array(nb);
     for (let k = 0; k < nb; k++) {
       f[k] = k * fs / nfft;
       const p = acc[k] / nseg;
-      if (opt.scale === 'amp') { y[k] = Math.sqrt(p) * (k === 0 || k === nb - 1 ? 1 : 2) / s1; }       // tepe genlik
-      else if (opt.scale === 'rms') { y[k] = Math.sqrt(p) * (k === 0 || k === nb - 1 ? 1 : Math.SQRT2) / s1; }
-      else { y[k] = p / (fs * s2) * (k === 0 || k === nb - 1 ? 1 : 2); }                           // birim²/Hz
+      const e1 = k === 0 || k === last;
+      if (opt.scale === 'amp') { y[k] = Math.sqrt(p) * (e1 ? 1 : 2) / s1; }       // tepe genlik
+      else if (opt.scale === 'rms') { y[k] = Math.sqrt(p) * (e1 ? 1 : Math.SQRT2) / s1; }
+      else { y[k] = p / (fs * s2) * (e1 ? 1 : 2); }                           // birim²/Hz
     }
     // Doğruluk bilgileri: ENBW, etkin ortalama sayısı ve serbestlik derecesi (Welch, örtüşmeli pencere korelasyonu ile)
     const enbw = fs * s2 / (s1 * s1); let K = nseg, ro = 0;
@@ -502,6 +504,247 @@ const DSP = (() => {
     return {f, h1, h2, phase: ph, coh, nseg, nfft, df: fs / nfft};
   }
 
-  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC};
+
+  // ---- Faz 4: genel IIR tasarımı (analog prototip → frekans dönüşümü → bilineer, scipy.signal ile aynı zpk) ----
+  const C = {add: (a, b) => [a[0] + b[0], a[1] + b[1]], sub: (a, b) => [a[0] - b[0], a[1] - b[1]], mul: (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]],
+    div: (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; },
+    sqrt: a => { const r = Math.hypot(a[0], a[1]), m = Math.sqrt((r + Math.abs(a[0])) / 2); if (m === 0) return [0, 0]; return a[0] >= 0 ? [m, a[1] / (2 * m)] : [Math.abs(a[1]) / (2 * m), a[1] >= 0 ? m : -m]; },
+    sc: (a, k) => [a[0] * k, a[1] * k]};
+  const cprod = (arr, f) => arr.reduce((acc, v) => C.mul(acc, f(v)), [1, 0]);
+  // polinom kökleri (Aberth–Ehrlich); katsayılar yüksekten düşüğe, gerçel
+  function polyRoots(c) {
+    const n = c.length - 1, a = c.map(v => v / c[0]); let z = [];
+    const R = 1 + Math.max(...a.slice(1).map(Math.abs));
+    for (let k = 0; k < n; k++) { const t = 2 * Math.PI * k / n + 0.4; z.push([R * 0.7 * Math.cos(t), R * 0.7 * Math.sin(t)]); }
+    const ev = (x) => { let p = [1, 0], d = [0, 0]; for (let i = 1; i <= n; i++) { d = C.add(C.mul(d, x), p); p = C.add(C.mul(p, x), [a[i], 0]); } return [p, d]; };
+    for (let it = 0; it < 500; it++) {
+      let mx = 0;
+      for (let i = 0; i < n; i++) {
+        const [p, d] = ev(z[i]); const r = C.div(p, d); let s = [0, 0];
+        for (let j = 0; j < n; j++) if (j !== i) s = C.add(s, C.div([1, 0], C.sub(z[i], z[j])));
+        const w = C.div(r, C.sub([1, 0], C.mul(r, s))); z[i] = C.sub(z[i], w); mx = Math.max(mx, Math.hypot(w[0], w[1]) / (1 + Math.hypot(z[i][0], z[i][1])));
+      }
+      if (mx < 1e-15) break;
+    }
+    return z;
+  }
+  // analog alçak geçiren prototipler (ωc = 1 rad/s): {z, p, k}
+  function protoButter(N) { const p = []; for (let k = 0; k < N; k++) { const t = Math.PI * (2 * k + N + 1) / (2 * N); p.push([Math.cos(t), Math.sin(t)]); } return {z: [], p, k: 1}; }
+  function protoCheby1(N, rp) {
+    const eps = Math.sqrt(Math.pow(10, rp / 10) - 1), mu = Math.asinh(1 / eps) / N, p = [];
+    for (let k = 1; k <= N; k++) { const t = Math.PI * (2 * k - 1) / (2 * N); p.push([-Math.sinh(mu) * Math.sin(t), Math.cosh(mu) * Math.cos(t)]); }
+    let k = cprod(p, v => C.sc(v, -1))[0]; if (N % 2 === 0) k /= Math.sqrt(1 + eps * eps); return {z: [], p, k};
+  }
+  // Bessel, scipy norm='phase' (yüksek frekansta faz eğrisi ile Butterworth uyumlu)
+  function protoBessel(N) {
+    const fac = n => { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; }, c = [];
+    for (let k = N; k >= 0; k--) c.push(fac(2 * N - k) / (Math.pow(2, N - k) * fac(k) * fac(N - k)));   // ters Bessel polinomu, yüksek→düşük derece
+    const a0 = c[c.length - 1], sc = Math.pow(a0, -1 / N), p = polyRoots(c).map(v => C.sc(v, sc));
+    return {z: [], p, k: 1};
+  }
+  function lp2(zpk, type, w1, w2) {
+    const {z, p, k} = zpk, deg = p.length - z.length;
+    if (type === 'lp') return {z: z.map(v => C.sc(v, w1)), p: p.map(v => C.sc(v, w1)), k: k * Math.pow(w1, deg)};
+    if (type === 'hp') { const z2 = z.map(v => C.div([w1, 0], v)).concat(Array(deg).fill([0, 0])), p2 = p.map(v => C.div([w1, 0], v)); return {z: z2, p: p2, k: k * C.div(cprod(z, v => C.sc(v, -1)), cprod(p, v => C.sc(v, -1)))[0]}; }
+    const wo = Math.sqrt(w1 * w2), bw = w2 - w1;
+    if (type === 'bp') {
+      const tr = arr => { const o = []; for (const v of arr) { const h = C.sc(v, bw / 2), r = C.sqrt(C.sub(C.mul(h, h), [wo * wo, 0])); o.push(C.add(h, r), C.sub(h, r)); } return o; };
+      return {z: tr(z).concat(Array(deg).fill([0, 0])), p: tr(p), k: k * Math.pow(bw, deg)};
+    }
+    if (type === 'bs') {
+      const tr = arr => { const o = []; for (const v of arr) { const h = C.div([bw / 2, 0], v), r = C.sqrt(C.sub(C.mul(h, h), [wo * wo, 0])); o.push(C.add(h, r), C.sub(h, r)); } return o; };
+      const zz = tr(z); for (let i = 0; i < deg; i++) zz.push([0, wo], [0, -wo]);
+      return {z: zz, p: tr(p), k: k * C.div(cprod(z, v => C.sc(v, -1)), cprod(p, v => C.sc(v, -1)))[0]};
+    }
+    throw new Error('tür');
+  }
+  function bilinearZpk({z, p, k}, fs) {
+    const f2 = 2 * fs, bz = v => C.div(C.add([f2, 0], v), C.sub([f2, 0], v));
+    const zd = z.map(bz).concat(Array(p.length - z.length).fill([-1, 0])), pd = p.map(bz);
+    const kd = k * C.div(cprod(z, v => C.sub([f2, 0], v)), cprod(p, v => C.sub([f2, 0], v)))[0];
+    return {z: zd, p: pd, k: kd};
+  }
+  // zpk → ikinci derece bölümler: eşlenik kutuplar birim çembere yakınlığa göre, sıfırlar en yakın olanlarla eşlenir
+  function zpk2sos({z, p, k}) {
+    const pairs = arr => { const re = [], cx = []; for (const v of arr) { if (Math.abs(v[1]) < 1e-10 * (1 + Math.abs(v[0]))) re.push(v[0]); else if (v[1] > 0) cx.push(v); } re.sort((a, b) => Math.abs(a) - Math.abs(b)); return {re, cx}; };
+    const P = pairs(p), Z = pairs(z), secs = [];
+    const pq = P.cx.map(v => ({c: v, d: 1 - Math.hypot(v[0], v[1])})).sort((a, b) => b.d - a.d);   // içten dışa: en son en keskin
+    let zc = Z.cx.slice(), zr = Z.re.slice(), pr = P.re.slice();
+    const takeZ = (near) => {   // iki sıfır: önce eşlenik çift, yoksa iki gerçel
+      if (zc.length) { let bi = 0, bd = Infinity; zc.forEach((v, i) => { const d = Math.hypot(v[0] - near[0], v[1] - near[1]); if (d < bd) { bd = d; bi = i; } }); const v = zc.splice(bi, 1)[0]; return [-2 * v[0], v[0] * v[0] + v[1] * v[1]]; }
+      const a = zr.length ? zr.shift() : null, b = zr.length ? zr.shift() : null;
+      if (a === null) return [0, 0]; if (b === null) return [-a, 0]; return [-(a + b), a * b];
+    };
+    for (const {c} of pq) { const [b1, b2] = takeZ(c); secs.push([1, b1, b2, -2 * c[0], c[0] * c[0] + c[1] * c[1]]); }
+    while (pr.length) {
+      const a = pr.shift(), b = pr.length ? pr.shift() : null; const [b1, b2] = takeZ([a, 0]);
+      const a1 = b === null ? -a : -(a + b), a2 = b === null ? 0 : a * b;
+      if (b === null && zr.length === 0 && zc.length === 0 && b2 !== 0) secs.push([1, b1, b2, a1, a2]); else secs.push([1, b1, b2, a1, a2]);
+    }
+    while (zc.length || zr.length) { const [b1, b2] = takeZ([0, 0]); secs.push([1, b1, b2, 0, 0]); }
+    if (!secs.length) secs.push([1, 0, 0, 0, 0]);
+    // biçim: [b0,b1,b2,a1,a2] (a0=1) — kazanç ilk bölüme
+    secs[0][0] *= k; secs[0][1] *= k; secs[0][2] *= k;
+    return secs;
+  }
+  // design2: {family:'butter'|'cheby1'|'bessel', type, order, f1, f2, rp} → sos ([b0,b1,b2,a1,a2] dizisi)
+  function iirDesign(o, fs) {
+    const N = Math.max(1, Math.min(20, o.order | 0)), proto = o.family === 'cheby1' ? protoCheby1(N, o.rp || 1) : o.family === 'bessel' ? protoBessel(N) : protoButter(N);
+    const nyq = fs / 2, wa = f => { if (!(f > 0 && f < nyq)) throw new Error('Kesim frekansı 0 ile Nyquist (' + nyq + ' Hz) arasında olmalı'); return 2 * fs * Math.tan(Math.PI * f / fs); };
+    const t = o.type, w1 = wa(o.f1), w2 = (t === 'bp' || t === 'bs') ? wa(o.f2) : 0;
+    if ((t === 'bp' || t === 'bs') && !(o.f2 > o.f1)) throw new Error('f2 > f1 olmalı');
+    const s = sosFix(zpk2sos(bilinearZpk(lp2(proto, t, w1, w2), fs)));
+    return s;
+  }
+  // bölümlerdeki b dizilerini a0 = 1 ile; (zaten) — sayısal küçük sanal kalıntılar yok
+  function sosFix(s) { return s.map(r => r.map(v => Math.abs(v) < 1e-300 ? 0 : v)); }
+  // ---- FIR: pencereli sinc (scipy.signal.firwin, scale=True) ----
+  function i0(x) { let s = 1, t = 1; for (let k = 1; k < 60; k++) { t *= (x / (2 * k)) * (x / (2 * k)); s += t; if (t < 1e-17 * s) break; } return s; }
+  function symWindow(type, n, beta) {
+    const w = new Float64Array(n), M = n - 1;
+    for (let i = 0; i < n; i++) {
+      const x = M ? i / M : 0.5;
+      switch (type) {
+        case 'hann': w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * x); break;
+        case 'hamming': w[i] = 0.54 - 0.46 * Math.cos(2 * Math.PI * x); break;
+        case 'blackman': w[i] = 0.42 - 0.5 * Math.cos(2 * Math.PI * x) + 0.08 * Math.cos(4 * Math.PI * x); break;
+        case 'kaiser': { const r = M ? 2 * i / M - 1 : 0; w[i] = i0((beta || 8.6) * Math.sqrt(Math.max(0, 1 - r * r))) / i0(beta || 8.6); break; }
+        default: w[i] = 1;
+      }
+    }
+    return w;
+  }
+  function firwin(numtaps, type, f1, f2, fs, win, beta) {
+    const nyq = fs / 2; let edges, passZero;
+    if (type === 'lp') { edges = [f1]; passZero = true; } else if (type === 'hp') { edges = [f1]; passZero = false; }
+    else if (type === 'bp') { edges = [f1, f2]; passZero = false; } else if (type === 'bs') { edges = [f1, f2]; passZero = true; } else throw new Error('FIR türü: lp/hp/bp/bs');
+    for (const e of edges) if (!(e > 0 && e < nyq)) throw new Error('Kesim frekansı 0 ile Nyquist arasında olmalı');
+    if (edges.length === 2 && !(f2 > f1)) throw new Error('f2 > f1 olmalı');
+    if (!passZero && type !== 'bp' && numtaps % 2 === 0) numtaps++;   // yüksek geçiren / band söndüren: tek sayıda katsayı gerekli
+    if (type === 'bs' && numtaps % 2 === 0) numtaps++;
+    const cut = edges.map(e => e / nyq), bands = [];
+    let list = (passZero ? [0] : []).concat(cut); if (list.length % 2) list.push(1);
+    for (let i = 0; i < list.length; i += 2) bands.push([list[i], list[i + 1]]);
+    const al = (numtaps - 1) / 2, h = new Float64Array(numtaps), sinc = x => x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+    for (let i = 0; i < numtaps; i++) { const m = i - al; let v = 0; for (const [l, r] of bands) v += r * sinc(r * m) - l * sinc(l * m); h[i] = v; }
+    const w = symWindow(win || 'hamming', numtaps, beta); for (let i = 0; i < numtaps; i++) h[i] *= w[i];
+    // ölçekleme: ilk geçirme bandının merkezinde (ya da DC'de) kazanç 1
+    const [l, r] = bands[0], fsc = l === 0 ? 0 : r === 1 ? 1 : (l + r) / 2; let sr = 0, si = 0;
+    for (let i = 0; i < numtaps; i++) { const m = i - al; sr += h[i] * Math.cos(Math.PI * m * fsc); }
+    for (let i = 0; i < numtaps; i++) h[i] /= sr; void si;
+    return h;
+  }
+  // FIR uygulama: FFT ile doğrusal evrişim; zero=true → (N-1)/2 gecikme düzeltilir (doğrusal faz → sıfır faz)
+  function firApply(b, x, zero) {
+    const n = x.length, m = b.length; if (!n) return new Float64Array(0);
+    const L = n + m - 1, N = nextPow2(Math.min(L, Math.max(4 * m, 1 << 14)) + m), blk = N - m + 1, out = new Float64Array(L);
+    const hr = new Float64Array(N), hi = new Float64Array(N); hr.set(b); fft(hr, hi, false);
+    const xr = new Float64Array(N), xi = new Float64Array(N);
+    for (let s0 = 0; s0 < n; s0 += blk) {
+      xr.fill(0); xi.fill(0); const e = Math.min(n, s0 + blk); for (let i = s0; i < e; i++) xr[i - s0] = x[i];
+      fft(xr, xi, false);
+      for (let k = 0; k < N; k++) { const a = xr[k] * hr[k] - xi[k] * hi[k], c = xr[k] * hi[k] + xi[k] * hr[k]; xr[k] = a; xi[k] = c; }
+      fft(xr, xi, true); const lim = Math.min(N, L - s0); for (let i = 0; i < lim; i++) out[s0 + i] += xr[i] / N;
+    }
+    if (!zero) return out.slice(0, n);
+    const d = Math.floor((m - 1) / 2); return out.slice(d, d + n);
+  }
+  // tek tip süzgeç nesnesi: {kind:'sos', sos} | {kind:'fir', b}
+  function filterDesign(o, fs) {
+    if (o.family === 'fir') return {kind: 'fir', b: firwin(Math.max(3, o.taps | 0), o.type, o.f1, o.f2, fs, o.win, o.beta)};
+    if (o.family === 'butter' && o.type === 'notch') return {kind: 'sos', sos: design('notch', o, fs)};
+    return {kind: 'sos', sos: iirDesign(o, fs)};
+  }
+  function filterApply(F, x, zero) {
+    if (F.kind === 'fir') return firApply(F.b, x, zero !== false);
+    if (zero !== false) return filtfilt(F.sos, x);
+    const y = new Float64Array(x.length); sosRun(F.sos, x, y, false); return y;
+  }
+  // frekans yanıtı: f (Hz), genlik (dB), faz (derece, açılmış), grup gecikmesi yok; zero → |H|² ve 0 faz (ileri-geri)
+  function freqResp(F, fs, n, zero) {
+    n = n || 512; const f = new Float64Array(n), mag = new Float64Array(n), ph = new Float64Array(n);
+    let prev = 0, off = 0;
+    for (let i = 0; i < n; i++) {
+      const fr = (i / (n - 1)) * fs / 2; f[i] = fr; const w = 2 * Math.PI * fr / fs; let H = [1, 0];
+      if (F.kind === 'fir') { let r = 0, im = 0; for (let k = 0; k < F.b.length; k++) { r += F.b[k] * Math.cos(w * k); im -= F.b[k] * Math.sin(w * k); } H = [r, im]; }
+      else for (const [b0, b1, b2, a1, a2] of F.sos) { const c1 = Math.cos(w), s1 = -Math.sin(w), c2 = Math.cos(2 * w), s2 = -Math.sin(2 * w); H = C.mul(H, C.div([b0 + b1 * c1 + b2 * c2, b1 * s1 + b2 * s2], [1 + a1 * c1 + a2 * c2, a1 * s1 + a2 * s2])); }
+      let a = Math.hypot(H[0], H[1]), p = Math.atan2(H[1], H[0]);
+      if (zero) { a = a * a; p = 0; if (F.kind === 'fir') a = Math.sqrt(a); }
+      else if (F.kind === 'fir' && zero !== false) { /* doğrusal faz */ }
+      if (i) { let d = p + off - prev; while (d > Math.PI) { off -= 2 * Math.PI; d -= 2 * Math.PI; } while (d < -Math.PI) { off += 2 * Math.PI; d += 2 * Math.PI; } }
+      mag[i] = 20 * Math.log10(a + 1e-300); ph[i] = (p + off) * 180 / Math.PI; prev = p + off;
+    }
+    return {f, mag, ph};
+  }
+  // ---- Rainflow çevrim sayımı (ASTM E1049-85, 3 nokta yöntemi; yarım çevrimler 0.5) ----
+  function turningPoints(x, del) {
+    const tp = [], ix = []; let last = NaN, dir = 0;
+    for (let i = 0; i < x.length; i++) {
+      const v = x[i]; if ((del && del[i]) || !isFinite(v)) continue;
+      if (isNaN(last)) { tp.push(v); ix.push(i); last = v; continue; }
+      if (v === last) continue; const d = v > last ? 1 : -1;
+      if (dir === 0 || d === dir) { if (dir !== 0) { tp[tp.length - 1] = v; ix[ix.length - 1] = i; } else { tp.push(v); ix.push(i); } }
+      else { tp.push(v); ix.push(i); }
+      dir = d; last = v;
+    }
+    return {tp, ix};
+  }
+  function rainflow(x, del) {
+    const {tp} = turningPoints(x, del), st = [], cyc = [];   // [aralık, ortalama, sayım]
+    for (const v of tp) {
+      st.push(v);
+      while (st.length >= 3) {
+        const n = st.length, X = Math.abs(st[n - 1] - st[n - 2]), Y = Math.abs(st[n - 2] - st[n - 3]);
+        if (X < Y) break;
+        if (n === 3) { cyc.push([Y, (st[0] + st[1]) / 2, 0.5]); st.shift(); }
+        else { cyc.push([Y, (st[n - 2] + st[n - 3]) / 2, 1]); st.splice(n - 3, 2); }
+      }
+    }
+    for (let i = 0; i + 1 < st.length; i++) cyc.push([Math.abs(st[i + 1] - st[i]), (st[i + 1] + st[i]) / 2, 0.5]);
+    const n = cyc.length, range = new Float64Array(n), mean = new Float64Array(n), count = new Float64Array(n);
+    cyc.forEach((c, i) => { range[i] = c[0]; mean[i] = c[1]; count[i] = c[2]; });
+    return {range, mean, count, nTurning: tp.length};
+  }
+  // aralık histogramı + Basquin/Miner eşdeğer hasar: D_rel = Σ n·S^m, S_eq(N_eq) = (Σ n·S^m / N_eq)^(1/m)
+  function rainflowSummary(rf, opt) {
+    opt = opt || {}; const m = opt.m || 5, nb = opt.bins || 32, Neq = opt.neq || 1e6; let mx = 0, tot = 0, dm = 0;
+    for (let i = 0; i < rf.range.length; i++) { mx = Math.max(mx, rf.range[i]); tot += rf.count[i]; dm += rf.count[i] * Math.pow(rf.range[i], m); }
+    const edges = new Float64Array(nb + 1), hist = new Float64Array(nb), dmg = new Float64Array(nb);
+    for (let i = 0; i <= nb; i++) edges[i] = mx * i / nb;
+    for (let i = 0; i < rf.range.length; i++) { const k = mx > 0 ? Math.min(nb - 1, Math.floor(rf.range[i] / mx * nb)) : 0; hist[k] += rf.count[i]; dmg[k] += rf.count[i] * Math.pow(rf.range[i], m); }
+    let D = null; if (opt.sref > 0 && opt.nref > 0) D = dm / (opt.nref * Math.pow(opt.sref, m));
+    return {edges, hist, dmg, cycles: tot, maxRange: mx, m, pseudo: dm, seq: Math.pow(dm / Neq, 1 / m), neq: Neq, seqAvg: tot ? Math.pow(dm / tot, 1 / m) : 0, damage: D};
+  }
+  // ---- kayan basıklık (kurtosis, Pearson: Gauss = 3) ve tepe faktörü (|x−ort|maks / std) ----
+  function slidingStats(x, fs, win, hop) {
+    const W = Math.max(4, Math.round(win * fs)), H = Math.max(1, Math.round((hop || win / 2) * fs)), n = x.length;
+    const nf = Math.max(0, Math.floor((n - W) / H) + 1), kurt = new Float64Array(nf), crest = new Float64Array(nf), rms = new Float64Array(nf);
+    for (let j = 0; j < nf; j++) {
+      const a = j * H; let s = 0; for (let i = a; i < a + W; i++) s += x[i]; const mu = s / W;
+      let m2 = 0, m4 = 0, pk = 0; for (let i = a; i < a + W; i++) { const d = x[i] - mu, d2 = d * d; m2 += d2; m4 += d2 * d2; const ad = Math.abs(d); if (ad > pk) pk = ad; }
+      m2 /= W; m4 /= W; kurt[j] = m2 > 0 ? m4 / (m2 * m2) : NaN; rms[j] = Math.sqrt(m2); crest[j] = m2 > 0 ? pk / Math.sqrt(m2) : NaN;
+    }
+    return {kurt, crest, rms, W, H, dt: H / fs, t0: (W - 1) / 2 / fs};
+  }
+  // ---- keyfi uzunlukta DFT (Bluestein) — tam Δf çözünürlüğü için (ör. fs=1000, Δf=1 → N=1000) ----
+  const blueCache = {};
+  function fftAny(re, im, inverse) {
+    const n = re.length; if ((n & (n - 1)) === 0) return fft(re, im, inverse);
+    const M = nextPow2(2 * n - 1), key = n + (inverse ? 'i' : 'f'); let B = blueCache[key];
+    if (!B) {
+      const wr = new Float64Array(n), wi = new Float64Array(n), sg = inverse ? 1 : -1;
+      for (let k = 0; k < n; k++) { const a = Math.PI * ((k * k) % (2 * n)) / n; wr[k] = Math.cos(a); wi[k] = sg * Math.sin(a); }
+      const br = new Float64Array(M), bi = new Float64Array(M); br[0] = wr[0]; bi[0] = -wi[0];
+      for (let k = 1; k < n; k++) { br[k] = br[M - k] = wr[k]; bi[k] = bi[M - k] = -wi[k]; }
+      fft(br, bi, false); B = blueCache[key] = {wr, wi, br, bi}; if (Object.keys(blueCache).length > 16) for (const k in blueCache) { if (k !== key) { delete blueCache[k]; break; } }
+    }
+    const ar = new Float64Array(M), ai = new Float64Array(M);
+    for (let k = 0; k < n; k++) { ar[k] = re[k] * B.wr[k] - im[k] * B.wi[k]; ai[k] = re[k] * B.wi[k] + im[k] * B.wr[k]; }
+    fft(ar, ai, false);
+    for (let k = 0; k < M; k++) { const r = ar[k] * B.br[k] - ai[k] * B.bi[k], i = ar[k] * B.bi[k] + ai[k] * B.br[k]; ar[k] = r; ai[k] = i; }
+    fft(ar, ai, true);
+    for (let k = 0; k < n; k++) { const r = ar[k] / M, i = ai[k] / M; re[k] = r * B.wr[k] - i * B.wi[k]; im[k] = r * B.wi[k] + i * B.wr[k]; }
+  }
+  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC, iirDesign, firwin, firApply, filterDesign, filterApply, freqResp, rainflow, rainflowSummary, turningPoints, slidingStats, fftAny, polyRoots};
 })();
 if (typeof module !== 'undefined') module.exports = DSP;

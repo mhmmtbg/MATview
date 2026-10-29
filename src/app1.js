@@ -61,10 +61,44 @@ function renderChips() {
   for (const k of Object.keys(KIND)) if (kinds.has(k)) box.append(h('span', {class: 'chip' + (S.kinds.has(k) ? ' on' : ''), title: KIND[k].name + ' kanallarını süz', role: 'button', 'aria-label': KIND[k].name, tabindex: 0, onkeydown: e => { if (e.key === 'Enter') e.target.click(); }, onclick: () => { S.kinds.has(k) ? S.kinds.delete(k) : S.kinds.add(k); renderChips(); renderTree(); }}, kic(k, 15)));
 }
 const allFiles = () => S.derived && S.derived.channels.length ? [...S.files, S.derived] : S.files;
-function chMatches(c) { if (S.kinds.size && !S.kinds.has(c.kind)) return false; if (S.q && !c.name.toLowerCase().includes(S.q)) return false; return true; }
+// Arama sözdizimi: düz metin (alt dize, büyük/küçük harf duyarsız) · /düzenli ifade/i · [g] [°C] (birim) · fs>1000, fs<=500, fs=2000 · ★ (yalnız sık kullanılanlar)
+function parseQuery(raw) {
+  const q = {text: '', re: null, units: [], fs: [], fav: false, err: ''}; let s = String(raw || '').trim();
+  s = s.replace(/\/((?:\\.|[^/])+)\/([gimsuy]*)/, (_, src, fl) => { try { q.re = new RegExp(src, fl.replace(/g/g, '') || 'i'); } catch (e) { q.err = 'Geçersiz düzenli ifade'; } return ' '; });
+  s = s.replace(/\[([^\]]*)\]/g, (_, u) => { q.units.push(u.trim().toLowerCase()); return ' '; });
+  s = s.replace(/\bfs\s*(<=|>=|=|:|<|>)\s*([\d.]+(?:e[-+]?\d+)?)\s*(k?)(?:hz)?/gi, (_, op, v, k) => { q.fs.push([op === ':' ? '=' : op, +v * (k ? 1000 : 1)]); return ' '; });
+  s = s.replace(/★|\bfav:?(?=\s|$)/gi, () => { q.fav = true; return ' '; });
+  q.text = s.replace(/\s+/g, ' ').trim().toLowerCase(); return q;
+}
+function favKey(c) { return (c.file && c.file.name || '') + '|' + c.name; }
+function isFav(c) { return S.fav && S.fav.has(favKey(c)); }
+function toggleFav(c, on) {
+  if (!S.fav) S.fav = new Set(); const k = favKey(c); (on == null ? !S.fav.has(k) : on) ? S.fav.add(k) : S.fav.delete(k);
+  try { localStorage.setItem('mv.fav', JSON.stringify([...S.fav].slice(-5000))); } catch (_) {}
+  renderTree();
+}
+function getQF() {
+  if (S._qfFor !== S.q) { const el = typeof document !== 'undefined' && document.getElementById('q'), raw = el && el.value.trim().toLowerCase() === S.q ? el.value : S.q; S.qf = S.q ? parseQuery(raw) : null; S._qfFor = S.q; }
+  return S.qf;
+}
+function chMatches(c) {
+  if (S.kinds.size && !S.kinds.has(c.kind)) return false;
+  if (S.favOnly && !isFav(c)) return false;
+  const q = getQF(); if (!q) return true;
+  if (q.fav && !isFav(c)) return false;
+  if (q.text && !c.name.toLowerCase().includes(q.text)) return false;
+  if (q.re && !q.re.test(c.name)) return false;
+  if (q.units.length) { const u = (c.unit || (KIND[c.kind] && KIND[c.kind].ylabel) || '').toLowerCase().replace(/[\[\]()]/g, '').trim(); if (!q.units.some(x => x === u)) return false; }
+  if (q.fs.length) { const f = c.fs; if (!isFinite(f)) return false; for (const [op, v] of q.fs) { const tol = Math.max(1e-9, Math.abs(v) * 1e-6); if (op === '=' ? Math.abs(f - v) > tol : op === '<' ? !(f < v) : op === '>' ? !(f > v) : op === '<=' ? !(f <= v + tol) : !(f >= v - tol)) return false; } }
+  return true;
+}
+// Kanal ağacı: satırlar önce tanımlayıcı listesi olarak kurulur; bir dosyada çok satır varsa yalnız görünen pencere DOM'a
+// eklenir (sanal kaydırma — 10 000+ kanal akıcı). Satır yüksekliği sabittir (TREE_RH).
+const TREE_RH = 22, TREE_VIRT = 250;
 function renderTree() {
-  const box = $('#tree'); const scs = {}; box.querySelectorAll('.tbody').forEach(x => scs[x.dataset.f] = x.scrollTop); box.replaceChildren(); S.rowOrder = [];
-  const filtering = S.q || S.kinds.size;
+  const box = $('#tree'); const scs = {}; box.querySelectorAll('.tbody').forEach(x => scs[x.dataset.f] = x.scrollTop); box.replaceChildren(); S.rowOrder = []; S.treeIdx = new Map();
+  const filtering = S.q || S.kinds.size || S.favOnly;
+  const virt = [];
   for (const f of allFiles()) {
     const chs = f.channels.filter(chMatches);
     if (!S.seenF.has(f.id)) { S.seenF.add(f.id); S.fopen.add(f.id); }
@@ -74,46 +108,81 @@ function renderTree() {
       h('span', {class: 'twisty'}, fop ? '▼' : '▶'), h('span', {class: 'nm'}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
       f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => matDlg(f, {t: 'all'})}, '.mat') : null,
       f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
-    const devs = new Map();
+    if (!fop) { box.append(grp); continue; }
+    const items = [], devs = new Map();
     for (const c of chs) { if (!devs.has(c.dev)) devs.set(c.dev, new Map()); const bm = devs.get(c.dev); if (!bm.has(c.base)) bm.set(c.base, []); bm.get(c.base).push(c); }
     for (const [dev, bm] of devs) {
       const dk = f.id + '/' + dev, open = filtering || S.open.has(dk);
-      const total = [...bm.values()].reduce((a, b) => a + b.length, 0);
-      body.append(h('div', {class: 'tdev', oncontextmenu: e => { e.preventDefault(); devMenu(f, dev, e.clientX, e.clientY); }, onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
+      let total = 0; for (const l of bm.values()) total += l.length;
+      items.push({k: 'dev', dev, dk, open, total, f});
       if (!open) continue;
       for (const [base, list] of bm) {
         if (list.length > 1 && list.every(c => c.base === base)) {
           const bk = dk + '/' + base, bo = filtering || S.open.has(bk);
-          body.append(h('div', {class: 'trow', ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
-            h('span', {class: 'twisty'}, bo ? '▼' : '▶'), kic(list[0].kind), h('span', {class: 'nm'}, hl(base)), h('span', {class: 'meta'}, list.length + ' kanal'),
-            h('button', {class: 'add', 'data-ic': 'stack', title: 'Her kanalı ayrı alt grafiğe ekle', onclick: e => { e.stopPropagation(); addToNewAxes(list, false); }}), h('button', {class: 'add', 'data-ic': 'layers', title: 'Hepsini tek (yeni) grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addGroup(list); }}), h('button', {class: 'add', 'data-ic': 'swap', title: 'Mevcut grafiği kaldırıp bu kanalları tek grafikte çiz', onclick: e => { e.stopPropagation(); replacePlot(list, true); }})));
-          if (bo) for (const c of list) body.append(chRow(c, c.comp || c.rest, true));
-        } else { if ((f.binary || f.unv) && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) body.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) body.append(chRow(c, c.rest, false)); }
+          items.push({k: 'grp', base, bk, bo, list});
+          if (bo) for (const c of list) items.push({k: 'ch', c, label: c.comp || c.rest, sub: true});
+        } else for (const c of list) items.push({k: 'ch', c, label: c.rest, sub: false});
       }
     }
-    if (fop) grp.append(body); box.append(grp);
+    items.forEach((it, i) => { if (it.k === 'ch') { S.rowOrder.push(it.c); S.treeIdx.set(it.c.uid, {body, i}); } });
+    body._items = items;
+    if (items.length <= TREE_VIRT) { for (const it of items) body.append(treeItemEl(it)); }
+    else { body.classList.add('virt'); body._top = h('div', {class: 'vsp'}); body._bot = h('div', {class: 'vsp'}); body.append(body._top, body._bot); body.addEventListener('scroll', () => { if (!body._raf) body._raf = requestAnimationFrame(() => { body._raf = 0; treeSlice(body); }); }, {passive: true}); virt.push(body); }
+    grp.append(body); box.append(grp);
   }
   if (!S.files.length) box.append(h('div', {class: 'note', style: 'padding:14px'}, 'Henüz dosya yok. "Dosya aç…" düğmesini kullanın veya .mat dosyalarını pencereye sürükleyin.'));
+  if (S.qf && S.qf.err) box.prepend(h('div', {class: 'note', style: 'padding:4px 10px;color:var(--danger)'}, S.qf.err));
   if (typeof syncFeatUI === 'function' && S.xyPlot) syncFeatUI(); if (typeof syncWelcome === 'function') syncWelcome();
-  for (const x of box.querySelectorAll('.tbody')) if (scs[x.dataset.f]) x.scrollTop = scs[x.dataset.f]; updateSelInfo();
+  for (const x of box.querySelectorAll('.tbody')) { if (x._top) treeSlice(x, scs[x.dataset.f] || 0); if (scs[x.dataset.f]) x.scrollTop = scs[x.dataset.f]; if (x._top) treeSlice(x); }
+  updateSelInfo();
   uiChanged();
 }
-const hl = label => { const q = S.q, i = q ? String(label).toLowerCase().indexOf(q) : -1; return i < 0 ? [label] : [label.slice(0, i), h('mark', null, label.slice(i, i + q.length)), label.slice(i + q.length)]; };
+// sanal gövdede görünen pencereyi (± tampon) çiz
+function treeSlice(body, st) {
+  const items = body._items, n = items.length, H = body.clientHeight || 600, top = st != null ? st : body.scrollTop;
+  const a = Math.max(0, Math.floor(top / TREE_RH) - 20), b = Math.min(n, Math.ceil((top + H) / TREE_RH) + 20);
+  if (body._a === a && body._b === b) return; body._a = a; body._b = b;
+  const foc = document.activeElement && body.contains(document.activeElement) ? document.activeElement._uid : null;
+  while (body._top.nextSibling && body._top.nextSibling !== body._bot) body._top.nextSibling.remove();
+  const frag = document.createDocumentFragment(); for (let i = a; i < b; i++) frag.append(treeItemEl(items[i]));
+  body._top.style.height = a * TREE_RH + 'px'; body._bot.style.height = (n - b) * TREE_RH + 'px';
+  body.insertBefore(frag, body._bot); if (typeof decorate === 'function') decorate(body);
+  if (foc != null) { const r = [...body.querySelectorAll('.trow')].find(x => x._uid === foc); if (r) r.focus({preventScroll: true}); }
+}
+// kanal satırına git (sanal gövdede gerekirse kaydırıp çizer) ve odakla
+function treeFocusUid(uid) {
+  const e = S.treeIdx && S.treeIdx.get(uid); if (!e) return null; const {body, i} = e;
+  if (body._top) { const y = i * TREE_RH; if (y < body.scrollTop || y + TREE_RH > body.scrollTop + body.clientHeight) body.scrollTop = Math.max(0, y - body.clientHeight / 2); treeSlice(body); }
+  const r = [...body.querySelectorAll('.trow')].find(x => x._uid === uid); if (r) r.focus(); return r;
+}
+function treeItemEl(it) {
+  if (it.k === 'ch') return chRow(it.c, it.label, it.sub);
+  if (it.k === 'dev') { const {dev, dk, open, total, f} = it; return h('div', {class: 'tdev', oncontextmenu: e => { e.preventDefault(); devMenu(f, dev, e.clientX, e.clientY); }, onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')); }
+  const {base, bk, bo, list} = it;
+  return h('div', {class: 'trow', ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
+    h('span', {class: 'twisty'}, bo ? '▼' : '▶'), kic(list[0].kind), h('span', {class: 'nm'}, hl(base)), h('span', {class: 'meta'}, list.length + ' kanal'),
+    h('button', {class: 'add', 'data-ic': 'stack', title: 'Her kanalı ayrı alt grafiğe ekle', onclick: e => { e.stopPropagation(); addToNewAxes(list, false); }}), h('button', {class: 'add', 'data-ic': 'layers', title: 'Hepsini tek (yeni) grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addGroup(list); }}), h('button', {class: 'add', 'data-ic': 'swap', title: 'Mevcut grafiği kaldırıp bu kanalları tek grafikte çiz', onclick: e => { e.stopPropagation(); replacePlot(list, true); }}));
+}
+const hl = label => {
+  label = String(label); const q = getQF(); if (!q) return [label];
+  if (q.re) { const m = q.re.exec(label); if (m && m[0]) return [label.slice(0, m.index), h('mark', null, m[0]), label.slice(m.index + m[0].length)]; }
+  const t = q.text, i = t ? label.toLowerCase().indexOf(t) : -1; return i < 0 ? [label] : [label.slice(0, i), h('mark', null, label.slice(i, i + t.length)), label.slice(i + t.length)];
+};
 function dblAct(e, list) {
   if (list.length && list.every(c => c.file && c.file.feature)) return featAdd(list); const same = (S.pref.dbl === 'same') !== !!e.shiftKey; return same ? addToAxes(activeAxes(), list) : addToNewAxes(list, false); }
 function chMM(c) { if (!c.data) return ''; if (!c._mm) { let lo = Infinity, hi = -Infinity; const d = c.data; for (let i = 0; i < d.length; i++) { const v = d[i]; if (v < lo) lo = v; if (v > hi) hi = v; } c._mm = [lo, hi]; } return '\nmin ' + fmtNum(c._mm[0], 5) + ' · max ' + fmtNum(c._mm[1], 5); }
 function chRow(c, label, sub) {
-  S.rowOrder.push(c);
   const row = h('div', {class: 'trow' + (sub ? ' sub' : '') + (S.selCh.has(c.uid) ? ' sel' : ''), draggable: 'true', tabindex: 0,
     onclick: e => {
       if (e.target.closest('button')) return;
       if (e.shiftKey && S.lastSel) { const o = S.rowOrder.map(x => x.uid), a = o.indexOf(S.lastSel), b = o.indexOf(c.uid); if (a >= 0 && b >= 0) { for (let i = Math.min(a, b); i <= Math.max(a, b); i++) S.selCh.add(o[i]); } else S.selCh.add(c.uid); }
       else if (e.ctrlKey || e.metaKey) { S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); S.lastSel = c.uid; } else { S.selCh = new Set([c.uid]); S.lastSel = c.uid; }
-      renderTree(); const r = [...document.querySelectorAll('#tree .trow')].find(x => x._uid === c.uid); if (r && e.detail === 0) r.focus();
+      renderTree(); treeFocusUid(c.uid);
     },
     oncontextmenu: e => { e.preventDefault(); if (!S.selCh.has(c.uid)) { S.selCh = new Set([c.uid]); S.lastSel = c.uid; renderTree(); } chMenu(c, e.clientX, e.clientY); }, ondblclick: e => dblAct(e, [c]), ondragstart: e => dragStart(e, S.selCh.has(c.uid) ? chsFromSel() : [c]), ondragend: () => hideDZ(),
-    onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); dblAct(e, S.selCh.size > 1 && S.selCh.has(c.uid) ? chsFromSel() : [c]); } else if (e.key === ' ') { e.preventDefault(); S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); S.lastSel = c.uid; const u = c.uid; renderTree(); const r = [...document.querySelectorAll('#tree .trow')].find(x => x._uid === u); if (r) r.focus(); } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const rows = [...document.querySelectorAll('#tree .trow')], i = rows.indexOf(row), n = rows[i + (e.key === 'ArrowDown' ? 1 : -1)]; if (n) n.focus(); } },
+    onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); dblAct(e, S.selCh.size > 1 && S.selCh.has(c.uid) ? chsFromSel() : [c]); } else if (e.key === ' ') { e.preventDefault(); S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); S.lastSel = c.uid; const u = c.uid; renderTree(); treeFocusUid(u); } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const o = S.rowOrder, i = o.indexOf(c), n = o[i + (e.key === 'ArrowDown' ? 1 : -1)]; if (n) treeFocusUid(n.uid); } else if (e.key === '*' || (e.key.toLowerCase() === 'f' && e.altKey)) { e.preventDefault(); const u = c.uid; toggleFav(c); treeFocusUid(u); } },
     title: c.name + '\n' + fmtCnt(c.n) + ' örnek · ' + fmtNum(c.fs, 6) + ' Hz' + chMM(c)},
+    h('button', {class: 'fav noic' + (isFav(c) ? ' on' : ''), title: isFav(c) ? 'Sık kullanılanlardan çıkar (*)' : 'Sık kullanılanlara ekle (*)', 'aria-label': 'Sık kullanılan', onclick: e => { e.stopPropagation(); toggleFav(c); }}, isFav(c) ? '★' : '☆'),
     kic(c.kind), h('span', {class: 'nm'}, hl(label)), h('span', {class: 'meta'}, c.n >= 1e6 ? (c.n / 1e6).toFixed(1) + 'M' : c.n >= 1e3 ? (c.n / 1e3).toFixed(0) + 'k' : c.n),
     h('button', {class: 'add', 'data-ic': 'stack', title: 'Yeni alt grafik olarak ekle', onclick: e => { e.stopPropagation(); addToNewAxes([c]); }}),
     h('button', {class: 'add', 'data-ic': 'layers', title: 'Aktif grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addToAxes(activeAxes(), [c]); }}),

@@ -1,6 +1,6 @@
 /* ===== Uygulama: paneller, analiz, akustik, çıktı, başlatma ===== */
 const fr = (label, ...c) => h('div', {class: 'fr'}, h('label', null, label), ...c);
-const numIn = (id, v, o = {}) => h('input', {type: 'number', id, value: v, step: o.step ?? 'any', min: o.min, max: o.max});
+const numIn = (id, v, o = {}) => h('input', {type: 'number', id, value: v, step: o.step ?? 'any', min: o.min, max: o.max, placeholder: o.placeholder, title: o.title});
 const selIn = (id, opts, v) => h('select', {id}, opts.map(([val, txt]) => h('option', {value: val, selected: String(val) === String(v)}, txt)));
 const chkIn = (id, label, on) => h('div', {class: 'fr chk'}, h('label', {for: id}, label), h('input', {type: 'checkbox', id, checked: on}));
 const num = id => parseFloat($('#' + id).value), sv = id => $('#' + id).value, ck = id => $('#' + id).checked;
@@ -176,6 +176,7 @@ function buildAnalyze() {
   r.append(card('Spektrum (FFT / PSD)',
     fr('Hesap', selIn('spScale', [['psd', 'PSD (Welch)'], ['amp', 'Genlik spektrumu (tepe)'], ['rms', 'Genlik spektrumu (RMS)']], 'psd')),
     fr('NFFT', selIn('spN', [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536].map(v => [v, v]), 4096)),
+    fr('Tam Δf (Hz)', numIn('spDf', '', {min: 0, step: 'any', placeholder: 'boş: NFFT', title: 'Verilirse pencere uzunluğu fs/Δf olur (ikinin kuvveti olması gerekmez): ör. fs=1000 Hz, Δf=1 Hz → 1000 nokta. NFFT seçimini geçersiz kılar.'})),
     fr('Pencere', selIn('spWin', [['hann', 'Hann'], ['hamming', 'Hamming'], ['blackman', 'Blackman'], ['flattop', 'Flat-top'], ['rect', 'Dikdörtgen']], 'hann')),
     fr('Örtüşme', selIn('spOv', [['0', '%0'], ['0.5', '%50'], ['0.75', '%75']], '0.5')),
     fr('Kapsam', selIn('spScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
@@ -197,12 +198,8 @@ function buildAnalyze() {
     h('div', {class: 'note'}, 'Çok uzun aralıklarda kare sayısı 1500 ile sınırlıdır; daha ayrıntı için önce yakınlaştırın.')));
   for (const c of extraAnalysisCards()) r.append(c);
   setTimeout(refreshFrfPick);
-  r.append(card('Süzgeç (sıfır faz, Butterworth)',
-    fr('Tür', selIn('flType', [['lp', 'Alçak geçiren'], ['hp', 'Yüksek geçiren'], ['bp', 'Band geçiren'], ['bs', 'Band söndüren'], ['notch', 'Notch (çentik)']], 'lp')),
-    fr('f1 / f2 (Hz)', numIn('flF1', 100), numIn('flF2', 500)),
-    fr('Derece', numIn('flOrd', 4, {min: 1, max: 12, step: 1})), fr('Q (notch)', numIn('flQ', 30)),
-    fr('Kapsam', selIn('flScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
-    h('div', {class: 'btns'}, btn('Süz ve yeni kanal olarak ekle', applyFilterUI, 'primary'))));
+  if (typeof faz4Cards === 'function') for (const c of faz4Cards()) r.append(c);
+  r.append(filterCard());
   return r;
 }
 function specRange(tr, ax, scope) { const ch = tr.ch; return scope === 'vis' ? visRange(tr, ax) : [0, ch.n]; }
@@ -210,7 +207,7 @@ async function computeSpectrum(only) {
   const ax = activeAxes(); if (!ax || !ax.traces.length) return toast('Önce Zaman grafiğine bir iz ekleyin');
   const list = only && only.ch ? [only] : ax.traces.filter(t => t.ch);
   await busy('Spektrum hesaplanıyor…', async prog => {
-    const o = {nfft: +sv('spN'), win: sv('spWin'), overlap: +sv('spOv'), scale: sv('spScale'), maxSeg: 4000};
+    const o = {nfft: +sv('spN'), win: sv('spWin'), overlap: +sv('spOv'), scale: sv('spScale'), maxSeg: 4000}; { const df = num('spDf'); if (df > 0) o.df = df; }
     const ys = sv('spY'), P = S.specPlot; P.axes.slice().forEach(a => P.removeAxes(a));
     const sa = P.addAxes({xlog: sv('spX') === 'log', ylog: ys === 'log', title: ax.title || ''});
     const k0 = list.find(t => t.visible && t.ch), ku = k0 ? (k0.ch.unit || (k0.ch.kind === 'vib' ? 'g' : 'birim')) : 'birim', u2 = ku.length > 1 ? '(' + ku + ')' : ku;
@@ -261,15 +258,67 @@ function addDerived(name, data, src, i0, full) {
   S.derived.channels.push(c); logOp('derived', {name, src: src ? src.name : '', desc: S.opDesc || ''}); S.opDesc = ''; renderChips(); renderTree(); return c;
 }
 async function addDerivedToPlot(c, ax) { const tr = makeTrace(c); (ax || activeAxes() || S.plot.addAxes()).traces.push(tr); const a = ax || activeAxes(); if (!S.plot.active) S.plot.active = a; switchView('time'); refreshAll(); }
+// Süzgeç: Butterworth / Chebyshev I / Bessel (IIR, bilineer) ve pencereli sinc FIR; canlı Bode (genlik / faz) önizlemesi
+function filterCard() {
+  const fam = selIn('flFam', [['butter', 'Butterworth'], ['cheby1', 'Chebyshev Tip I'], ['bessel', 'Bessel'], ['fir', 'FIR (pencereli sinc)']], 'butter');
+  const c = card('Süzgeç (IIR / FIR, canlı Bode)',
+    fr('Tasarım', fam),
+    fr('Tür', selIn('flType', [['lp', 'Alçak geçiren'], ['hp', 'Yüksek geçiren'], ['bp', 'Band geçiren'], ['bs', 'Band söndüren'], ['notch', 'Notch (çentik, Butterworth)']], 'lp')),
+    fr('f1 / f2 (Hz)', numIn('flF1', 100), numIn('flF2', 500)),
+    h('div', {class: 'fr', id: 'flOrdRow'}, h('label', null, 'Derece'), numIn('flOrd', 4, {min: 1, max: 20, step: 1})),
+    h('div', {class: 'fr', id: 'flRpRow'}, h('label', null, 'Dalgalanma (dB)'), numIn('flRp', 1, {min: 0.01, max: 10, step: 0.1})),
+    h('div', {class: 'fr', id: 'flQRow'}, h('label', null, 'Q (notch)'), numIn('flQ', 30)),
+    h('div', {class: 'fr', id: 'flTapRow'}, h('label', null, 'FIR katsayı / pencere'), numIn('flTaps', 101, {min: 3, max: 8191, step: 2}), selIn('flWin', [['hamming', 'Hamming'], ['hann', 'Hann'], ['blackman', 'Blackman'], ['kaiser', 'Kaiser'], ['rect', 'Dikdörtgen']], 'hamming')),
+    h('div', {class: 'fr', id: 'flBetaRow'}, h('label', null, 'Kaiser β'), numIn('flBeta', 8.6, {min: 0, step: 0.1})),
+    chkIn('flZero', 'Sıfır faz (IIR: ileri-geri · FIR: gecikme düzeltmeli)', true),
+    fr('Kapsam', selIn('flScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
+    h('div', {class: 'bode'}, h('canvas', {id: 'flBode', width: 320, height: 190, 'aria-label': 'Bode diyagramı'})), h('div', {id: 'flInfo', class: 'note'}, ''),
+    h('div', {class: 'btns'}, btn('Süz ve yeni kanal olarak ekle', applyFilterUI, 'primary')));
+  c.addEventListener('input', () => bodeSoon()); c.addEventListener('change', () => bodeSoon());
+  setTimeout(bodeSoon, 0); return c;
+}
+let _bodeT = 0; function bodeSoon() { clearTimeout(_bodeT); _bodeT = setTimeout(drawBode, 60); }
+function filterSpec() {
+  return {family: sv('flFam'), type: sv('flType'), order: num('flOrd') | 0, f1: num('flF1'), f2: num('flF2'), Q: num('flQ'), rp: num('flRp'), taps: num('flTaps') | 0, win: sv('flWin'), beta: num('flBeta')};
+}
+function filterFs() { const tr = typeof activeTrace === 'function' && activeTrace(); return tr && tr.ch && tr.ch.fs > 0 ? tr.ch.fs : null; }
+function drawBode() {
+  const cv = $('#flBode'); if (!cv) return; const sp = filterSpec(), fir = sp.family === 'fir', zero = ck('flZero');
+  const vis = (id, on) => { const e = $('#' + id); if (e) e.style.display = on ? '' : 'none'; };
+  vis('flOrdRow', !fir && sp.type !== 'notch'); vis('flRpRow', sp.family === 'cheby1'); vis('flQRow', sp.type === 'notch'); vis('flTapRow', fir); vis('flBetaRow', fir && sp.win === 'kaiser');
+  const fs = filterFs() || 2 * Math.max(1000, (sp.f2 || sp.f1) * 4), info = $('#flInfo');
+  const W = cv.clientWidth || 320, H = 190, dpr = devicePixelRatio || 1; cv.width = W * dpr; cv.height = H * dpr; const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const T = curTheme(); g.fillStyle = T.bg; g.fillRect(0, 0, W, H); g.font = '10px system-ui'; g.textBaseline = 'middle';
+  let F, R; try { if (sp.type === 'notch' && fir) throw new Error('Notch yalnız IIR (Butterworth) ile'); if (sp.type === 'notch' && sp.family !== 'butter') sp.family = 'butter'; F = DSP.filterDesign(sp, fs); R = DSP.freqResp(F, fs, 400, zero && !fir); }
+  catch (e) { g.fillStyle = T.muted; g.textAlign = 'center'; g.fillText(e.message, W / 2, H / 2); if (info) info.textContent = ''; return; }
+  const L = 40, Rr = W - 40, top = 8, h1 = (H - 34) * 0.62, h2 = (H - 34) * 0.38 - 8, y2 = top + h1 + 10, lx = f => L + Math.log10(Math.max(f, fs / 2000)) / 1 * 0, xf = f => L + (Math.log10(Math.max(f, fs / 1e4)) - Math.log10(fs / 1e4)) / (Math.log10(fs / 2) - Math.log10(fs / 1e4)) * (Rr - L);
+  void lx; const mLo = -100, mHi = 5, ym = v => top + (mHi - Math.max(mLo, Math.min(mHi, v))) / (mHi - mLo) * h1;
+  let pmin = Infinity, pmax = -Infinity; for (const v of R.ph) { pmin = Math.min(pmin, v); pmax = Math.max(pmax, v); } if (pmax - pmin < 1) { pmin -= 90; pmax += 90; }
+  const yp = v => y2 + (pmax - v) / (pmax - pmin) * h2;
+  g.strokeStyle = T.grid; g.lineWidth = 1; g.beginPath();
+  for (const v of [0, -20, -40, -60, -80]) { g.moveTo(L, ym(v) + .5); g.lineTo(Rr, ym(v) + .5); }
+  for (let e = Math.ceil(Math.log10(fs / 1e4)); Math.pow(10, e) <= fs / 2; e++) { const x = Math.round(xf(Math.pow(10, e))) + .5; g.moveTo(x, top); g.lineTo(x, y2 + h2); }
+  g.stroke(); g.strokeStyle = T.axis; g.strokeRect(L + .5, top + .5, Rr - L, h1); g.strokeRect(L + .5, y2 + .5, Rr - L, h2);
+  g.fillStyle = T.muted; g.textAlign = 'right'; for (const v of [0, -40, -80]) g.fillText(v + ' dB', L - 3, ym(v)); g.fillText(Math.round(pmax) + '°', L - 3, y2 + 4); g.fillText(Math.round(pmin) + '°', L - 3, y2 + h2 - 4);
+  g.textAlign = 'center'; for (let e = Math.ceil(Math.log10(fs / 1e4)); Math.pow(10, e) <= fs / 2; e++) g.fillText(fmtNum(Math.pow(10, e), 3), xf(Math.pow(10, e)), y2 + h2 + 9);
+  g.textAlign = 'left'; g.fillText('Hz (fs = ' + fmtNum(fs, 5) + (filterFs() ? '' : ', örnek') + ')', Rr - 70, y2 + h2 + 20);
+  const line = (ys, col) => { g.strokeStyle = col; g.lineWidth = 1.5; g.beginPath(); let st = false; for (let i = 1; i < R.f.length; i++) { const x = xf(R.f[i]), y = ys[i]; if (!isFinite(y)) { st = false; continue; } st ? g.lineTo(x, y) : g.moveTo(x, y); st = true; } g.stroke(); };
+  line(Array.from(R.mag, ym), '#0072BD'); line(Array.from(R.ph, yp), '#D95319');
+  g.strokeStyle = '#e15759'; g.setLineDash([3, 3]); g.beginPath(); for (const f of [sp.f1, ['bp', 'bs'].includes(sp.type) ? sp.f2 : null]) if (f > 0) { const x = Math.round(xf(f)) + .5; g.moveTo(x, top); g.lineTo(x, y2 + h2); } g.stroke(); g.setLineDash([]);
+  const at = f => { let i = 1; while (i < R.f.length - 1 && R.f[i] < f) i++; const t = (f - R.f[i - 1]) / (R.f[i] - R.f[i - 1]); return R.mag[i - 1] + (R.mag[i] - R.mag[i - 1]) * Math.max(0, Math.min(1, t)); };
+  if (info) info.textContent = (fir ? `FIR ${F.b.length} katsayı · gecikme ${fmtNum((F.b.length - 1) / 2 / fs * 1000, 4)} ms` : `IIR ${F.sos.length} ikinci derece bölüm`) + ` · |H(f1)| = ${at(sp.f1).toFixed(2)} dB` + (zero ? (fir ? ' · sıfır faz (gecikme düzeltildi)' : ' · ileri-geri: genlik², faz 0') : ' · tek geçiş (nedensel) faz');
+}
 async function applyFilterUI() {
   const tr = activeTrace(), ax = activeAxes(); if (!tr) return toast('Önce bir iz seçin');
   await busy('Süzülüyor…', async () => {
     const ch = tr.ch; await ensureLoaded(ch); const [a, b] = specRange(tr, ax, sv('flScope'));
-    const type = sv('flType'), p = {order: num('flOrd') | 0, f1: num('flF1'), f2: num('flF2'), Q: num('flQ')};
-    if ((type === 'bp' || type === 'bs') && !(p.f2 > p.f1)) throw new Error('f2, f1\'den büyük olmalı');
-    const sos = DSP.design(type, p, ch.fs); const seg = DSP.segment(ch.data, ch.del, a, b); const y = await DSPW.run('filtfilt', [sos, seg], [seg]);
-    const tag = {lp: 'LP' + p.f1, hp: 'HP' + p.f1, bp: 'BP' + p.f1 + '-' + p.f2, bs: 'BS' + p.f1 + '-' + p.f2, notch: 'N' + p.f1}[type];
-    S.opDesc = `Butterworth ${type.toUpperCase()} sıfır faz (filtfilt), derece ${p.order}, f1=${p.f1}${type === 'bp' || type === 'bs' ? ', f2=' + p.f2 : ''}${type === 'notch' ? ', Q=' + p.Q : ''} Hz`; const c = addDerived(ch.name + '_' + tag, y, ch, a, a === 0 && b === ch.n); await addDerivedToPlot(c, ax);
+    const sp = filterSpec(), zero = ck('flZero'); if (sp.type === 'notch') sp.family = sp.family === 'fir' ? 'butter' : 'butter';
+    if ((sp.type === 'bp' || sp.type === 'bs') && !(sp.f2 > sp.f1)) throw new Error('f2, f1\'den büyük olmalı');
+    const F = DSP.filterDesign(sp, ch.fs), seg = DSP.segment(ch.data, ch.del, a, b); const y = await DSPW.run('filterApply', [F, seg, zero], [seg]);
+    const nm = {butter: 'Butterworth', cheby1: 'Chebyshev I (' + sp.rp + ' dB)', bessel: 'Bessel', fir: 'FIR ' + (F.b ? F.b.length : '') + ' katsayı ' + sp.win}[sp.family];
+    const tag = {lp: 'LP' + sp.f1, hp: 'HP' + sp.f1, bp: 'BP' + sp.f1 + '-' + sp.f2, bs: 'BS' + sp.f1 + '-' + sp.f2, notch: 'N' + sp.f1}[sp.type] + (sp.family === 'butter' ? '' : '_' + {cheby1: 'C1', bessel: 'BE', fir: 'FIR'}[sp.family]);
+    S.opDesc = `${nm} ${sp.type.toUpperCase()} ${zero ? 'sıfır faz' : 'tek geçiş'}${sp.family !== 'fir' && sp.type !== 'notch' ? ', derece ' + sp.order : ''}, f1=${sp.f1}${sp.type === 'bp' || sp.type === 'bs' ? ', f2=' + sp.f2 : ''}${sp.type === 'notch' ? ', Q=' + sp.Q : ''} Hz`;
+    const c = addDerived(ch.name + '_' + tag, y, ch, a, a === 0 && b === ch.n); await addDerivedToPlot(c, ax);
     toast('Süzülmüş kanal eklendi: ' + c.name);
   });
 }
@@ -584,7 +633,11 @@ function init() {
   $('#fileIn').onchange = e => { openFiles(e.target.files); e.target.value = ''; };
   $('#btnTime').onclick = timeDialog; $('#btnHelp').onclick = helpDialog; $('#btnFree').onclick = freeMemory;
   $('#btnTheme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
-  $('#q').oninput = e => { S.q = e.target.value.trim().toLowerCase(); renderTree(); };
+  $('#q').oninput = e => { S.q = e.target.value.trim().toLowerCase(); clearTimeout(S._qT); S._qT = setTimeout(renderTree, S.rowOrder && S.rowOrder.length > 3000 ? 120 : 0); };
+  try { S.fav = new Set(JSON.parse(localStorage.getItem('mv.fav') || '[]')); } catch (_) { S.fav = new Set(); }
+  { const fb = h('button', {id: 'btnFavOnly', class: 'noic', title: 'Yalnız sık kullanılan (★) kanalları göster', 'aria-pressed': 'false', onclick: () => { S.favOnly = !S.favOnly; fb.classList.toggle('on', S.favOnly); fb.setAttribute('aria-pressed', S.favOnly); renderTree(); }}, '★');
+    const hb = h('button', {class: 'noic qhelp', title: 'Arama sözdizimi:\n  metin — ad içinde geçen\n  /^acc_.*x$/i — düzenli ifade\n  [g]  [°C]  [m/s²] — birim süzgeci\n  fs>1000  fs<=500  fs=2k — örnekleme frekansı\n  ★ veya fav — yalnız sık kullanılanlar\nHepsi birleştirilebilir: /^T/ [°C] fs>=10\nKanal satırında ☆ ya da * tuşu: sık kullanılan', 'aria-label': 'Arama sözdizimi'}, '?');
+    $('#q').parentElement.append(fb, hb); $('#q').placeholder = 'Ara: ad, /regex/, [g], fs>1000, ★'; }
   $('#btnStack').onclick = () => { const l = chsFromSel(); if (l.length) addToNewAxes(l); else toast('Önce soldan kanal seçin'); };
   $('#btnOverlay').onclick = () => { const l = chsFromSel(); if (l.length) addToAxes(activeAxes(), l); else toast('Önce soldan kanal seçin'); };
   // sürükle-bırak
