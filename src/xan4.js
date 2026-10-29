@@ -9,7 +9,8 @@ const DSPW = (() => {
     if (w || dead) return !!w;
     try {
       if (typeof Worker === 'undefined' || typeof __DSP_SRC !== 'string') throw new Error('worker yok');
-      const src = __DSP_SRC + '\nonmessage = e => { const {id, fn, args} = e.data; try { postMessage({id, r: DSP[fn](...args)}); } catch (err) { postMessage({id, err: String(err && err.message || err)}); } };';
+      // sonuçtaki tamponlar kopyalanmadan geri aktarılır (Transferable)
+      const src = __DSP_SRC + '\nconst bufs = (r, s) => { if (r && ArrayBuffer.isView(r)) { if (!(typeof SharedArrayBuffer !== \'undefined\' && r.buffer instanceof SharedArrayBuffer)) s.add(r.buffer); } else if (r && typeof r === \'object\') for (const k in r) { const v = r[k]; if (v && (ArrayBuffer.isView(v) || typeof v === \'object\')) bufs(v, s); } return s; };\nonmessage = e => { const {id, fn, args} = e.data; try { const r = DSP[fn](...args); postMessage({id, r}, [...bufs(r, new Set())]); } catch (err) { postMessage({id, err: String(err && err.message || err)}); } };';
       w = new Worker(URL.createObjectURL(new Blob([src], {type: 'text/javascript'})));
       w.onmessage = e => { const p = pend.get(e.data.id); if (!p) return; pend.delete(e.data.id); if (e.data.err) p.rej(new Error(e.data.err)); else p.res(e.data.r); };
       w.onerror = e => { dead = true; try { w.terminate(); } catch (_) {} w = null; if (typeof logErr === 'function') logErr('worker', e && e.message || 'worker hatası'); for (const [, p] of pend) { try { p.res(fallback(p.fn, p.args)); } catch (er) { p.rej(er); } } pend.clear(); };
@@ -18,10 +19,19 @@ const DSPW = (() => {
   }
   // büyük bir tamponun küçük bir görünümü klonlanırken tüm tampon kopyalanmasın
   const slim = a => (ArrayBuffer.isView(a) && a.buffer.byteLength > a.byteLength * 1.5) ? a.slice() : a;
-  function run(fn, args) {
+  // own: çağıranın bir daha kullanmayacağı geçici diziler (ör. DSP.segment çıktısı) — kopyalanmadan işçiye aktarılır
+  function run(fn, args, own) {
     if (!start()) return Promise.resolve().then(() => fallback(fn, args));
-    return new Promise((res, rej) => { const id = ++seq; pend.set(id, {res, rej, fn, args}); try { w.postMessage({id, fn, args: args.map(slim)}); } catch (e) { pend.delete(id); try { res(fallback(fn, args)); } catch (er) { rej(er); } } });
+    return new Promise((res, rej) => {
+      const id = ++seq; pend.set(id, {res, rej, fn, args});
+      try {
+        const sent = args.map(a => own && own.includes(a) ? a : slim(a)), tr = [];
+        if (own) for (const a of own) if (a && ArrayBuffer.isView(a) && a.byteOffset === 0 && a.byteLength === a.buffer.byteLength && !tr.includes(a.buffer)) tr.push(a.buffer);
+        w.postMessage({id, fn, args: sent}, tr);
+      } catch (e) { pend.delete(id); try { res(fallback(fn, args)); } catch (er) { rej(er); } }
+    });
   }
+  // işçi ölmüşse/yoksa ana iş parçacığında: hata durumunda veri (aktarıldıysa) kaybolmasın diye fallback args ile çalışır
   return {run, get active() { return !!w; }, get dead() { return dead; }, start};
 })();
 

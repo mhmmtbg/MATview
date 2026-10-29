@@ -47,7 +47,20 @@ function clearPlot() {
   if (S.view !== 'time') switchView('time'); refreshAll();
 }
 function applyFs() { const tr = activeTrace(); const v = num('fsIn'); if (!tr || !(v > 0)) return; tr.ch.setFs(v); S.plot.fitAll(true); refreshAll(); toast('Örnekleme frekansı güncellendi'); }
-function refreshAll() { refreshAxesUI(); refreshTraceInfo(); updateStats(); S.plot.invalidate(); if (typeof refreshCalcUI === 'function') refreshCalcUI(); }
+function refreshAll() { refreshAxesUI(); refreshTraceInfo(); updateStats(); S.plot.invalidate(); uiChanged(); }
+// Bellek göstergesi ve seçim listeleri (hesap kaynağı, FRF/rezonans çiftleri, MAT kartı): değişiklik olunca bir sonraki karede tek sefer
+let _uiPend = 0;
+function uiChanged() {
+  if (_uiPend) return;
+  _uiPend = requestAnimationFrame(() => {
+    _uiPend = 0;
+    try {
+      let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8;
+      const t = 'Bellekteki veri: ' + (b / 1048576).toFixed(0) + ' MB', el = $('#st1'); if (el && el.textContent !== t) el.textContent = t;
+      if (typeof refreshCalcUI === 'function') refreshCalcUI(); if (typeof refreshFrfPick === 'function') refreshFrfPick(); if (typeof refreshMatCard === 'function') refreshMatCard(); if (typeof refreshRezPick === 'function') refreshRezPick();
+    } catch (e) { if (typeof logErr === 'function') logErr('arayüz', e.message, e.stack); }
+  });
+}
 function refreshAxesUI() {
   const box = $('#axesList'); if (!box) return; box.replaceChildren();
   S.plot.axes.forEach((ax, i) => {
@@ -149,7 +162,7 @@ async function findOutliers(kind) {
       const m = sv('thMode'), A = num('thA'), B = num('thB'); const lo = Math.min(A, B), hi = Math.max(A, B);
       for (let i = a; i < b; i++) { if (del && del[i]) continue; const v = d[i]; if (!isFinite(v)) continue; if (m === 'abs' ? Math.abs(v) > A : m === 'gt' ? v > A : m === 'lt' ? v < A : (v < lo || v > hi)) idx.push(i); }
     } else {
-      const f = DSP.hampelFlags(d.subarray(a, b), Math.max(1, num('hmK') | 0), num('hmS'), del ? del.subarray(a, b) : null);
+      const f = await DSPW.run('hampelFlags', [d.subarray(a, b), Math.max(1, num('hmK') | 0), num('hmS'), del ? del.subarray(a, b) : null]);
       for (const k of f) idx.push(k + a);
     }
     S.plot.sel = {axes: ax, type: 'idx', hits: idx.length ? [{tr, idx: Uint32Array.from(idx)}] : []}; S.plot.onSelect(S.plot.sel); S.plot.invalidate();
@@ -230,7 +243,7 @@ async function computeSpectrogram() {
     const ch = tr.ch; await ensureLoaded(ch); const [a, b] = specRange(tr, ax, sv('sgScope'));
     if (b - a < +sv('sgN') * 2) throw new Error('Aralık NFFT için çok kısa');
     const seg = DSP.segment(ch.data, ch.del, a, b);
-    const sp = DSP.spectrogram(seg, ch.fs, {nfft: +sv('sgN'), win: sv('sgWin'), overlap: +sv('sgOv'), maxFrames: 1500});
+    const sp = await DSPW.run('spectrogram', [seg, ch.fs, {nfft: +sv('sgN'), win: sv('sgWin'), overlap: +sv('sgOv'), maxFrames: 1500}], [seg]);
     S.specView.cmap = sv('sgMap'); S.specView.setSpec(sp, ch.fs, ch.t(a));
     $('#sgLo').value = Math.round(S.specView.clim[0]); $('#sgHi').value = Math.round(S.specView.clim[1]);
     switchView('sgram'); toast(`${sp.nf} kare · Δf=${fmtNum(sp.df, 4)} Hz · Δt=${fmtNum(sp.dt * 1000, 4)} ms`);
@@ -250,7 +263,7 @@ async function applyFilterUI() {
     const ch = tr.ch; await ensureLoaded(ch); const [a, b] = specRange(tr, ax, sv('flScope'));
     const type = sv('flType'), p = {order: num('flOrd') | 0, f1: num('flF1'), f2: num('flF2'), Q: num('flQ')};
     if ((type === 'bp' || type === 'bs') && !(p.f2 > p.f1)) throw new Error('f2, f1\'den büyük olmalı');
-    const sos = DSP.design(type, p, ch.fs); const seg = DSP.segment(ch.data, ch.del, a, b); const y = DSP.filtfilt(sos, seg);
+    const sos = DSP.design(type, p, ch.fs); const seg = DSP.segment(ch.data, ch.del, a, b); const y = await DSPW.run('filtfilt', [sos, seg], [seg]);
     const tag = {lp: 'LP' + p.f1, hp: 'HP' + p.f1, bp: 'BP' + p.f1 + '-' + p.f2, bs: 'BS' + p.f1 + '-' + p.f2, notch: 'N' + p.f1}[type];
     S.opDesc = `Butterworth ${type.toUpperCase()} sıfır faz (filtfilt), derece ${p.order}, f1=${p.f1}${type === 'bp' || type === 'bs' ? ', f2=' + p.f2 : ''}${type === 'notch' ? ', Q=' + p.Q : ''} Hz`; const c = addDerived(ch.name + '_' + tag, y, ch, a, a === 0 && b === ch.n); await addDerivedToPlot(c, ax);
     toast('Süzülmüş kanal eklendi: ' + c.name);
@@ -317,12 +330,13 @@ function acGetSeg() {
   return {tr, ax};
 }
 function opts() { return {dc: sv('acDc'), hp: ck('acHpOn') ? num('acHp') : 0, lp: ck('acLpOn') ? num('acLp') : 0, notch: ck('acNOn') ? num('acNf') : 0, nq: num('acNq'), nh: num('acNh') | 0, click: ck('acClOn'), ck: num('acClK') | 0, cs: num('acClS'), dn: ck('acDnOn'), dnDb: num('acDnDb'), dnA: num('acDnA')}; }
-function preChain(x, fs, o, log) {
+async function preChain(x, fs, o, log) {
   let y = x;
   if (o.dc === 'mean') { let m = 0; for (const v of y) m += v; m /= y.length; y = y.map(v => v - m); } else if (o.dc === 'lin') y = DSP.detrendLinear(y);
-  if (o.hp) y = DSP.filtfilt(DSP.design('hp', {order: 4, f1: o.hp}, fs), y);
-  if (o.lp && o.lp < fs / 2) y = DSP.filtfilt(DSP.design('lp', {order: 4, f1: o.lp}, fs), y);
-  if (o.notch) y = DSP.filtfilt(DSP.design('notch', {f1: o.notch, Q: o.nq, harmonics: o.nh}, fs), y);
+  const own = () => y === x ? [] : [y];   // girişi (çağıranın dizisi) aktarma
+  if (o.hp) y = await DSPW.run('filtfilt', [DSP.design('hp', {order: 4, f1: o.hp}, fs), y], own());
+  if (o.lp && o.lp < fs / 2) y = await DSPW.run('filtfilt', [DSP.design('lp', {order: 4, f1: o.lp}, fs), y], own());
+  if (o.notch) y = await DSPW.run('filtfilt', [DSP.design('notch', {f1: o.notch, Q: o.nq, harmonics: o.nh}, fs), y], own());
   return y;
 }
 async function acPrepare(clean) {
@@ -330,15 +344,15 @@ async function acPrepare(clean) {
   if (b - a < 256) throw new Error('Aralık çok kısa');
   let x = DSP.segment(ch.data, ch.del, a, b), log = [];
   if (!clean) { let m = 0; for (const v of x) m += v; m /= x.length; return {y: x.map(v => v - m), fs, a, b, ch, log, raw: x}; }
-  const o = opts(); let y = preChain(x, fs, o);
+  const o = opts(); let y = await preChain(x, fs, o);
   if (o.click) { const r = DSP.declick(y, o.ck, o.cs, 2); y = r.y; log.push(`Tık temizleme: ${r.events} olay, ${fmtCnt(r.count)} örnek düzeltildi`); }
   if (o.dn) {
     const n0 = num('acN0'), n1 = num('acN1');
     if (n1 > n0) {
       const na = Math.max(0, Math.floor(ch.timeIdx(n0))), nb = Math.min(ch.n, Math.ceil(ch.timeIdx(n1)));
-      let nz = preChain(DSP.segment(ch.data, ch.del, na, nb), fs, o); y = DSP.spectralDenoise(y, nz, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA}); log.push(`Gürültü profili: ${fmtCnt(nb - na)} örnek (seçilen sessiz bölüm)`);
+      const nz = await preChain(DSP.segment(ch.data, ch.del, na, nb), fs, o); y = await DSPW.run('spectralDenoise', [y, nz, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA}], y === x ? [nz] : [y, nz]); log.push(`Gürültü profili: ${fmtCnt(nb - na)} örnek (seçilen sessiz bölüm)`);
     } else {   // sessiz bölüm verilmedi: durağan gürültü tabanı sinyalden tahmin edilir
-      const Pn = DSP.noiseFloorMinStat(y, 2048, 0.1); y = DSP.spectralDenoise(y, null, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA, noisePower: Pn}); log.push('Gürültü profili: sinyalden otomatik tahmin (frekans başına en düşük %10 çerçeve)');
+      const Pn = await DSPW.run('noiseFloorMinStat', [y, 2048, 0.1]); y = await DSPW.run('spectralDenoise', [y, null, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA, noisePower: Pn}], y === x ? [] : [y]); log.push('Gürültü profili: sinyalden otomatik tahmin (frekans başına en düşük %10 çerçeve)');
     }
   }
   return {y, fs, a, b, ch, log, raw: x};
@@ -595,7 +609,8 @@ function init() {
     else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
-  setInterval(() => { const mb = (() => { let b = 0; for (const f of allFiles()) for (const c of f.channels) if (c.data) b += c.data.length * 8; return b / 1048576; })(); $('#st1').textContent = 'Bellekteki veri: ' + mb.toFixed(0) + ' MB'; refreshCalcUI(); refreshFrfPick(); refreshMatCard(); refreshRezPick(); }, 1500);
+  // olay güdümlü arayüz yenileme (eskiden 1,5 sn'de bir): veri/grafik değişince ve kullanıcı etkileşiminden sonra bir kez
+  ['pointerup', 'keyup', 'change'].forEach(ev => window.addEventListener(ev, uiChanged, true)); uiChanged();
   initUX(); syncFeatUI(); startupFiles();
 }
 async function startupFiles() {

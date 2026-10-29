@@ -41,7 +41,7 @@ async function ensureLoaded(ch) {
   if (ch.data) return;
   if (ch.loading) return ch.loading;
   ch.loading = (async () => {
-    if (ch.binLoad) { ch.data = await ch.binLoad(); ch.n = ch.data.length; return; }
+    if (ch.binLoad) { ch.data = await ch.binLoad(); ch.n = ch.data.length; uiChanged(); return; }
     const f = ch.file, v = f.vars[ch.varIdx];
     if (ch.row != null) {
       let m = f.mcache.get(ch.varIdx); if (!m) { m = await MAT.load(f.mat, v); f.mcache.set(ch.varIdx, m); }
@@ -51,7 +51,7 @@ async function ensureLoaded(ch) {
     } else ch.data = await MAT.load(f.mat, v);
     ch.n = ch.data.length;
   })();
-  try { await ch.loading; } finally { ch.loading = null; }
+  try { await ch.loading; } finally { ch.loading = null; uiChanged(); }
 }
 
 /* ---------- ağaç ---------- */
@@ -96,6 +96,7 @@ function renderTree() {
   if (!S.files.length) box.append(h('div', {class: 'note', style: 'padding:14px'}, 'Henüz dosya yok. "Dosya aç…" düğmesini kullanın veya .mat dosyalarını pencereye sürükleyin.'));
   if (typeof syncFeatUI === 'function' && S.xyPlot) syncFeatUI(); if (typeof syncWelcome === 'function') syncWelcome();
   for (const x of box.querySelectorAll('.tbody')) if (scs[x.dataset.f]) x.scrollTop = scs[x.dataset.f]; updateSelInfo();
+  uiChanged();
 }
 const hl = label => { const q = S.q, i = q ? String(label).toLowerCase().indexOf(q) : -1; return i < 0 ? [label] : [label.slice(0, i), h('mark', null, label.slice(i, i + q.length)), label.slice(i + q.length)]; };
 function dblAct(e, list) {

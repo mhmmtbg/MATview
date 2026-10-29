@@ -64,7 +64,7 @@ async function computeSRS() {
       await ensureLoaded(tr.ch); const ch = tr.ch, [a, b] = specRange(tr, ax, sv('srScope')); if (b - a < 16) continue;
       const fmax = Math.min(num('srF2'), ch.fs / 6), freqs = DSP.srsFreqs(Math.max(0.1, num('srF1')), fmax, Math.max(1, num('srPpo')));
       if (freqs.length < 2) { toast('Frekans aralığı geçersiz (f max ≤ fs/6 = ' + fmtNum(ch.fs / 6, 4) + ' Hz)'); continue; }
-      const seg = DSP.segment(ch.data, ch.del, a, b), r = DSP.srs(seg, ch.fs, freqs, Q), u = ch.unit || (ch.kind === 'vib' ? 'g' : 'birim');
+      const seg = DSP.segment(ch.data, ch.del, a, b), r = await DSPW.run('srs', [seg, ch.fs, freqs, Q], [seg]), u = ch.unit || (ch.kind === 'vib' ? 'g' : 'birim');
       const mk = (y, lab, col) => ({kind: 'xy', x: r.f, y, label: lab, color: col, width: 1.5, visible: true, raw: y, scale: 'srs', srcKind: ch.kind});
       if (sv('srShow') === 'mm') sa.traces.push(mk(r.maximax, tr.label, tr.color)); else { sa.traces.push(mk(r.pos, tr.label + ' (+)', tr.color)); const t2 = mk(r.neg, tr.label + ' (−)', tr.color); t2.dash = [5, 3]; sa.traces.push(t2); }
       let pk = 0, pf = 0; for (let i = 0; i < r.f.length; i++) if (r.maximax[i] > pk) { pk = r.maximax[i]; pf = r.f[i]; }
@@ -82,7 +82,7 @@ async function computeFRF() {
     const [a, b] = specRange(ti, ax, sv('frScope')), [a2, b2] = specRange(to, ax, sv('frScope')), n = Math.min(b - a, b2 - a2); if (n < 256) throw new Error('Aralık çok kısa');
     // silinen noktalar her iki kanalda da çıkarılır (aynı indisler)
     const xs = DSP.segment(ti.ch.data, ti.ch.del, a, a + n), ys = DSP.segment(to.ch.data, to.ch.del, a2, a2 + n), m = Math.min(xs.length, ys.length);
-    const r = DSP.frf(xs.subarray(0, m), ys.subarray(0, m), ti.ch.fs, {nfft: +sv('frN'), win: sv('frWin'), overlap: +sv('frOv')});
+    const r = await DSPW.run('frf', [xs.subarray(0, m), ys.subarray(0, m), ti.ch.fs, {nfft: +sv('frN'), win: sv('frWin'), overlap: +sv('frOv')}]);
     const P = specAxesReset(), mode = sv('frH'), lab = `${to.label} / ${ti.label}`;
     const aM = P.addAxes({xlog: true, ylog: true, title: 'FRF genliği'}), aP = P.addAxes({xlog: true, ylog: false, title: 'Faz'}), aC = P.addAxes({xlog: true, ylog: false, title: 'Koherans'});
     aM.hw = 2; aM.ylabel = 'Genlik |H|'; aP.ylabel = 'Faz (°)'; aC.ylabel = 'γ²'; aC.xlabel = 'Frekans (Hz)';
