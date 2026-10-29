@@ -126,6 +126,7 @@
   }
   const eye = n => { const o = zeros(n, n); for (let i = 0; i < n; i++) o.re[i + i * n] = 1; return o; };
   function binop(op, a, b, line) {
+    if (a && a.gh) a = num(a.id); if (b && b.gh) b = num(b.id);
     if (!(a instanceof M) || !(b instanceof M)) {
       if (isCell(a) || isCell(b)) E('MATLAB:undefinedFunction', `'${op}' işleci hücre dizileri için tanımlı değil.`);
       E('MATLAB:undefinedFunction', `'${op}' işleci bu veri türleri için tanımlı değil (${classOf(a)}, ${classOf(b)}).`);
@@ -402,8 +403,25 @@
       err('Bilinmeyen deyim: ' + s.t, s.line);
     }
     condVal(c, sc) { const v = this.eval(c, sc); if (!(v instanceof M)) E('MATLAB:nonLogicalConditional', 'Koşul ifadesi sayısal veya mantıksal olmalı.'); return v; }
+    // [c{1:n}] = ... : hücre indisli hedefleri tek tek hedeflere aç
+    expandLhs(lhs, sc) {
+      if (!lhs.some(l => l.t === 'cidx' && l.f.t === 'id')) return lhs;
+      const out = [];
+      for (const l of lhs) {
+        if (l.t !== 'cidx' || l.f.t !== 'id' || l.args.length !== 1) { out.push(l); continue; }
+        const base = this.hasVar(sc, l.f.n) ? this.getVar(sc, l.f.n) : cell(0, 0, []);
+        if (!isCell(base) && !(base instanceof M && base.re.length === 0)) { out.push(l); continue; }
+        const idx = this.evalIdx(l.args, isCell(base) ? base : cell(0, 0, []), sc);
+        if (idx[0] === COLON) { out.push(l); continue; }
+        const ix = idxList(idx[0], 1e15);
+        if (ix.length === 1) { out.push(l); continue; }
+        for (const p of ix) out.push({t: 'cidx', f: l.f, args: [{t: 'num', v: p + 1}], line: l.line});
+      }
+      return out;
+    }
     execAssign(s, sc) {
-      const lhs = s.lhs;
+      const lhs = this.expandLhs(s.lhs, sc);
+      if (!lhs.length) { this.evalMulti(s.rhs, sc, 0); return 0; }
       if (lhs.length === 1) {
         const l = lhs[0]; let rhsNode = s.rhs;
         let vals = this.evalMulti(rhsNode, sc, 1);
@@ -451,6 +469,8 @@
       const a = accs[i], last = i === accs.length - 1;
       if (a.k === 'field') {
         const name = a.dyn ? toStr(this.eval(a.dyn, sc)) : a.name;
+        if (cur && cur.map) E('MATLAB:map', 'containers.Map özellikleri atanamaz.');
+        if (cur && cur.gh) { if (last) ML.ghSet(this, cur, name, rhs); else { const sub = clone(ML.ghGet(this, cur, name)); ML.ghSet(this, cur, name, this.setPath(sub, accs, i + 1, rhs, sc, tok)); } return cur; }
         let sa = cur; if (sa === undefined || (sa instanceof M && sa.re.length === 0)) sa = {sa: true, r: 1, c: 1, v: [Object.create(null)], _o: tok};
         if (!isSA(sa)) E('MATLAB:scalarStruct', 'Yapı olmayan değişkene alan atanamaz (önce struct oluşturun).');
         if (sa.v.length !== 1) E('MATLAB:scalarStruct', 'Alan atamak için yapı dizisinde bir eleman seçin: s(i).alan = ...');
@@ -481,6 +501,7 @@
         if (last) { if (!isSA(rhs) || rhs.v.length !== 1) E('MATLAB:unsupported', 'Yapı dizisi elemanına yapı atanmalı.'); const o = rhs.v[0]; this.growSA(cur, pos); cur.v[pos] = Object.assign(Object.create(null), o); return cur; }
         this.growSA(cur, pos); const el = {sa: true, r: 1, c: 1, v: [cur.v[pos]], _o: tok}; const nv = this.setPath(el, accs, i + 1, rhs, sc, tok); cur.v[pos] = nv.v[0]; return cur;
       }
+      if (cur && cur.map) { if (!last) E('MATLAB:map', 'containers.Map değerine iç içe atama desteklenmiyor.'); ML.mapSet(cur, idx[0], rhs); return cur; }
       if (!(cur instanceof M)) E('MATLAB:badsubscript', 'Bu değişken indislenerek atanamaz.');
       if (!last) E('MATLAB:unsupported', 'Sayısal dizide indisten sonra erişim yapılamaz.');
       if (rhs instanceof M && rhs.re.length === 0 && rhs.r === 0 && rhs.c === 0) { deleteM(cur, idx); return cur; }
@@ -536,9 +557,12 @@
           return this.cellRead(base, idx);
         }
         case 'field': {
+          if (node.a.t === 'id' && node.a.n === 'containers' && node.name === 'Map' && !this.hasVar(sc, 'containers')) return [ML.mapNew(this, [])];
           const base = this.evalMulti(node.a, sc, 1); const name = node.dyn ? toStr(this.eval(node.dyn, sc)) : node.name;
           if (!base.length) E('MATLAB:needMoreRhsOutputs', 'Alan erişimi için değer yok.');
           const b = base[0];
+          if (b && b.gh) return [ML.ghGet(this, b, name)];
+          if (b && b.map) return [ML.mapProp(this, b, name)];
           if (isSA(b)) { const out = []; for (const o of b.v) { if (!(name in o)) E('MATLAB:nonExistentField', `Yapıda '${name}' alanı yok.`); out.push(o[name]); } return out; }
           if (b instanceof M && b.re.length === 0 && false) return [];
           E('MATLAB:nonStructAsStruct', `'${name}' alanına erişim: değer bir yapı değil (${classOf(b)}).`);
@@ -578,6 +602,7 @@
     }
     evalCall(node, sc, nargout, stmt) {
       const f = node.f;
+      if (f.t === 'field' && f.a.t === 'id' && f.a.n === 'containers' && f.name === 'Map' && !this.hasVar(sc, 'containers')) return [ML.mapNew(this, this.evalArgs(node.args, sc))];
       if (f.t === 'id') {
         const n = f.n;
         if (this.hasVar(sc, n)) {
@@ -596,6 +621,8 @@
       return out;
     }
     indexValue(base, argNodes, sc, nargout, line) {
+      if (base && base.map) { const args = this.evalArgs(argNodes, sc); if (args.length !== 1) E('MATLAB:map', 'containers.Map: tek anahtar bekleniyordu.'); return [ML.mapGet(base, args[0])]; }
+      if (base && base.gh) { const idx = this.evalIdx(argNodes, num(1), sc); if (idx.every(x => x === COLON || (x.re && x.re.length === 1 && x.re[0] === 1))) return [base]; E('MATLAB:badsubscript', 'Grafik nesnesi tutamacı indislenemez.'); }
       if (isFH(base)) { const args = this.evalArgs(argNodes, sc); return this.callFH(base, args, nargout); }
       const idx = this.evalIdx(argNodes, base, sc);
       this.cur = line;
@@ -653,8 +680,8 @@
       sc.nargin = args.length; sc.nargout = nargout;
       const hasVO = f.outs.length && f.outs[f.outs.length - 1] === 'varargout';
       if (nargout > f.outs.length && !hasVO) E('MATLAB:TooManyOutputs', `'${f.name}' işlevi en çok ${f.outs.length} çıktı döndürür.`);
-      this.depth++; const save = this.cur;
-      try { this.execBlock(f.body, sc); } catch (e) { if (e instanceof MLError && !e.mfile) { e.mfile = f.file || ''; e.mfn = f.name; if (!e.mline) e.mline = this.cur; } throw e; } finally { this.depth--; this.cur = save; }
+      this.depth++; const save = this.cur, saveF = this.curFile; if (f.file) this.curFile = f.file;
+      try { this.execBlock(f.body, sc); } catch (e) { if (e instanceof MLError && !e.mfile) { e.mfile = f.file || ''; e.mfn = f.name; if (!e.mline) e.mline = this.cur; } throw e; } finally { this.depth--; this.cur = save; this.curFile = saveF; }
       const outs = [];
       const want = Math.max(1, nargout);
       for (let i = 0; i < f.outs.length && outs.length < want; i++) {

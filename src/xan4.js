@@ -35,6 +35,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.6', d: 'MATLAB arayüzleri (GUIDE) çalışır, komut penceresi', items: [
+    'Yeni: GUIDE arayüzleri açılır ve kullanılır — .m ile aynı adlı .fig birlikte açılıp .m sekmesinde F5 (ya da .fig önizlemesindeki “Arayüzü çalıştır”) ile arayüz “Arayüz” görünümünde açılır. Düğme, açılır menü, liste, metin kutusu, onay kutusu, kaydırıcı, panel, tablo ve eksenler çalışır; Tag_Callback işlevleri, guidata, get/set, handles.x.String gibi nokta erişimi, findobj, gcbo desteklenir. “Geniş görünüm” yan panelleri gizler.',
+    'Yeni: uigetfile, uiputfile, questdlg, inputdlg, listdlg, msgbox/errordlg/warndlg, waitbar; fopen/fread/fwrite/fseek/ftell/feof/fgetl/fclose, fullfile, fileparts, dir, exist; eval, evalin, assignin; containers.Map; typecast. MATView.exe ile açıldığında dosya seçme ve soru pencereleri kod içinden açılır; matview.html doğrudan tarayıcıda açılırsa dosyalar arayüz çubuğundaki “Dosya ekle” ile önceden eklenir.',
+    'Yeni: işlev dosyaları F5 ile argümansız çağrılır (MATLAB gibi); [varargout{1:nargout}] = ... çoklu atama.',
+    'Düzeltme: komut penceresinin herhangi bir yerine tıklayınca imleç komut satırına gelir; komut satırı çıktının hemen altında durur.']},
   {v: '2.5', d: 'Kod sekmesi: gerçek MATLAB ortamı gibi editör', items: [
     'Düzeltme: veri dosyası açık değilken Kod sekmesine geçildiğinde karşılama ekranı editörü örtüyordu.',
     'Yeni: çok sekmeli editör — sözdizimi renklendirme, satır numarası, %% bölümleri, otomatik girinti, Ctrl+R/Ctrl+T yorum, Ctrl+S kaydet; sekmeler tarayıcıda saklanır. F5 betik, Ctrl+Enter bölüm, F9 seçim çalıştırır. Alt kısımda komut penceresi (>>, ↑/↓ geçmiş) ve çalışma alanı.',

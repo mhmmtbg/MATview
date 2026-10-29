@@ -302,7 +302,7 @@
   B.iscellstr = a => bool(isCell(a[0]) && a[0].v.every(x => x instanceof M && x.t === 'c'));
   B.struct2cell = a => { const o = a[0].v[0]; const k = Object.keys(o); return {cell: true, r: k.length, c: 1, v: k.map(f => o[f])}; };
   B.cell2struct = a => { const c = a[0], f = a[1]; const o = Object.create(null); f.v.forEach((n, i) => { o[S(n)] = c.v[i]; }); return {sa: true, r: 1, c: 1, v: [o]}; };
-  B.func2str = a => str(ML.fhText(a[0]).replace(/^@(?!\()/, '')); B.str2func = function (a) { const s = S(a[0]); const ast = ML.parse('__f__ = ' + s + ';'); return this.eval(ast.body[0].rhs, this.base); };
+  B.func2str = a => str(ML.fhText(a[0]).replace(/^@(?!\()/, '')); B.str2func = function (a) { const s = S(a[0]).trim(); if (/^[A-Za-z]\w*(\.\w+)*$/.test(s)) return {fh: true, name: s}; const ast = ML.parse('__f__ = ' + s + ';'); return this.eval(ast.body[0].rhs, this.base); };
   B.feval = function (a, no) { return this.callFunctionValue(a[0], a.slice(1), no); };
   B.isequal = function (a) { const eq = (x, y) => { if (x instanceof M && y instanceof M) { if (x.r !== y.r || x.c !== y.c) return false; for (let i = 0; i < x.re.length; i++) if (x.re[i] !== y.re[i] || (x.im ? x.im[i] : 0) !== (y.im ? y.im[i] : 0)) return false; return true; } if (isCell(x) && isCell(y)) return x.r === y.r && x.c === y.c && x.v.every((e, i) => eq(e, y.v[i])); if (isSA(x) && isSA(y)) return x.v.length === y.v.length && x.v.every((o, i) => { const ks = Object.keys(o); return ks.length === Object.keys(y.v[i]).length && ks.every(k => k in y.v[i] && eq(o[k], y.v[i][k])); }); return false; }; for (let i = 1; i < a.length; i++) if (!eq(a[0], a[i])) return bool(false); return bool(true); };
   B.cellfun = function (a, no) { return mapFun.call(this, a, no, 'cell'); };
@@ -526,7 +526,7 @@
   B.load = function (a, no) { const c = this.ctx; if (!c.loadMat) E('MATLAB:load', 'load: dosya erişimi yalnızca ana uygulamada (Kod sekmesinde açık .mat dosyaları) kullanılabilir. Dosyayı önce MATView içine açın, sonra load(\'dosya.mat\').'); const nm = S(a[0]); const vars = c.loadMat(nm); if (!vars) E('MATLAB:load:couldNotReadFile', `load: '${nm}' açık dosyalar arasında bulunamadı.`); const want = a.slice(1).map(S); const o = Object.create(null); for (const k in vars) { if (want.length && !want.includes(k)) continue; o[k] = vars[k]; } if (no >= 1) return {sa: true, r: 1, c: 1, v: [o]}; for (const k in o) this.setVar(this.base, k, o[k]); };
   B.save = function (a, no, sc) { const c = this.ctx; if (!c.saveMat) E('MATLAB:save', 'save: bu ortamda kullanılamıyor.'); let nm = a.length ? S(a[0]) : 'matlab.mat'; if (!/\.mat$/i.test(nm)) nm += '.mat'; const names = a.slice(1).map(S).filter(x => !x.startsWith('-')); const vars = Object.create(null); for (const n of names) if (!sc.vars.has(n)) E('MATLAB:save:couldNotFindVariable', `save: '${n}' değişkeni bulunamadı.`); for (const [k, v] of sc.vars) if (!names.length || names.includes(k)) vars[k] = v; c.saveMat(nm, vars); this.out(`'${nm}' kaydedildi (${Object.keys(vars).length} değişken).\n`); };
   B.exist_file_ = null; delete B.exist_file_;
-  B.isfile = () => bool(false); B.pwd = () => str('/'); B.cd = () => {}; B.addpath = () => {}; B.mfilename = () => str('betik'); B.datenum = () => num(Date.now() / 86400000 + 719529);
+  B.isfile = () => bool(false); B.pwd = () => str('/'); B.cd = () => {}; B.addpath = () => {}; B.mfilename = function () { return str(String(this.curFile || 'betik').replace(/^.*[\\/]/, '').replace(/\.m$/i, '')); }; B.datenum = () => num(Date.now() / 86400000 + 719529);
 
   /* ---------- figür modeli ---------- */
   function fig(it, create) { if (!it.figs) { it.figs = new Map(); it.curFig = 0; } if (!it.curFig && create !== false) { newFig(it, 1); } return it.figs.get(it.curFig); }
@@ -579,4 +579,5 @@
   B.box = B.colormap = B.shading = B.colorbar = B.set = B.text = B.annotation = B.line_ = () => {}; delete B.line_;
   B.yyaxis = unsup('yyaxis'); B.tiledlayout = function (a) { const f = fig(this); f.tl = [sc1(a[0]), sc1(a[1])]; f.tlN = 0; }; B.nexttile = function () { const f = fig(this); if (!f.tl) E('MATLAB:nexttile', 'nexttile için önce tiledlayout(r,c) çağrılmalı.'); f.tlN++; f.cur = mkAx(f, f.tl[0], f.tl[1], f.tlN); };
   B.saveas = B.print = B.exportgraphics = () => {};
+  ML.figApi = {fig, newFig, axes, mkAx};
 })(MLAB);

@@ -1,4 +1,4 @@
-const ML=require('./ml_load.js')(['mlab1.js','mlab2.js','mlab3.js']);
+const ML=require('./ml_load.js')(['mlab1.js','mlab2.js','mlab3.js','mlab4.js']);
 let fail=0,n=0;
 function run(src,ctx){let out='';const it=new ML.Interp({out:s=>{out+=s},ctx:ctx||{}});try{it.run(src);}catch(e){if(!(e instanceof ML.MLError))throw e;out+='ERR:'+e.message;}return {out,it};}
 function eq(name,src,exp,ctx){n++;let r;try{r=run(src,ctx);}catch(e){console.log('CRASH',name,e.stack.split('\n').slice(0,4).join('\n'));fail++;return;}

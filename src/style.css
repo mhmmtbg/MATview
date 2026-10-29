@@ -171,7 +171,8 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 .codecol{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
 .codecol.ws{flex:0 0 38%;border-left:1px solid var(--border)}
 .codehd{padding:3px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--bg);border-bottom:1px solid var(--border)}
-.codeout{flex:1;margin:0;padding:6px 8px;overflow:auto;font:12.5px/1.4 ui-monospace,Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;word-break:break-word}
+.codecon{flex:1;overflow:auto;display:flex;flex-direction:column;cursor:text;min-height:0}
+.codeout{flex:none;margin:0;padding:6px 8px 0;font:12.5px/1.4 ui-monospace,Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;word-break:break-word}
 .codeout .cerr{color:var(--danger)}
 .codews{flex:1;overflow:auto}
 .wst{border-collapse:collapse;width:100%;font-size:12px}
@@ -223,3 +224,30 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 .figprev .fe-uipanel{align-items:flex-start;justify-content:flex-start;background:transparent}
 .figprev .fe.sel{outline:2px solid var(--accent);outline-offset:1px}
 .figinfo{min-height:18px}
+
+.cmdrow{border-top:0 !important;padding:0 8px 6px !important}
+.guiview{display:flex;flex-direction:column;background:var(--panel)}
+.guibar{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.guibar .sp{flex:1}
+.guistage{flex:1;position:relative;min-height:0;overflow:hidden}
+.guifig{position:relative;overflow:hidden;color:#111}
+.guifig .gc,.guifig .gp,.guifig .gax,.guifig .gtb{position:absolute;box-sizing:border-box;margin:0}
+.guifig .gbtn{background:#e1e1e1;border:1px solid #adadad;border-radius:3px;color:#111;padding:0 4px;white-space:pre-line;line-height:1.1;overflow:hidden}
+.guifig .gbtn:hover:not(:disabled){background:#e5f1fb;border-color:#0078d7}
+.guifig .gtog.on{background:#cce4f7;border-color:#005499}
+.guifig .gtext{white-space:pre-wrap;overflow:hidden;line-height:1.15;text-align:center}
+.guifig .gedit,.guifig .gpop,.guifig .glist{background:#fff;color:#111;border:1px solid #7a7a7a;border-radius:0;padding:1px 3px}
+.guifig .glist{overflow:auto}
+.guifig .gchk{display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden}
+.guifig .gp{border:1px solid #a0a0a0}
+.guifig .gp>.gpt{position:absolute;left:8px;top:-1px;transform:translateY(-50%);background:inherit;padding:0 3px;white-space:nowrap}
+.guifig .gpi{position:absolute;inset:0}
+.guifig .gax{background:#fff;border:1px solid #c8c8c8}
+.guifig .gtb{background:#fff;border:1px solid #a0a0a0;overflow:auto}
+.guifig .gtb table{border-collapse:collapse;font:inherit}
+.guifig .gtb th,.guifig .gtb td{border:1px solid #d8d8d8;padding:1px 6px;text-align:right;white-space:nowrap}
+.guifig .gtb th{background:#f0f0f0;font-weight:500}
+.guifig :disabled{opacity:.55}
+#app.wide{grid-template-columns:0 1fr 0 !important}
+#app.wide #left,#app.wide #right{display:none}
+#app.wide #center{grid-column:1/-1}

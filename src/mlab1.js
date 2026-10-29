@@ -46,7 +46,7 @@ const MLAB = (() => {
   const numelOf = v => sizeOf(v).reduce((a, b) => a * b, 1);
   // N-boyutlu: nd = [d1, d2, d3, ...] (sondaki 1'ler atılmış, en az 3 öğe); r = d1, c = d2*d3*...
   const setDims = (m, d) => { d = d.slice(); while (d.length > 2 && d[d.length - 1] === 1) d.pop(); while (d.length < 2) d.push(1); m.r = d[0]; m.c = d.slice(1).reduce((a, b) => a * b, 1); m.nd = d.length > 2 ? d : undefined; return m; };
-  const classOf = v => v instanceof M ? CLSNAME[v.t] : isCell(v) ? 'cell' : isSA(v) ? 'struct' : isFH(v) ? 'function_handle' : 'double';
+  const classOf = v => v instanceof M ? CLSNAME[v.t] : isCell(v) ? 'cell' : isSA(v) ? 'struct' : isFH(v) ? 'function_handle' : v && v.gh ? (v.cls || 'matlab.ui.control.UIControl') : v && v.map ? 'containers.Map' : 'double';
   // sayıyı sınıfa göre yuvarla/doyur
   function castVal(x, t) { if (t === 'd' || t === 'l' || t === 'c') return x; if (t === 's') return Math.fround(x); const r = INT[t]; if (Number.isNaN(x)) return 0; x = Math.round(x); if (x - Math.trunc(x) === 0.5 || false) { /* yuvarlama: .5 sıfırdan uzağa */ } return x < r[0] ? r[0] : x > r[1] ? r[1] : x; }
   const round0 = x => x < 0 ? -Math.round(-x) : Math.round(x);   // MATLAB round: .5 sıfırdan uzağa

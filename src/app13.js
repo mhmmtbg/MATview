@@ -155,10 +155,10 @@ function codeBuildView() {
   const edwrap = h('div', {class: 'codewrap'}, gut, h('div', {class: 'codearea'}, hl, ed));
   const pos = h('div', {id: 'codePos', class: 'codepos'});
   const out = h('pre', {id: 'codeOut', class: 'codeout'});
-  const cmd = h('input', {type: 'text', id: 'codeCmd', class: 'codecmd', spellcheck: 'false', autocomplete: 'off', placeholder: 'Komut yazın ve Enter’a basın (ör. size(x), plot(y), whos)'});
+  const cmd = h('input', {type: 'text', id: 'codeCmd', class: 'codecmd', spellcheck: 'false', autocomplete: 'off', placeholder: 'Buraya komut yazın, Enter ile çalıştırın (ör. whos, size(x), plot(y))'});
   const ws = h('div', {id: 'codeWs', class: 'codews'});
   const lower = h('div', {class: 'codelower'},
-    h('div', {class: 'codecol'}, h('div', {class: 'codehd'}, 'Komut penceresi', h('button', {class: 'mini', title: 'Konsolu temizle', onclick: () => { $('#codeOut').textContent = ''; }}, 'temizle')), out, h('div', {class: 'cmdrow'}, h('span', null, '>>'), cmd)),
+    h('div', {class: 'codecol'}, h('div', {class: 'codehd'}, 'Komut penceresi', h('button', {class: 'mini', title: 'Konsolu temizle', onclick: () => { $('#codeOut').textContent = ''; }}, 'temizle')), h('div', {class: 'codecon', id: 'codeCon', onmouseup: () => { const sel = window.getSelection(); if (!sel || sel.isCollapsed) cmd.focus(); }}, out, h('div', {class: 'cmdrow'}, h('span', null, '>>'), cmd))),
     h('div', {class: 'codecol ws'}, h('div', {class: 'codehd'}, 'Çalışma alanı'), ws));
   root.append(tb, tabs, edwrap, pos, lower);
   ed.addEventListener('input', () => { const d = codeDoc(); d.text = ed.value; if (!d.dirty) { d.dirty = true; codeRenderTabs(); } CODE.errLine = 0; d.errLine = 0; codeRefreshEd(); codeDocsSave(); });
@@ -228,7 +228,7 @@ async function codeReadM(f) {
 async function codeOpenM(files) {
   files = [...files]; if (!files.length) return; codeBuildView(); switchView('code'); codeStoreCur(); let n = 0;
   for (const f of files) {
-    if (/\.fig$/i.test(f.name)) { await figFilePreview(f); continue; }
+    if (/\.fig$/i.test(f.name)) { await figFileOpen(f); continue; }
     if (/\.mat$/i.test(f.name)) { await codeLoadMatFiles([f]); continue; }
     let txt; try { txt = await codeReadM(f); } catch (e) { toast('Okunamadı: ' + f.name + ' — ' + e.message); continue; }
     codeNewDoc(f.name.replace(/\.txt$/i, '.m'), txt.replace(/\r\n?/g, '\n'), {replace: true}); n++;
@@ -239,7 +239,7 @@ function codeOut(s, kind) {
   const o = $('#codeOut'); if (!o) return; if (kind === 'clc') { o.textContent = ''; return; }
   let sp; if (kind === 'err') sp = h('span', {class: 'cerr'}, s); else if (kind === 'warn') sp = h('span', {class: 'cwarn'}, s); else if (kind === 'cmd') sp = h('span', {class: 'ccmd'}, s); else sp = document.createTextNode(s);
   o.append(sp); if (o.childNodes.length > 4000) { while (o.childNodes.length > 3000) o.removeChild(o.firstChild); }
-  o.scrollTop = o.scrollHeight;
+  const c = o.parentElement; if (c) c.scrollTop = c.scrollHeight;
 }
 function codeRunUI(run) { CODE.running = run; for (const id of ['codeRun', 'codeRunSec', 'codeRunSel', 'codeMatLoad']) { const b = $('#' + id); if (b) b.disabled = run; } const s = $('#codeStop'); if (s) s.disabled = !run; const c = $('#codeCmd'); if (c) c.disabled = run; }
 function codeRenderWs() {
@@ -267,40 +267,77 @@ function mlToTree(v, skipped, path) {
   skipped.push(path); return null;
 }`;
 /* ---------- işçi ---------- */
+// Engelleyen istekler (uigetfile, questdlg, dosya okuma…) için paylaşımlı bellek: MATView.exe bunu etkinleştirir.
+const CODE_MAILBOX = 8 << 20;
 function codeWorkerSrc() {
   return __ML_SRC + ML_TREE_SRC + `
 ;(function(){
-  let it = null, cur = null, added = [], saved = [], pend = '', pendKind = 'o', total = 0;
+  let it = null, cur = null, added = [], saved = [], pend = '', pendKind = 'o', total = 0, ctl = null, box = null, lastGuiVer = -1;
   const flush = () => { if (pend) { postMessage({t: 'out', s: pend, k: pendKind}); pend = ''; } };
   const out = (s, k) => { k = k || 'o'; if (k === 'clc') { flush(); postMessage({t: 'out', s: '', k: 'clc'}); return; } total += s.length; if (total > 3e6) { if (total - s.length <= 3e6) { pend += '\\n[Çıktı sınırı aşıldı; kalan çıktı gösterilmeyecek]\\n'; } return; } if (k !== pendKind) { flush(); pendKind = k; } pend += s; if (pend.length > 20000) flush(); };
-  const summarize = (v) => { const sz = MLAB.sizeOf(v); let val = ''; try { if (v instanceof MLAB.M) { if (v.t === 'c' && v.r <= 1) val = "'" + MLAB.toStr(v).slice(0, 60) + "'"; else if (v.re.length === 1) val = MLAB.fmtScalar(v, 0); else if (v.re.length === 0) val = '[]'; else { const k = Math.min(v.re.length, 6), p = []; for (let i = 0; i < k; i++) p.push(MLAB.fmtNumShort(v.re[i])); val = '[' + p.join(' ') + (v.re.length > k ? ' …' : '') + ']'; } } else if (MLAB.isFH(v)) val = MLAB.fhText(v); else if (MLAB.isCell(v)) val = '{' + sz.join('×') + ' cell}'; else if (MLAB.isSA(v)) val = Object.keys(v.v[0] || {}).join(', '); } catch (e) {} return {n: '', sz: sz.join('×'), cls: MLAB.classOf(v), val}; };
+  const summarize = (v) => { const sz = MLAB.sizeOf(v); let val = ''; try { if (v instanceof MLAB.M) { if (v.t === 'c' && v.r <= 1) val = "'" + MLAB.toStr(v).slice(0, 60) + "'"; else if (v.re.length === 1) val = MLAB.fmtScalar(v, 0); else if (v.re.length === 0) val = '[]'; else { const k = Math.min(v.re.length, 6), p = []; for (let i = 0; i < k; i++) p.push(MLAB.fmtNumShort(v.re[i])); val = '[' + p.join(' ') + (v.re.length > k ? ' …' : '') + ']'; } } else if (MLAB.isFH(v)) val = MLAB.fhText(v); else if (MLAB.isCell(v)) val = '{' + sz.join('×') + ' cell}'; else if (MLAB.isSA(v)) val = Object.keys(v.v[0] || {}).join(', '); else if (v && v.gh) val = '<' + v.cls.split('.').pop() + ' ' + v.id + '>'; } catch (e) {} return {n: '', sz: sz.join('×'), cls: MLAB.classOf(v), val}; };
   const wsList = () => { const ws = []; if (it) for (const [k, v] of it.base.vars) { const s = summarize(v); s.n = k; ws.push(s); } ws.sort((a, b) => a.n < b.n ? -1 : 1); return ws; };
+  // engelleyen istek: ana iş parçacığı yanıtı paylaşımlı belleğe yazar
+  const dec = new TextDecoder(), enc = new TextEncoder();
+  function rpcRaw(kind, payload) {
+    if (!ctl) return undefined;
+    flush(); Atomics.store(ctl, 0, 0); postMessage({t: 'rpc', kind, payload});
+    for (;;) { const r = Atomics.wait(ctl, 0, 0, 60000); if (Atomics.load(ctl, 0) !== 0) break; if (it && it.stop) break; }
+    const st = Atomics.load(ctl, 0), len = ctl[1]; Atomics.store(ctl, 0, 0);
+    if (st === 3) throw new MLAB.MLError('Çalışma durduruldu.', 0, 'MATLAB:interrupted');
+    return {bin: st === 2, bytes: box.slice(0, len)};
+  }
+  function rpc(kind, payload) { const r = rpcRaw(kind, payload); if (r === undefined) return undefined; const v = JSON.parse(dec.decode(r.bytes)); if (v && v.err) throw new MLAB.MLError(v.err, 0, 'MATLAB:rpc'); return v ? v.v : null; }
+  function readFile(name, off, len) { const o = new Uint8Array(len); let p = 0; while (p < len) { const n = Math.min(box.length, len - p); const r = rpcRaw('read', {name, off: off + p, len: n}); if (!r || !r.bin) throw new MLAB.MLError('Dosya okunamadı: ' + name, 0, 'MATLAB:fread'); o.set(r.bytes, p); p += r.bytes.length; if (r.bytes.length < n) break; } return p === len ? o : o.subarray(0, p); }
+  function loadMatRpc(name) { const meta = rpc('loadmat', name); if (!meta) return null; const all = new Uint8Array(meta.size); let p = 0; while (p < meta.size) { const r = rpcRaw('blob', {off: p, len: Math.min(box.length, meta.size - p)}); all.set(r.bytes, p); p += r.bytes.length; if (!r.bytes.length) break; } const jl = new DataView(all.buffer).getUint32(0, true), js = JSON.parse(dec.decode(all.subarray(4, 4 + jl))); let off = 4 + jl; const bufs = js.bufs.map(n => { const b = new Float64Array(all.slice(off, off + n * 8).buffer); off += n * 8; return b; }); const fix = t => { if (!t) return t; if (t.k === 'num') { t.re = bufs[t.re]; if (t.im != null) t.im = bufs[t.im]; } else if (t.k === 'cell') t.v.forEach(fix); else if (t.k === 'struct') t.v.forEach(o => { for (const k in o) fix(o[k]); }); return t; }; const o = Object.create(null); for (const t of js.trees) { fix(t); const v = mlFromTree(t); if (v != null) o[t.name] = v; } return o; }
+  const guiPost = force => { if (!it || !it.G) return; if (!force && it.G.ver === lastGuiVer) return; lastGuiVer = it.G.ver; const g = MLAB.guiSnapshot(it, force === 'full'); postMessage({t: 'gui', figs: g}); };
   const mkCtx = () => ({
     getChannel: n => cur.chans[n] || null, listChannels: () => cur.names, scripts: cur.scripts || {},
     addChannel: (n, y, fs) => { added.push({n, y, fs}); },
     loadMat: n => { const m = cur.mats[n] || cur.mats[n + '.mat']; if (!m) return null; const o = Object.create(null); for (const t of m) { const v = mlFromTree(t); if (v != null) o[t.name] = v; } return o; },
+    loadMatRpc: n => ctl ? loadMatRpc(n) : null,
     saveMat: (n, vars) => { const sk = [], trees = []; for (const k in vars) { const t = mlToTree(vars[k], sk, k); if (t) { t.name = k; trees.push(t); } } saved.push({name: n, trees, skipped: sk}); },
+    figLayout: n => { const f = cur.figs || {}; const k = Object.keys(f).find(x => x.toLowerCase() === (n + '.fig').toLowerCase() || x.toLowerCase() === n.toLowerCase()); return k ? f[k] : (ctl ? rpc('fig', n) : null); },
+    notify: (kind, payload) => { flush(); if (kind === 'download') postMessage({t: 'note', kind, payload}, [payload.bytes.buffer]); else postMessage({t: 'note', kind, payload}); },
+    rpc: ctl ? rpc : null, readFile: ctl ? readFile : null, statFile: n => ctl ? rpc('stat', n) : null,
+    flushGui: () => { flush(); guiPost(true); }, sleep: ms => { if (ctl) { const z = new Int32Array(new SharedArrayBuffer(4)); Atomics.wait(z, 0, 0, ms); } },
   });
+  function errOf(e, lineOff) {
+    if (e instanceof MLAB.MLError) { const ln = e.mline || it.cur || 0; return {msg: e.message, file: e.mfile || '', fn: e.mfn || '', line: e.mfile ? ln : (ln ? ln + (lineOff || 0) : 0), id: e.mid}; }
+    if (e instanceof RangeError) return {msg: 'Özyineleme/bellek sınırı aşıldı: ' + e.message, line: (it.cur || 0) + (lineOff || 0)};
+    return {msg: 'İç hata: ' + (e && e.message || e), line: 0};
+  }
+  function finish(d, err) {
+    flush();
+    const gids = new Set(MLAB.guiFigIds(it));
+    const figs = []; if (it.figs) for (const [id, f] of it.figs) if (!gids.has(id)) figs.push({id, rows: f.rows, cols: f.cols, title: f.title, axes: f.axes.map(a => ({r: a.r, c: a.c, p: a.p, title: a.title, xlabel: a.xlabel, ylabel: a.ylabel, xlim: a.xlim, ylim: a.ylim, grid: a.grid, legend: a.legend, xscale: a.xscale, yscale: a.yscale, traces: a.traces.map(t => ({x: t.x, y: t.y, name: t.name, color: t.color, dash: t.dash, marker: t.marker, noLine: t.noLine, lw: t.lw, kind: t.kind}))}))});
+    guiPost(true);
+    postMessage({t: 'done', id: d.id, err, ws: wsList(), figs, added, saved, curFig: it.curFig || 0, gui: gids.size > 0});
+  }
   onmessage = ev => {
     const d = ev.data;
-    if (d.t === 'reset') { it = null; postMessage({t: 'ws', ws: []}); return; }
+    if (d.t === 'init') { if (d.ctl) { ctl = new Int32Array(d.ctl); box = new Uint8Array(d.box); } return; }
+    if (d.t === 'reset') { it = null; lastGuiVer = -1; postMessage({t: 'ws', ws: []}); postMessage({t: 'gui', figs: []}); return; }
     if (d.t === 'setvars') { if (!it) it = new MLAB.Interp({out, ctx: {}}); let n = 0; for (const t of d.trees) { const v = mlFromTree(t); if (v != null) { it.setVar(it.base, t.name, v); n++; } } postMessage({t: 'ws', ws: wsList(), msg: n + ' değişken yüklendi (' + d.file + ')' + (d.trees.length > n ? '; ' + (d.trees.length - n) + ' desteklenmeyen değişken atlandı' : '')}); return; }
+    if (d.t === 'vfs') { if (!it) it = new MLAB.Interp({out, ctx: {}}); MLAB.vfsAdd(it, d.name, new Uint8Array(d.buf)); return; }
+    if (d.t === 'cb') {   // arayüz olayı
+      if (!it) { postMessage({t: 'done', id: d.id, err: {msg: 'Arayüz kapandı (çalışma alanı sıfırlanmış).', line: 0}, ws: [], figs: null, added: [], saved: []}); return; }
+      cur = Object.assign({}, cur || {chans: {}, names: [], mats: {}}); added = []; saved = []; total = 0; pend = ''; pendKind = 'o';
+      it.ctx = mkCtx(); it.out = out; it.stop = false; it.deadline = Date.now() + 3600000;
+      let err = null;
+      try { if (d.props) MLAB.guiSetFromUI(it, d.oid, d.props); MLAB.guiCallback(it, d.oid, d.kind); } catch (e) { err = errOf(e, 0); }
+      finish(d, err); return;
+    }
     cur = d; added = []; saved = []; total = 0; pend = ''; pendKind = 'o';
     const ctx = mkCtx();
     if (!it) it = new MLAB.Interp({out, ctx}); else { it.ctx = ctx; it.out = out; }
-    it.stop = false; it.deadline = Date.now() + (d.timeout || 600000); it.figs = it.figs || new Map();
+    it.stop = false; it.deadline = Date.now() + (d.timeout || 600000); it.figs = it.figs || new Map(); it.curFile = d.label;
     let err = null;
     try {
       for (const lib of d.libs || []) it.loadFile(lib.text, lib.name);
       it.run(d.code);
-    } catch (e) {
-      if (e instanceof MLAB.MLError) { const ln = e.mline || it.cur || 0; err = {msg: e.message, file: e.mfile || '', fn: e.mfn || '', line: e.mfile ? ln : (ln ? ln + d.lineOff : 0), id: e.mid}; }
-      else if (e instanceof RangeError) err = {msg: 'Özyineleme/bellek sınırı aşıldı: ' + e.message, line: (it.cur || 0) + d.lineOff};
-      else err = {msg: 'İç hata: ' + (e && e.message || e), line: 0};
-    }
-    flush();
-    const figs = []; if (it.figs) for (const [id, f] of it.figs) figs.push({id, rows: f.rows, cols: f.cols, title: f.title, axes: f.axes.map(a => ({r: a.r, c: a.c, p: a.p, title: a.title, xlabel: a.xlabel, ylabel: a.ylabel, xlim: a.xlim, ylim: a.ylim, grid: a.grid, legend: a.legend, xscale: a.xscale, yscale: a.yscale, traces: a.traces.map(t => ({x: t.x, y: t.y, name: t.name, color: t.color, dash: t.dash, marker: t.marker, noLine: t.noLine, lw: t.lw, kind: t.kind}))}))});
-    postMessage({t: 'done', id: d.id, err, ws: wsList(), figs, added, saved, curFig: it.curFig || 0});
+    } catch (e) { err = errOf(e, d.lineOff); }
+    finish(d, err);
   };
 })();`;
 }
@@ -311,12 +348,17 @@ function codeEnsureWorker() {
     const w = new Worker(URL.createObjectURL(new Blob([codeWorkerSrc()], {type: 'text/javascript'})));
     w.onmessage = e => codeOnMsg(e.data); w.onerror = e => { logErr('kod-işçi', e.message || 'hata'); CODE.noWorker = true; CODE.worker = null; try { w.terminate(); } catch (_) {} if (CODE.pendingRun) { codeOut('Arka plan işçisi başlatılamadı; ana iş parçacığında çalıştırılıyor.\n', 'warn'); const p = CODE.pendingRun; CODE.pendingRun = null; codeRunMain(p); } };
     CODE.worker = w;
+    CODE.sab = null; try { if (typeof SharedArrayBuffer === 'function') { const c = new SharedArrayBuffer(16), b = new SharedArrayBuffer(CODE_MAILBOX); w.postMessage({t: 'init', ctl: c, box: b}); CODE.sab = {ctl: new Int32Array(c), box: new Uint8Array(b)}; } } catch (_) { CODE.sab = null; }
+    for (const [name, f] of CODE.vfs) codeVfsPush(name, f);
   } catch (e) { CODE.noWorker = true; CODE.worker = null; }
   return CODE.worker;
 }
 function codeOnMsg(m) {
   if (m.t === 'out') { codeOut(m.s, m.k === 'e' ? 'err' : m.k); return; }
   if (m.t === 'ws') { CODE.ws = m.ws || []; codeRenderWs(); if (m.msg) codeOut(m.msg + '\n', 'warn'); return; }
+  if (m.t === 'gui') { guiUpdate(m.figs || []); return; }
+  if (m.t === 'note') { guiNote(m.kind, m.payload); return; }
+  if (m.t === 'rpc') { guiRpc(m.kind, m.payload); return; }
   if (m.t === 'done') codeFinish(m);
 }
 function codeGotoLine(docIdx, line) {
@@ -337,10 +379,11 @@ async function codeFinish(m) {
   for (const sv of m.saved || []) { try { const fn = sv.name.split(/[\\/]/).pop(), a = document.createElement('a'); a.href = URL.createObjectURL(mlWriteMat(sv.trees)); a.download = fn; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); codeOut(`${fn} indirildi (tarayıcının İndirilenler klasörü).\n`, 'warn'); if (sv.skipped.length) codeOut(`Uyarı: ${sv.name} içine yazılamayan değerler atlandı: ${sv.skipped.slice(0, 8).join(', ')}${sv.skipped.length > 8 ? '…' : ''} (işlev tutamacı vb.)\n`, 'warn'); } catch (e) { codeOut('Kaydedilemedi: ' + e.message + '\n', 'err'); } }
   if (m.figs) { CODE.figs = m.figs; CODE.figIdx = Math.max(0, m.figs.findIndex(f => f.id === m.curFig)); const fb = document.querySelector('#viewtabs button[data-v=fig]'); if (fb) fb.classList.toggle('hidden', !m.figs.length); if (m.figs.length && CODE.figsTouched) switchView('fig'); }
   CODE.figsTouched = false;
+  guiAfterRun();
 }
 function codeStop() {
   if (!CODE.running) return;
-  if (CODE.worker) { try { CODE.worker.terminate(); } catch (_) {} CODE.worker = null; CODE.ws = []; codeRenderWs(); codeOut('Durduruldu. (Çalışma alanı sıfırlandı.)\n', 'warn'); codeRunUI(false); CODE.pendingRun = null; }
+  if (CODE.worker) { try { CODE.worker.terminate(); } catch (_) {} CODE.worker = null; CODE.ws = []; codeRenderWs(); codeOut('Durduruldu. (Çalışma alanı sıfırlandı' + (CODE.gui.figs.length ? ', açık arayüz kapatıldı' : '') + '.)\n', 'warn'); codeRunUI(false); CODE.pendingRun = null; CODE.gui.queue = []; guiUpdate([]); }
   else if (CODE.mainIt) CODE.mainIt.stop = true;
 }
 function codeReset() { if (CODE.running) return toast('Önce çalışmayı durdurun'); if (CODE.worker) CODE.worker.postMessage({t: 'reset'}); CODE.mainIt = null; CODE.ws = []; CODE.figs = []; const fb = document.querySelector('#viewtabs button[data-v=fig]'); if (fb) fb.classList.add('hidden'); codeRenderWs(); codeOut('Çalışma alanı temizlendi.\n', 'warn'); }
@@ -394,13 +437,15 @@ async function codeRun(mode) {
   if (mode === 'sel') { const a = ed.selectionStart, b = ed.selectionEnd; if (b > a) { code = ed.value.slice(a, b); lineOff = ed.value.slice(0, a).split('\n').length - 1; } else { const before = ed.value.slice(0, a), ls = before.lastIndexOf('\n') + 1; let le = ed.value.indexOf('\n', a); if (le < 0) le = ed.value.length; code = ed.value.slice(ls, le); lineOff = before.split('\n').length - 1; } what = 'seçim'; }
   else if (mode === 'section') { const s = codeSection(ed.value, ed.selectionStart); code = s.code; lineOff = s.lineOff; what = 'bölüm (satır ' + (lineOff + 1) + ')'; }
   if (!code.trim()) return toast('Çalıştırılacak kod yok');
-  if (mode === 'all' && codeIsFuncFile(code)) {
-    codeOut(`“${d.name}” bir işlev dosyası; tek başına çalıştırılmaz. Açık olduğu sürece diğer sekmelerdeki betiklerden ${d.name.replace(/\.m$/i, '')}(...) diye çağrılabilir. Denemek için aşağıdaki komut satırına örneğin “${d.name.replace(/\.m$/i, '')}(1)” yazın.\n`, 'warn');
-    return;
+  if (mode === 'all' && codeIsFuncFile(code)) {   // MATLAB gibi: işlev dosyası F5 ile argümansız çağrılır (GUIDE arayüzleri böyle açılır)
+    const fn = (/^\s*function\s+(?:\[[^\]]*\]\s*=\s*|\w+\s*=\s*)?(\w+)/m.exec(code) || [])[1] || d.name.replace(/\.m$/i, '');
+    const needs = (/^\s*function[^\n(]*\(([^)]*)\)/m.exec(code) || [])[1];
+    if (needs && needs.split(',').map(x => x.trim()).filter(x => x && x !== 'varargin').length) { codeOut(`“${d.name}” giriş argümanı isteyen bir işlev; komut satırından çağırın, örn. ${fn}(...)\n`, 'warn'); return; }
+    await codeRunText(fn, 0, d.name, 'işlev', CODE.cur, true); return;
   }
   await codeRunText(code, lineOff, d.name, what, CODE.cur);
 }
-async function codeRunText(code, lineOff, label, what, docIdx) {
+async function codeRunText(code, lineOff, label, what, docIdx, asFunc) {
   if (CODE.running) return; codeBuildView(); codeStoreCur();
   codeRunUI(true); if (label !== '>>') { CODE.errLine = 0; if (codeDoc()) codeDoc().errLine = 0; codeRefreshEd(); }
   codeOut(label === '>>' ? '>> ' + code + '\n' : `>> ${label}: ${what} çalıştırılıyor\n`, 'cmd');
@@ -408,7 +453,7 @@ async function codeRunText(code, lineOff, label, what, docIdx) {
   CODE.docs.forEach((x, i) => { if (i === docIdx && what === 'betik') return; const nm = x.name.replace(/\.m$/i, ''); if (codeIsFuncFile(x.text)) { libs.push({name: x.name, text: x.text}); allSrc += '\n' + x.text; } else if (/^[A-Za-z]\w*$/.test(nm)) { scripts[nm] = x.text; if (new RegExp('\\b' + nm + '\\b').test(code)) allSrc += '\n' + x.text; } });
   let g; try { g = await codeGather(allSrc); } catch (e) { codeOut('Hata: ' + e.message + '\n', 'err'); codeRunUI(false); return; }
   CODE.srcFor = g.srcFor; CODE.figsTouched = /\b(plot|figure|subplot|semilogx|semilogy|loglog|bar|hist|histogram|stem|scatter|nexttile)\s*[\(\s;,]/.test(allSrc);
-  const msg = {t: 'run', id: ++CODE.runId, code, lineOff, label, docIdx: docIdx == null ? -1 : docIdx, libs, scripts, chans: g.chans, names: g.names, mats: g.mats, timeout: 600000};
+  const msg = {t: 'run', id: ++CODE.runId, code, lineOff, label, docIdx: docIdx == null ? -1 : docIdx, libs, scripts, chans: g.chans, names: g.names, mats: g.mats, figs: Object.fromEntries(CODE.figFiles), timeout: 3600000};
   if (codeEnsureWorker()) { CODE.pendingRun = msg; CODE.worker.postMessage(msg); } else { CODE.pendingRun = msg; codeRunMain(msg); }
 }
 function codeMainLib() { return MLAB; }
@@ -446,8 +491,16 @@ function mlWriteMat(trees) {
   return new Blob(parts, {type: 'application/octet-stream'});
 }
 /* ---------- .fig (GUIDE arayüzü) önizlemesi ---------- */
-async function figFilePreview(file) {
+async function figFileOpen(file) {
   let trees; try { const m = await MAT.open(file); trees = await MAT.readAll(m); } catch (e) { toast('.fig okunamadı: ' + e.message); return; }
+  const root = trees.find(t => /^hgS_/.test(t.name)); if (root) { CODE.figFiles.set(file.name, root); codeOut(`${file.name} yüklendi (arayüz düzeni).\n`, 'warn'); }
+  const mName = file.name.replace(/\.fig$/i, '.m'), di = CODE.docs.findIndex(d => d.name.toLowerCase() === mName.toLowerCase());
+  if (di >= 0 && root) { CODE.cur = di; codeShowDoc(); }
+  await figFilePreview(file, trees);
+}
+function codeRunGui(mName) { const di = CODE.docs.findIndex(d => d.name.toLowerCase() === mName.toLowerCase()); if (di < 0) return toast(mName + ' açık değil'); codeStoreCur(); CODE.cur = di; codeShowDoc(); codeRun('all'); }
+async function figFilePreview(file, pre) {
+  let trees = pre; if (!trees) try { const m = await MAT.open(file); trees = await MAT.readAll(m); } catch (e) { toast('.fig okunamadı: ' + e.message); return; }
   const root = trees.find(t => /^hgS_/.test(t.name));
   if (!root || root.k !== 'struct') { modal(file.name, h('div', null, 'Bu .fig dosyasında arayüz/figür yapısı bulunamadı.')); return; }
   const chr = t => { if (!t) return ''; if (t.k === 'num' && t.cls === 'c') { const r = t.dims[0] || 0, c = t.dims[1] || 0, rows = []; for (let i = 0; i < r; i++) { let s = ''; for (let j = 0; j < c; j++) s += String.fromCharCode(t.re[i + j * r]); rows.push(s.replace(/\s+$/, '')); } return rows.join('\n'); } if (t.k === 'cell') return t.v.map(chr).join('\n'); if (t.k === 'num' && t.re.length) return Array.from(t.re).slice(0, 4).map(v => +v.toFixed(3)).join(' '); return ''; };
@@ -474,10 +527,10 @@ async function figFilePreview(file) {
   for (const k of kids(fig)) place(k, canvas, FW * scale, FH * scale);
   const mName = file.name.replace(/\.fig$/i, '.m'), have = CODE.docs && CODE.docs.some(d => d.name.toLowerCase() === mName.toLowerCase());
   modal(`${file.name} — arayüz önizlemesi (${chr(prop(fig, 'Name')) || 'figür'})`, h('div', null,
-    h('div', {class: 'note'}, `Bu dosya MATLAB GUIDE ile hazırlanmış bir arayüz düzenidir (.fig). MATView bu arayüzü çalıştıramaz; düğmelerin yaptığı işler ${mName} dosyasındaki “Tag_Callback” işlevlerindedir. ${have ? mName + ' açık: işlevleri Kod sekmesinde inceleyip ayrı betik olarak çalıştırabilirsiniz.' : mName + ' dosyasını açarsanız callback kodlarını görebilir, gereken kısımları betik olarak çalıştırabilirsiniz.'}`),
+    h('div', {class: 'note'}, have ? `Arayüz düzeni (.fig) yüklendi. ${mName} açık: “Arayüzü çalıştır” ile (ya da ${mName} sekmesinde F5) arayüz açılır ve düğmeler çalışır.` : `Arayüz düzeni (.fig) yüklendi. Arayüzü çalıştırmak için düğmelerin kodunu içeren ${mName} dosyasını da açın; sonra o sekmede F5'e basın.`),
     h('div', {class: 'figprevwrap'}, canvas), info,
     cbs.length ? h('details', null, h('summary', null, `Etkileşimli öğeler (${cbs.length})`), h('table', {class: 'wst'}, h('tr', null, h('th', null, 'Tag'), h('th', null, 'Tür'), h('th', null, 'Metin'), h('th', null, 'İşlev')), cbs.map(([t, s, x]) => h('tr', null, h('td', {class: 'b'}, t), h('td', null, s), h('td', null, x), h('td', null, t + '_Callback'))))) : null),
-    [{t: 'Kapat'}]);
+    have ? [{t: 'Arayüzü çalıştır', primary: true, fn: () => codeRunGui(mName)}, {t: 'Kapat'}] : [{t: 'Kapat'}]);
 }
 /* ---------- işlev listesi ---------- */
 function codeFuncDialog() {
@@ -508,7 +561,7 @@ function renderFigure() {
   requestAnimationFrame(() => {
     const cells = [...grid.children];
     f.axes.forEach((ax, i) => {
-      const cv = cells[i].firstChild; const P = new Plot(cv, {xName: 'x', emptyText: 'Boş eksen', onHover: p => { $('#hoverinfo').textContent = p ? `x = ${fmtNum(p.x, 7)}    y = ${fmtNum(p.y, 6)}` : ''; }}); P.grms = {mode: 'off', dc: true}; P.grid = !!ax.grid; P.legend = ax.legend === true || (ax.legend == null && ax.traces.length > 1 && ax.traces.some(t => t.name));
+      const cv = cells[i].firstChild; const P = new Plot(cv, {xName: 'x', xlabel: ' ', emptyText: 'Boş eksen', onHover: p => { $('#hoverinfo').textContent = p ? `x = ${fmtNum(p.x, 7)}    y = ${fmtNum(p.y, 6)}` : ''; }}); P.grms = {mode: 'off', dc: true}; P.grid = !!ax.grid; P.legend = ax.legend === true || (ax.legend == null && ax.traces.length > 1 && ax.traces.some(t => t.name));
       const pa = P.addAxes({xlabel: ax.xlabel, ylabel: ax.ylabel, title: ax.title, xlog: ax.xscale === 'log', ylog: ax.yscale === 'log'}); pa.fig = true;
       ax.traces.forEach((t, k) => {
         const y = t.y, n = y.length; let x = t.x; if (!x) { x = new Float64Array(n); for (let j = 0; j < n; j++) x[j] = j + 1; }
@@ -532,6 +585,209 @@ function figPng(f) {
   for (const c of cells) { const r = c.getBoundingClientRect(); ctx.drawImage(c, Math.round((r.left - gr.left) * dpr), Math.round((r.top - gr.top) * dpr)); }
   cv.toBlob(b => saveBlob(b, 'figur' + f.id + '.png'));
 }
+/* ---------- Arayüz (GUIDE / uicontrol) görünümü ---------- */
+CODE.vfs = new Map();      // ad → File (arayüzden okunacak dosyalar)
+CODE.figFiles = new Map(); // ad → .fig ağacı
+CODE.gui = {figs: [], cur: 0, els: new Map(), plots: new Map(), sig: '', queue: []};
+function codeVfsPush(name, file) {
+  const w = CODE.worker; if (!w || CODE.sab) return;   // paylaşımlı bellek varsa dosya istendikçe okunur
+  file.arrayBuffer().then(buf => { try { w.postMessage({t: 'vfs', name, buf}, [buf]); } catch (_) {} });
+}
+function codeAddVfs(files) {
+  let n = 0; for (const f of files) { CODE.vfs.set(f.name, f); codeVfsPush(f.name, f); n++; }
+  if (n) { codeOut(`${n} dosya arayüzün kullanımına eklendi: ${[...files].map(f => f.name).join(', ')}\n`, 'warn'); guiRenderBar(); }
+}
+function guiEnsureView() {
+  let v = $('#v-gui'); if (v) return v;
+  v = h('div', {class: 'view hidden guiview', id: 'v-gui'}); $('#stage').append(v);
+  return v;
+}
+function guiShown() { guiRenderBar(); guiRender(true); }
+function guiRenderBar() {
+  const v = guiEnsureView(); let bar = v.querySelector('.guibar'); if (!bar) { bar = h('div', {class: 'guibar'}); v.append(bar, h('div', {class: 'guistage'})); }
+  const G = CODE.gui, fin = h('input', {type: 'file', multiple: true, hidden: true, onchange: e => { codeAddVfs(e.target.files); e.target.value = ''; }});
+  bar.replaceChildren(...G.figs.map((f, i) => h('button', {class: i === G.cur ? 'on' : '', onclick: () => { G.cur = i; guiRender(true); guiRenderBar(); }}, f.name || ('Figür ' + f.id))),
+    h('span', {class: 'sp'}), h('span', {class: 'note', id: 'guiStatus'}, CODE.running ? 'çalışıyor…' : ''),
+    btn('Dosya ekle', () => fin.click()), h('span', {class: 'note', title: [...CODE.vfs.keys()].join('\n')}, CODE.vfs.size ? CODE.vfs.size + ' dosya' : ''),
+    btn(document.getElementById('app').classList.contains('wide') ? 'Panelleri göster' : 'Geniş görünüm', () => { document.getElementById('app').classList.toggle('wide'); guiRenderBar(); setTimeout(() => guiRender(true), 30); }),
+    btn('Kapat', () => { const f = G.figs[G.cur]; if (!f) return; if (CODE.running) return toast('İşlem sürüyor'); codeGuiEvent(null, null, null, `close(${f.id})`); }), fin);
+}
+function guiUpdate(figs) {
+  const G = CODE.gui, prev = G.figs; guiEnsureView();
+  // eksen izleri yalnız değiştiğinde gelir: önceki izleri koru
+  for (const f of figs) { const p = prev.find(x => x.id === f.id); for (const a of f.axes) if (a.traces == null) { const pa = p && p.axes.find(x => x.oid === a.oid); a.traces = pa ? pa.traces : []; a.same = !!pa; } }
+  const opened = figs.filter(f => !prev.some(p => p.id === f.id));
+  G.figs = figs; if (G.cur >= figs.length) G.cur = Math.max(0, figs.length - 1); if (opened.length) G.cur = figs.indexOf(opened[opened.length - 1]);
+  const b = document.querySelector('#viewtabs button[data-v=gui]'); if (b) b.classList.toggle('hidden', !figs.length);
+  if (opened.length) { switchView('gui'); return; }
+  if (!figs.length && S.view === 'gui') { switchView('code'); return; }
+  if (S.view === 'gui') { guiRenderBar(); guiRender(false); }
+}
+const GUI_U = {pixels: 1, characters: [5, 13], points: 4 / 3, inches: 96, centimeters: 96 / 2.54, normalized: 0};
+function guiRect(o, pw, ph, sx, sy) {
+  const p = o.props.Position || [0, 0, 1, 1], u = String(o.props.Units || 'pixels').toLowerCase();
+  if (u === 'normalized') return [p[0] * pw, p[1] * ph, p[2] * pw, p[3] * ph];
+  const k = GUI_U[u] || 1, kx = Array.isArray(k) ? k[0] : k, ky = Array.isArray(k) ? k[1] : k;
+  return [p[0] * kx * sx, p[1] * ky * sy, p[2] * kx * sx, p[3] * ky * sy];
+}
+const guiCol = c => Array.isArray(c) && c.length === 3 ? `rgb(${c.map(x => Math.round(Math.max(0, Math.min(1, x)) * 255)).join(',')})` : null;
+const guiLines = s => Array.isArray(s) ? s : String(s == null ? '' : s).split('\n');
+function guiRender(force) {
+  const G = CODE.gui, v = guiEnsureView(), stage = v.querySelector('.guistage'); if (!stage) return;
+  const f = G.figs[G.cur]; if (!f) { stage.replaceChildren(h('div', {class: 'note', style: 'padding:16px'}, 'Açık arayüz yok.')); G.sig = ''; return; }
+  const byId = new Map(f.objs.map(o => [o.id, o])), fo = byId.get(f.id);
+  const W = stage.clientWidth || 800, H = stage.clientHeight || 600;
+  const sig = f.id + '|' + W + 'x' + H + '|' + f.objs.map(o => o.id + ':' + o.type + ':' + (o.props.Style || '') + ':' + (o.props.Position || []).join(',') + ':' + (o.props.Units || '') + ':' + (Array.isArray(o.props.String) ? o.props.String.length : '')).join(';');
+  if (force || sig !== G.sig) { guiBuild(stage, f, byId, fo, W, H); G.sig = sig; }
+  for (const o of f.objs) guiApply(o);
+  for (const a of f.axes) guiAxes(a);
+}
+function guiBuild(stage, f, byId, fo, W, H) {
+  const G = CODE.gui; for (const P of G.plots.values()) { try { P._ro && P._ro.disconnect(); } catch (_) {} } G.plots.clear(); G.els.clear();
+  const fp = guiRect(fo, W, H, 1, 1), sx = W / Math.max(1, fp[2]), sy = H / Math.max(1, fp[3]), fsK = Math.max(0.6, Math.min(1.25, Math.min(sx, sy)));
+  const root = h('div', {class: 'guifig', style: `width:${W}px;height:${H}px;background:${guiCol(fo.props.Color) || '#f0f0f0'}`}); stage.replaceChildren(root);
+  G.els.set(fo.id, {el: root, o: fo});
+  const place = (o, parentEl, pw, ph) => {
+    if (o.type === 'figure') { for (const c of o.children.slice().reverse()) { const k = byId.get(c); if (k) place(k, root, W, H); } return; }
+    const r = guiRect(o, pw, ph, sx, sy); const st = String(o.props.Style || '').toLowerCase(); let el, inner = null;
+    const base = `left:${r[0]}px;bottom:${r[1]}px;width:${Math.max(2, r[2])}px;height:${Math.max(2, r[3])}px;`;
+    const fpx = Math.max(9, Math.round((o.props.FontSize ? o.props.FontSize[0] : 8) * 4 / 3 * fsK));
+    if (o.type === 'uipanel' || o.type === 'uibuttongroup') { el = h('div', {class: 'gp', style: base}); inner = h('div', {class: 'gpi'}); el.append(h('span', {class: 'gpt', style: `font-size:${fpx}px`}), inner); }
+    else if (o.type === 'axes') { el = h('div', {class: 'gax', style: base}, h('canvas')); }
+    else if (o.type === 'uitable') { el = h('div', {class: 'gtb', style: base + `font-size:${fpx}px`}); }
+    else if (o.type === 'uicontrol') {
+      const fire = (props) => codeGuiEvent(o.id, 'Callback', props);
+      const sty = base + `font-size:${fpx}px;`;
+      if (st === 'pushbutton') el = h('button', {class: 'gc gbtn', style: sty, onclick: () => fire()});
+      else if (st === 'togglebutton') el = h('button', {class: 'gc gbtn gtog', style: sty, onclick: () => { const cur = CODE.gui.lastVal && CODE.gui.lastVal.get(o.id); const on = !(el.classList.contains('on')); el.classList.toggle('on', on); const mx = (o.props.Max || [1])[0], mn = (o.props.Min || [0])[0]; fireSel(on ? mx : mn); }});
+      else if (st === 'edit') { const multi = ((o.props.Max || [1])[0] - (o.props.Min || [0])[0]) > 1; el = h(multi ? 'textarea' : 'input', {class: 'gc gedit', style: sty, type: multi ? undefined : 'text', onchange: e => fire({String: multi ? e.target.value.split('\n') : e.target.value}), onkeydown: e => { if (!multi && e.key === 'Enter') e.target.blur(); }}); }
+      else if (st === 'text') el = h('div', {class: 'gc gtext', style: sty});
+      else if (st === 'popupmenu') el = h('select', {class: 'gc gpop', style: sty, onchange: e => fire({Value: [e.target.selectedIndex + 1]})});
+      else if (st === 'listbox') { const multi = ((o.props.Max || [1])[0] - (o.props.Min || [0])[0]) > 1; el = h('select', {class: 'gc glist', style: sty, size: 4, multiple: multi, onchange: e => fire({Value: [...e.target.options].map((x, i) => x.selected ? i + 1 : 0).filter(Boolean)})}); }
+      else if (st === 'checkbox' || st === 'radiobutton') { const inp = h('input', {type: st === 'checkbox' ? 'checkbox' : 'radio'}); el = h('label', {class: 'gc gchk', style: sty}, inp, h('span')); inp.onchange = () => { const mx = (o.props.Max || [1])[0], mn = (o.props.Min || [0])[0]; const par = byId.get(o.parent); const v = inp.checked ? mx : mn; if (par && par.type === 'uibuttongroup' && st === 'radiobutton') codeGuiEvent(o.id, 'SelectionChangedFcn', {Value: [v]}); else fire({Value: [v]}); }; }
+      else if (st === 'slider') { el = h('input', {class: 'gc gsl', type: 'range', style: sty, step: 'any', onchange: e => fire({Value: [+e.target.value]})}); }
+      else el = h('div', {class: 'gc gframe', style: sty});
+      function fireSel(v) { const par = byId.get(o.parent); if (par && par.type === 'uibuttongroup') codeGuiEvent(o.id, 'SelectionChangedFcn', {Value: [v]}); else fire({Value: [v]}); }
+    } else return;
+    el.dataset.oid = o.id; parentEl.append(el); G.els.set(o.id, {el, o, inner});
+    const kidsEl = inner || el, cw = r[2], ch = inner ? Math.max(2, r[3] - fpx * 0.9) : r[3];
+    for (const c of o.children.slice().reverse()) { const k = byId.get(c); if (k) place(k, kidsEl, cw, ch); }
+  };
+  place(fo, root, W, H);
+}
+function guiApply(o) {
+  const G = CODE.gui, rec = G.els.get(o.id); if (!rec) return; const el = rec.el, p = o.props, st = String(p.Style || '').toLowerCase();
+  el.style.display = String(p.Visible || 'on') === 'off' ? 'none' : '';
+  const bg = guiCol(p.BackgroundColor), fg = guiCol(p.ForegroundColor); if (o.type !== 'figure' && o.type !== 'axes') { if (bg && st !== 'popupmenu' && st !== 'edit' && st !== 'listbox') el.style.background = bg; if (fg) el.style.color = fg; }
+  const en = String(p.Enable || 'on'); if ('disabled' in el) el.disabled = en === 'off' || en === 'inactive';
+  if (p.FontWeight === 'bold') el.style.fontWeight = '600';
+  if (p.HorizontalAlignment && o.type === 'uicontrol' && /text|edit/.test(st)) el.style.textAlign = p.HorizontalAlignment;
+  if (p.TooltipString) el.title = guiLines(p.TooltipString).join('\n');
+  const lines = guiLines(p.String), val = p.Value || [];
+  if (o.type === 'uipanel' || o.type === 'uibuttongroup') { el.querySelector('.gpt').textContent = guiLines(p.Title).join(' '); return; }
+  if (o.type === 'uitable') { guiTable(el, o); return; }
+  if (o.type !== 'uicontrol') return;
+  if (st === 'pushbutton' || st === 'togglebutton') { el.textContent = lines.join(' '); if (st === 'togglebutton') el.classList.toggle('on', (val[0] || 0) === ((p.Max || [1])[0])); }
+  else if (st === 'text') el.textContent = lines.join('\n');
+  else if (st === 'edit') { if (document.activeElement !== el) el.value = el.tagName === 'TEXTAREA' ? lines.join('\n') : lines.join(' '); }
+  else if (st === 'popupmenu' || st === 'listbox') {
+    const cur = [...el.options].map(x => x.text).join('\n'); if (cur !== lines.join('\n')) el.replaceChildren(...lines.map(s => h('option', null, s)));
+    [...el.options].forEach((x, i) => { x.selected = val.includes(i + 1); });
+  }
+  else if (st === 'checkbox' || st === 'radiobutton') { el.querySelector('span').textContent = lines.join(' '); el.querySelector('input').checked = (val[0] || 0) === ((p.Max || [1])[0]); }
+  else if (st === 'slider') { el.min = (p.Min || [0])[0]; el.max = (p.Max || [1])[0]; el.value = val[0] || 0; }
+}
+function guiTable(el, o) {
+  const p = o.props, data = Array.isArray(p.Data) ? p.Data : [], nC = data.length ? Math.max(...data.map(r => r.length)) : 0;
+  const cn = p.ColumnName === 'numbered' || p.ColumnName == null ? Array.from({length: nC}, (_, i) => String(i + 1)) : guiLines(p.ColumnName);
+  const rn = p.RowName === 'numbered' || p.RowName == null ? data.map((_, i) => String(i + 1)) : guiLines(p.RowName);
+  const fmt = x => typeof x === 'number' ? (Number.isInteger(x) ? String(x) : (+x.toPrecision(6)).toString()) : typeof x === 'boolean' ? (x ? '☑' : '☐') : String(x);
+  el.replaceChildren(h('table', null, h('tr', null, h('th'), ...cn.slice(0, Math.max(nC, cn.length)).map(c => h('th', null, c))), ...data.slice(0, 2000).map((r, i) => h('tr', null, h('th', null, rn[i] || ''), ...r.map(x => h('td', null, fmt(x)))))));
+}
+function guiAxes(a) {
+  const G = CODE.gui, rec = G.els.get(a.oid); if (!rec) return; const cv = rec.el.querySelector('canvas');
+  let P = G.plots.get(a.oid);
+  if (P && a.same && P._ver === a.ver) return;
+  if (!P) { P = new Plot(cv, {xName: 'x', xlabel: ' ', emptyText: '', onHover: q => { $('#hoverinfo').textContent = q ? `x = ${fmtNum(q.x, 7)}    y = ${fmtNum(q.y, 6)}` : ''; }}); P.grms = {mode: 'off', dc: true}; G.plots.set(a.oid, P); }
+  P.axes.slice().forEach(x => P.removeAxes(x)); P._ver = a.ver;
+  P.grid = !!a.grid; P.legend = a.legend === true;
+  const pa = P.addAxes({xlabel: a.xlabel, ylabel: a.ylabel, title: a.title, xlog: a.xscale === 'log', ylog: a.yscale === 'log'});
+  (a.traces || []).forEach((t, k) => {
+    const y = t.y, n = y.length; let x = t.x; if (!x) { x = new Float64Array(n); for (let j = 0; j < n; j++) x[j] = j + 1; }
+    const color = t.color || FIG_PAL[k % FIG_PAL.length], label = t.name || ('veri' + (k + 1)), tr = {kind: 'xy', x, y, label, color, width: t.lw || 1.2, visible: true};
+    if (t.kind === 'bar') { let dx = Infinity; for (let j = 1; j < n; j++) { const d = Math.abs(x[j] - x[j - 1]); if (d > 0 && d < dx) dx = d; } tr.bars = isFinite(dx) ? dx * 0.8 : 0.8; }
+    else if (t.kind === 'stem' || t.marker) { tr.marker = true; tr.msize = 4; if (!t.noLine && t.kind !== 'stem') { pa.traces.push({kind: 'xy', x, y, label, color, width: t.lw || 1.2, visible: true, dash: t.dash || null}); tr.noLegend = true; } }
+    if (t.dash && !tr.marker) tr.dash = t.dash; pa.traces.push(tr);
+  });
+  P.active = pa; P.fitAll(); if (a.xlim) pa.xlim = a.xlim.slice(); if (a.ylim) { pa.yAuto = false; pa.ylim = a.ylim.slice(); } P.invalidate();
+}
+// kullanıcı etkileşimi → işçide geri çağırma
+function codeGuiEvent(oid, kind, props, code) {
+  if (CODE.running) { CODE.gui.queue.push([oid, kind, props, code]); const s = $('#guiStatus'); if (s) s.textContent = 'çalışıyor… (sırada ' + CODE.gui.queue.length + ')'; return; }
+  if (!codeEnsureWorker()) return toast('Arayüz için arka plan işçisi gerekli');
+  codeRunUI(true); const s = $('#guiStatus'); if (s) s.textContent = 'çalışıyor…';
+  if (code) { codeRunText(code, 0, '>>', 'komut'); return; }
+  const msg = {t: 'cb', id: ++CODE.runId, oid, kind, props, label: 'arayüz'}; CODE.pendingRun = msg; CODE.worker.postMessage(msg);
+}
+function guiAfterRun() { const s = $('#guiStatus'); if (s) s.textContent = ''; const q = CODE.gui.queue.shift(); if (q) setTimeout(() => codeGuiEvent(...q), 0); }
+// işçiden bildirimler
+function guiNote(kind, p) {
+  if (kind === 'msg') { const icon = p.kind === 'error' ? 'Hata' : p.kind === 'warn' ? 'Uyarı' : 'Bilgi'; modal(p.title || icon, h('div', {style: 'white-space:pre-wrap;min-width:260px'}, p.text), [{t: 'Tamam', primary: true}]); if (p.kind === 'error') codeOut(`[${icon}] ${p.text}\n`, 'err'); return; }
+  if (kind === 'progress') { const s = $('#guiStatus'); if (s) s.textContent = `${p.msg ? p.msg + ' ' : ''}%${Math.round((p.x || 0) * 100)}`; return; }
+  if (kind === 'download') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([p.bytes])); a.download = p.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); codeOut(`${p.name} indirildi.\n`, 'warn'); return; }
+  if (kind === 'guiopen') { codeOut(`Arayüz açıldı: ${p.name}\n`, 'warn'); return; }
+}
+// engelleyen istekler (paylaşımlı bellek)
+function guiReply(obj, bin) {
+  const sab = CODE.sab; if (!sab) return; let bytes;
+  if (bin) bytes = bin; else bytes = new TextEncoder().encode(JSON.stringify(obj === undefined ? {v: null} : obj));
+  if (bytes.length > sab.box.length) { bytes = new TextEncoder().encode(JSON.stringify({err: 'Yanıt çok büyük'})); bin = null; }
+  sab.box.set(bytes); sab.ctl[1] = bytes.length; Atomics.store(sab.ctl, 0, bin ? 2 : 1); Atomics.notify(sab.ctl, 0);
+}
+function guiFindFile(name) { const b = String(name).replace(/^.*[\\/]/, '').toLowerCase(); for (const [k, f] of CODE.vfs) if (k.toLowerCase() === b) return f; return null; }
+async function guiRpc(kind, p) {
+  try {
+    if (kind === 'stat') { const f = guiFindFile(p); return guiReply({v: f ? {name: f.name, size: f.size} : null}); }
+    if (kind === 'read') { const f = guiFindFile(p.name); if (!f) return guiReply({err: 'Dosya yok: ' + p.name}); const b = new Uint8Array(await f.slice(p.off, p.off + p.len).arrayBuffer()); return guiReply(null, b); }
+    if (kind === 'blob') { const b = CODE.blob || new Uint8Array(0); return guiReply(null, b.subarray(p.off, p.off + p.len)); }
+    if (kind === 'loadmat') {
+      const nm = String(p).toLowerCase(); let trees = CODE.matFiles.get(nm) || CODE.matFiles.get(nm + '.mat');
+      if (!trees) { const f = guiFindFile(p) || guiFindFile(p + '.mat'); if (f) { const m = await MAT.open(f); trees = await matTrees(m, f.name); CODE.matFiles.set(f.name.toLowerCase(), trees); } }
+      if (!trees) { const sf = S.files.find(x => x.mat && x.name.toLowerCase() === (/\.mat$/.test(nm) ? nm : nm + '.mat')); if (sf) trees = await matTrees(sf.mat, sf.name); }
+      if (!trees) return guiReply({v: null});
+      CODE.blob = guiEncodeTrees(trees); return guiReply({v: {size: CODE.blob.length}});
+    }
+    if (kind === 'fig') return guiReply({v: null});
+    if (kind === 'uigetfile') { const r = await guiPickFile(p); return guiReply({v: r}); }
+    if (kind === 'uiputfile') { const r = await guiAsk('Kaydet', [p.def], 'Dosya adı (tarayıcının İndirilenler klasörüne kaydedilir):'); return guiReply({v: r ? r[0] : null}); }
+    if (kind === 'questdlg') { const r = await new Promise(res => { modal(p.title || 'Soru', h('div', {style: 'white-space:pre-wrap;min-width:260px'}, p.q), [...p.btns.map(b => ({t: b, primary: b === p.def, fn: () => res(b)})), {t: 'Kapat', fn: () => res('')}]); $('#mclose').onclick = () => { $('#modal').classList.add('hidden'); res(''); }; }); return guiReply({v: r}); }
+    if (kind === 'inputdlg') { const r = await guiAsk(p.title || 'Giriş', p.defs, p.prompts); return guiReply({v: r}); }
+    if (kind === 'listdlg') { const sel = h('select', {multiple: p.mode !== 'single', size: Math.min(12, Math.max(4, p.list.length)), style: 'width:100%'}, p.list.map((s, i) => h('option', {selected: p.init.includes(i + 1)}, s))); const r = await new Promise(res => { modal(p.title || 'Seçin', h('div', null, p.prompt ? h('div', {class: 'note'}, p.prompt) : null, sel), [{t: 'Tamam', primary: true, fn: () => res([...sel.options].map((x, i) => x.selected ? i + 1 : 0).filter(Boolean))}, {t: 'Vazgeç', fn: () => res(null)}]); $('#mclose').onclick = () => { $('#modal').classList.add('hidden'); res(null); }; }); return guiReply({v: r}); }
+    guiReply({err: 'Bilinmeyen istek: ' + kind});
+  } catch (e) { guiReply({err: String(e && e.message || e)}); }
+}
+function guiEncodeTrees(trees) {
+  const bufs = []; const strip = t => { if (!t) return t; if (t.k === 'num') { const o = Object.assign({}, t); o.re = bufs.push(Float64Array.from(t.re)) - 1; if (t.im) o.im = bufs.push(Float64Array.from(t.im)) - 1; else delete o.im; return o; } if (t.k === 'cell') return Object.assign({}, t, {v: t.v.map(strip)}); if (t.k === 'struct') return Object.assign({}, t, {v: t.v.map(o => { const q = {}; for (const k in o) q[k] = strip(o[k]); return q; })}); return t; };
+  const js = new TextEncoder().encode(JSON.stringify({trees: trees.map(strip), bufs: bufs.map(b => b.length)})); let n = 4 + js.length; for (const b of bufs) n += b.byteLength;
+  const out = new Uint8Array(n); new DataView(out.buffer).setUint32(0, js.length, true); out.set(js, 4); let o = 4 + js.length; for (const b of bufs) { out.set(new Uint8Array(b.buffer), o); o += b.byteLength; } return out;
+}
+function guiAsk(title, defs, prompts) {
+  prompts = Array.isArray(prompts) ? prompts : [prompts]; const ins = defs.map(d => h('input', {type: 'text', value: d || '', style: 'width:100%'}));
+  return new Promise(res => { modal(title, h('div', {style: 'min-width:320px'}, ...ins.flatMap((inp, i) => [h('div', {class: 'note', style: 'margin-top:6px'}, prompts[i] || ''), inp])), [{t: 'Tamam', primary: true, fn: () => res(ins.map(x => x.value))}, {t: 'Vazgeç', fn: () => res(null)}]); $('#mclose').onclick = () => { $('#modal').classList.add('hidden'); res(null); }; setTimeout(() => ins[0] && ins[0].focus(), 50); });
+}
+function guiPickFile(p) {
+  const pats = String(p.filter || '*.*').split(/[;,]/).map(x => x.trim()).filter(Boolean);
+  const re = pats.map(x => new RegExp('^' + x.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i'));
+  const known = [...CODE.vfs.values()].filter(f => re.some(r => r.test(f.name)));
+  return new Promise(res => {
+    let done = false; const fin = v => { if (!done) { done = true; res(v); } };
+    const inp = h('input', {type: 'file', multiple: !!p.multi, accept: pats.filter(x => /^\*\.\w+$/.test(x)).map(x => x.slice(1)).join(','), onchange: e => { const fs = [...e.target.files]; if (!fs.length) return; for (const f of fs) CODE.vfs.set(f.name, f); $('#modal').classList.add('hidden'); guiRenderBar(); fin(fs.map(f => f.name)); }});
+    const list = known.length ? h('div', {style: 'margin-top:8px'}, h('div', {class: 'note'}, 'Daha önce eklenenler:'), ...known.map(f => h('button', {style: 'display:block;margin:3px 0', onclick: () => { $('#modal').classList.add('hidden'); fin([f.name]); }}, f.name + ' (' + fmtCnt(f.size) + ' bayt)'))) : null;
+    modal(p.title || 'Dosya seçin', h('div', {style: 'min-width:340px'}, h('div', {class: 'note'}, 'Filtre: ' + pats.join('; ')), h('div', {style: 'margin-top:8px'}, btn('Bilgisayardan seç…', () => inp.click(), 'primary')), list, inp), [{t: 'Vazgeç', fn: () => fin(null)}]);
+    $('#mclose').onclick = () => { $('#modal').classList.add('hidden'); fin(null); };
+  });
+}
+
 (function codeBind() {
   const pick = () => { const i = h('input', {type: 'file', accept: '.m,.fig,.txt', multiple: true, onchange: e => codeOpenM(e.target.files)}); i.click(); };
   const b = document.getElementById('btnCodeOpen'); if (b) b.onclick = () => { if (typeof closeMenus === 'function') closeMenus(); pick(); };

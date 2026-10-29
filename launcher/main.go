@@ -49,7 +49,7 @@ func main() {
 	url := "file:///" + strings.TrimPrefix(filepath.ToSlash(html), "/")
 	if b := findBrowser(); b != "" {
 		cmd := exec.Command(b, "--app="+url, "--user-data-dir="+filepath.Join(dir, "profile"), "--no-first-run", "--no-default-browser-check",
-			"--window-size=1500,920", "--disable-features=Translate")
+			"--window-size=1500,920", "--disable-features=Translate", "--enable-features=SharedArrayBuffer")
 		if cmd.Start() == nil {
 			return
 		}

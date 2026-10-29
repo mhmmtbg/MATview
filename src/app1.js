@@ -244,7 +244,7 @@ function setMode(m) {
 }
 function switchView(v) {
   S.view = v; for (const b of $('#viewtabs').children) b.classList.toggle('on', b.dataset.v === v);
-  for (const id of ['time', 'spec', 'sgram', 'xy', 'code', 'fig']) $('#v-' + id).classList.toggle('hidden', id !== v);
-  $('#toolbar').style.display = (v === 'sgram' || v === 'code' || v === 'fig') ? 'none' : '';
-  S.plot.resize(); S.specPlot.resize(); S.specView.resize(); if (S.xyPlot) S.xyPlot.resize(); if (v === 'fig' && typeof figShown === 'function') figShown(); if (v === 'code' && typeof codeShown === 'function') codeShown(); if (typeof syncWelcome === 'function') syncWelcome(); updateStats();
+  for (const id of ['time', 'spec', 'sgram', 'xy', 'code', 'fig', 'gui']) $('#v-' + id).classList.toggle('hidden', id !== v);
+  $('#toolbar').style.display = (v === 'sgram' || v === 'code' || v === 'fig' || v === 'gui') ? 'none' : '';
+  S.plot.resize(); S.specPlot.resize(); S.specView.resize(); if (S.xyPlot) S.xyPlot.resize(); if (v === 'fig' && typeof figShown === 'function') figShown(); if (v === 'code' && typeof codeShown === 'function') codeShown(); if (v === 'gui' && typeof guiShown === 'function') guiShown(); if (typeof syncWelcome === 'function') syncWelcome(); updateStats();
 }
