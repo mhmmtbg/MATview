@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MATView – .mat Veri Gözlemci</title>
+<style>/*CSS*/</style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div class="brand"><svg width="20" height="20" viewBox="0 0 20 20"><rect x="1" y="1" width="18" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 13 L7 7 L10 12 L13 5 L17 11" fill="none" stroke="#0072BD" stroke-width="1.6"/></svg><b>MATView</b><span class="sub">.mat veri gözlemci</span></div>
+    <div class="spacer"></div>
+    <div class="dd"><button id="btnOpenM" class="primary" data-ic="open" aria-haspopup="true" title="Dosya aç"><span class="lbl">Aç</span><span class="car">▾</span></button>
+      <div class="ddm hidden" id="mOpen">
+        <button id="btnOpen" data-ic="file" title="MATLAB (.mat) veya UNV dosyası aç">MAT / UNV dosyası…</button>
+        <button id="btnTab" data-ic="table" title="CSV / Excel tablosu: zaman serisi veya özellik/regresyon verisi">Tablo (CSV / Excel)…</button>
+        <button id="btnFrm" data-ic="bin" title="Alt sistem sayfalı Excel çerçevesiyle telemetre binary çöz">Binary dosya (Excel çerçeve)…</button>
+        <button id="btnCodeOpen" data-ic="file" title="MATLAB betiği / işlev dosyası (.m) ya da GUIDE arayüzü (.fig) aç">MATLAB kodu (.m / .fig)…</button>
+        <button id="btnBin" data-ic="bin" title="Eski: hücre matrisi biçimindeki çerçeve tanımıyla binary çöz">Binary (eski matris çerçeve)…</button>
+      </div></div>
+    <div class="dd"><button id="btnSet" data-ic="settings" aria-haspopup="true" title="Ayarlar"><span class="lbl">Ayarlar</span><span class="car">▾</span></button>
+      <div class="ddm right hidden" id="mSet">
+        <button id="btnTime" data-ic="time" title="Dosya başına paket süresi ve temel örnekleme frekansı">Zaman ayarları…</button>
+        <button id="btnFree" data-ic="mem" title="Grafikte kullanılmayan kanalları bellekten at">Belleği boşalt</button>
+        <button id="btnDbl" data-ic="layers" title="Ağaçta bir kanala çift tıklayınca ne olsun">Çift tık: yeni alt grafik</button>
+        <button id="btnKeys" data-ic="kbd" title="Klavye kısayolları (?)">Klavye kısayolları</button>
+        <button id="btnHelp" data-ic="help">Yardım</button>
+      </div></div>
+    <button id="btnTheme" data-ic="theme" title="Açık/koyu tema" aria-label="Tema"></button>
+    <input type="file" id="fileIn" accept=".m,.fig,.mat,.unv,.uff,.csv,.tsv,.txt,.xlsx,.wav,.tdms,.mf4,.mdf" multiple hidden>
+  </header>
+  <aside id="left">
+    <div class="pane-h">Dosyalar ve değişkenler</div>
+    <div class="search"><input id="q" type="search" placeholder="Ara (kanal adı)…"></div>
+    <div id="chips" class="chips"></div>
+    <div id="tree" class="tree"></div>
+    <div id="selbar" class="selbar">
+      <span id="selinfo">Seçili: 0</span>
+      <button id="btnSelAll" data-ic="check" title="Görünen tüm kanalları seç / seçimi kaldır">Hepsi</button>
+      <button id="btnStack" data-ic="stack" title="Seçili kanalların her birini ayrı alt grafiğe ekler">Alt alta</button>
+      <button id="btnOverlay" data-ic="layers" title="Seçili kanalları aktif grafiğe aynı eksende ekler">Aynı grafiğe</button>
+    </div>
+  </aside>
+  <main id="center">
+    <div id="viewbar">
+      <div class="seg" id="viewtabs"><button data-v="time" class="on">Zaman</button><button data-v="spec">Spektrum</button><button data-v="sgram">Spektrogram</button><button data-v="xy" class="hidden" title="Zamandan bağımsız (özellik / regresyon) veri">Dağılım</button><button data-v="code" title="MATLAB alt kümesi kod çalıştırma (F5)">Kod</button><button data-v="fig" class="hidden" title="Kodun çizdiği figürler (plot / subplot)">Figür</button><button data-v="gui" class="hidden" title="Kodun açtığı arayüz (GUIDE / uicontrol)">Arayüz</button></div>
+      <div class="spacer"></div>
+      <span id="hoverinfo" class="muted"></span>
+      <button id="btnRep" data-ic="download" title="Açık görünümü rapora ekler">Rapora ekle</button><button id="btnPng" data-ic="download" title="Açık görünümü PNG olarak kaydet">PNG</button><button id="btnSvg" data-ic="download" title="Açık görünümü SVG (vektör) olarak kaydet">SVG</button>
+    </div>
+    <div id="toolbar"></div>
+    <div id="stage">
+      <div class="view" id="v-time"><canvas id="cv-time"></canvas></div>
+      <div class="view hidden" id="v-spec"><canvas id="cv-spec"></canvas></div>
+      <div class="view hidden" id="v-sgram"><canvas id="cv-sgram"></canvas></div>
+      <div class="view hidden" id="v-xy"><canvas id="cv-xy"></canvas></div>
+      <div class="view hidden" id="v-code"></div>
+      <div class="view hidden" id="v-fig"></div>
+      <div class="view hidden guiview" id="v-gui"></div>
+      <div id="welcome" class="hidden"><div class="wbox"><h2>MATView</h2><p class="muted">Başlamak için bir veri dosyası açın ya da pencereye sürükleyip bırakın.</p>
+        <div class="wcards"><button id="wMat" data-ic="file" class="wcard"><b>MAT dosyası</b><span>MATLAB v5 / v7.3</span></button><button id="wUnv" data-ic="unv" class="wcard"><b>UNV / UFF</b><span>Spektrum kayıtları (58)</span></button><button id="wTab" data-ic="table" class="wcard"><b>CSV / Excel</b><span>Zaman serisi veya özellik verisi</span></button><button id="wBin" data-ic="bin" class="wcard"><b>Binary</b><span>Excel çerçeve tanımıyla</span></button><button id="wCode" data-ic="file" class="wcard"><b>MATLAB kodu</b><span>.m betik yaz / aç, çalıştır</span></button></div>
+        <p class="note">İpucu: Kanala çift tıklayın = yeni alt grafik · Shift+çift tık = aktif grafiğe ekle · Kanalı grafiğe sürükleyin. <kbd>?</kbd> kısayollar.</p></div></div>
+      <div id="dropmsg" class="hidden">.mat dosyalarını buraya bırakın</div>
+    </div>
+    <div id="statsbar"></div>
+    <div id="status"><span id="st1"></span><span id="st2"></span><span id="st3"></span></div>
+  </main>
+  <aside id="right">
+    <div id="rtabs" class="rtabs"></div>
+    <div id="rbody" class="rbody"></div>
+  </aside>
+</div>
+<div id="busy" class="hidden"><div class="busybox"><div id="busytxt">Çalışıyor…</div><div class="bar"><div id="busybar"></div></div><div class="btns" id="busycancel" style="display:none"><button id="busyCancelBtn">İptal</button></div></div></div>
+<div id="modal" class="hidden"><div class="mbox"><div class="mh"><b id="mtitle"></b><button id="mclose">×</button></div><div id="mbody"></div><div id="mfoot"></div></div></div>
+<div id="toast" class="hidden" role="status" aria-live="polite"></div><div id="ctxm" class="ctxm hidden"></div>
+<script>/*JS*/</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+const D=require('../src/dsp.js');
+const fs=1000,n=16384; const x=new Float64Array(n); for(let i=0;i<n;i++) x[i]=Math.sin(2*Math.PI*50*i/fs)*2+Math.sin(2*Math.PI*200*i/fs)+(Math.random()-.5)*0.1;
+const p=D.welch(x,fs,{nfft:2048,overlap:.5,scale:'amp'}); let k=0; for(let i=0;i<p.y.length;i++) if(p.y[i]>p.y[k])k=i; console.log('peak f',p.f[k],'amp',p.y[k].toFixed(3));
+const psd=D.welch(x,fs,{nfft:2048,overlap:.5,scale:'psd'}); let tot=0; for(let i=0;i<psd.y.length;i++) tot+=psd.y[i]*psd.df; console.log('PSD power',tot.toFixed(3),'expected',(2+0.5+0.1*0.1/12).toFixed(3));
+const y=D.filtfilt(D.design('lp',{order:4,f1:100},fs),x); const sp=D.welch(y,fs,{nfft:2048,scale:'amp'}); let a50=0,a200=0; for(let i=0;i<sp.f.length;i++){if(Math.abs(sp.f[i]-50)<1)a50=Math.max(a50,sp.y[i]); if(Math.abs(sp.f[i]-200)<1)a200=Math.max(a200,sp.y[i]);} console.log('LP: 50Hz',a50.toFixed(2),'200Hz',a200.toFixed(3));
+const z=D.filtfilt(D.design('notch',{f1:50,Q:20},fs),x); const sz=D.welch(z,fs,{nfft:2048,scale:'amp'}); let b50=0; for(let i=0;i<sz.f.length;i++) if(Math.abs(sz.f[i]-50)<1)b50=Math.max(b50,sz.y[i]); console.log('notch 50Hz amp',b50.toFixed(3));
+const xs=Float64Array.from(x); xs[5000]=40; xs[9000]=-30; const f=D.hampelFlags(xs.subarray(0,16000),5,6,null); console.log('hampel',Array.from(f).slice(0,6));
+const dc=D.declick(xs,5,8,2); console.log('declick fixed',dc.count,Math.abs(dc.y[5000])<5);
+const nz=new Float64Array(n); for(let i=0;i<n;i++) nz[i]=(Math.random()-.5)*0.5; const sig=Float64Array.from(x,(v,i)=>v+nz[i]);
+const den=D.spectralDenoise(sig,nz.subarray(0,4096),{nfft:1024,reduceDb:20}); let e1=0,e2=0; for(let i=2000;i<14000;i++){e1+=(sig[i]-x[i])**2;e2+=(den[i]-x[i])**2;} console.log('denoise err',e1.toFixed(1),'->',e2.toFixed(1));
+const sg=D.spectrogram(x,fs,{nfft:512,overlap:.5}); console.log('spectro',sg.nf,sg.nb);
