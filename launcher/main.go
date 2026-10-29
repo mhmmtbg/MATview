@@ -1,6 +1,11 @@
-// MATView başlatıcı: yerleşik arayüzü geçici klasöre yazar ve Edge/Chrome'u uygulama penceresi olarak açar.
-// Sunucu yoktur, ağ kullanılmaz; kurulum gerektirmez.
-// Sol paneldeki "Klasör" görünümünün yazılan yoldan (C:\Veri, \\sunucu\paylasim) okuyabilmesi için tarayıcı
+// MATView başlatıcı: yerleşik arayüzü geçici klasöre yazar ve kendi uygulama penceresinde açar.
+// Kurulum gerekmez, ağ kullanılmaz.
+//
+// Windows'ta pencere, Windows 10/11 ile gelen Microsoft Edge WebView2 çalışma zamanıdır (sekme, adres çubuğu
+// yoktur; MATView simgesi ve başlığıyla ayrı bir uygulama penceresi). Çalışma zamanı yoksa Edge/Chrome
+// uygulama penceresi (--app) kullanılır. Pencere ilk açılışta ekranı kaplar (büyütülmüş); F11 tam ekran.
+//
+// Sol paneldeki "Klasör" görünümünün yazılan yoldan (C:\Veri, \\sunucu\paylasim) okuyabilmesi için sayfa
 // --allow-file-access-from-files ile açılır (yalnızca MATView'a ayrılmış profilde). Exe'ye bırakılan dosyalar
 // ve klasörler adresin sonuna #cwd=…&open=… olarak eklenir.
 package main
@@ -54,13 +59,19 @@ func main() {
 	if h := hashArgs(os.Args[1:]); h != "" {
 		u += "#" + h
 	}
+	// 1) yerel uygulama penceresi (WebView2)
+	if os.Getenv("MATVIEW_BROWSER") == "" && runNative(u, dir) {
+		return
+	}
+	// 2) Edge / Chrome uygulama penceresi
 	if b := findBrowser(); b != "" {
 		cmd := exec.Command(b, "--app="+u, "--user-data-dir="+filepath.Join(dir, "profile"), "--no-first-run", "--no-default-browser-check",
-			"--window-size=1500,920", "--disable-features=Translate", "--enable-features=SharedArrayBuffer", "--allow-file-access-from-files")
+			"--start-maximized", "--disable-features=Translate", "--enable-features=SharedArrayBuffer", "--allow-file-access-from-files")
 		if cmd.Start() == nil {
 			return
 		}
 	}
+	// 3) varsayılan program
 	if runtime.GOOS == "windows" {
 		exec.Command("rundll32", "url.dll,FileProtocolHandler", html).Start()
 	} else {

@@ -581,6 +581,12 @@ function init() {
     if (typeof wspDropItems === 'function' && wspDropItems(e.dataTransfer)) return;
     if (e.dataTransfer.files && e.dataTransfer.files.length) openFiles(e.dataTransfer.files);
   });
+  // F11: tam ekran (MATView.exe yerel penceresinde pencere stili değişir, tarayıcıda Fullscreen API)
+  window.addEventListener('keydown', e => {
+    if (e.key !== 'F11') return; e.preventDefault();
+    if (typeof window.mvFullscreen === 'function') { S.fullscreen = !S.fullscreen; window.mvFullscreen(S.fullscreen).then(v => { S.fullscreen = !!v; }).catch(() => {}); }
+    else if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); else document.documentElement.requestFullscreen().catch(() => {});
+  }, true);
   window.addEventListener('keydown', e => {
     const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range')) return;
     const k = e.key.toLowerCase();

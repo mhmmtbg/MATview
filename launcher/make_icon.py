@@ -1,4 +1,5 @@
-# MATView simgesi: matview.svg → matview.ico (16–256 px) → rsrc_windows_amd64.syso (Go derleyicisi exe'ye otomatik ekler).
+# MATView simgesi ve manifest: matview.svg → matview.ico (16–256 px); matview.manifest (DPI farkındalığı, asInvoker)
+# → rsrc_windows_amd64.syso (Go derleyicisi exe'ye otomatik ekler). Kaynak kimlikleri: manifest 1, simge grubu 2.
 # Gerekenler (yalnız simge değiştiğinde): playwright (Chromium), pillow, rsrc (go install github.com/akavel/rsrc@v0.10.2)
 import asyncio, io, os, subprocess, sys
 from PIL import Image
@@ -20,5 +21,5 @@ imgs = asyncio.run(render())
 ico = os.path.join(D, 'matview.ico')
 imgs[256].save(ico, format='ICO', sizes=[(s, s) for s in SIZES], append_images=[imgs[s] for s in SIZES if s != 256])
 rsrc = os.environ.get('RSRC', 'rsrc')
-subprocess.run([rsrc, '-ico', ico, '-arch', 'amd64', '-o', os.path.join(D, 'rsrc_windows_amd64.syso')], check=True)
+subprocess.run([rsrc, '-manifest', os.path.join(D, 'matview.manifest'), '-ico', ico, '-arch', 'amd64', '-o', os.path.join(D, 'rsrc_windows_amd64.syso')], check=True)
 print('ok', ico)

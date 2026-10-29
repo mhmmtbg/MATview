@@ -8463,6 +8463,10 @@ window.TPHost = {
     return U.getS().frameTypes.filter(function (ft) { return ft.templateRows; }).length;
   }
 };
+window.addEventListener('keydown', function (e) {   // F11 MATView penceresine iletilir (tam ekran)
+  if (e.key !== 'F11') return; e.preventDefault();
+  try { window.parent.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11' })); } catch (x) {}
+}, true);
 window.addEventListener('drop', function (e) {
   var t = e.target, zone = t && t.closest && t.closest('#dropZone, #vpDrop, #mvWsPane');
   if (zone || !e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
