@@ -676,6 +676,8 @@
       const np = hasVA ? f.ins.length - 1 : f.ins.length;
       if (args.length > np && !hasVA) E('MATLAB:TooManyInputs', `'${f.name}' işlevine çok fazla giriş argümanı verildi (en çok ${np}).`);
       for (let i = 0; i < np && i < args.length; i++) if (f.ins[i] !== '~') sc.vars.set(f.ins[i], args[i]);
+      // varsayılan parametre değerleri: function y = f(x, a=1) — verilmeyen argümanlar işlev kapsamında (önceki parametreleri görerek) hesaplanır
+      if (f.defs) for (let i = args.length; i < np; i++) if (f.defs[i]) { const sv = this.cur; try { sc.vars.set(f.ins[i], this.eval(f.defs[i], sc)); } finally { this.cur = sv; } }
       if (hasVA) sc.vars.set('varargin', {cell: true, r: 1, c: Math.max(0, args.length - np), v: args.slice(np)});
       sc.nargin = args.length; sc.nargout = nargout;
       const hasVO = f.outs.length && f.outs[f.outs.length - 1] === 'varargout';
