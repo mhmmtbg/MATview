@@ -269,6 +269,11 @@
   /* ---------- sanal dosya sistemi ---------- */
   const base = p => String(p).replace(/^.*[\\/]/, '');
   const VFS_DIR = 'C:\\MATView\\';
+  // Geçerli klasör (MATView'ın sol panelindeki “Klasör”): {dir, items:[{name, dir, size, date}]}
+  const dirOf = it => (it && it.folder && it.folder.dir) || VFS_DIR.slice(0, -1);
+  const sepOf = it => { const d = dirOf(it); return d.includes('/') && !d.includes('\\') ? '/' : '\\'; };
+  const fitems = it => (it && it.folder && it.folder.items) || [];
+  const fitem = (it, name) => { const b = base(name).toLowerCase(); return fitems(it).find(e => e.name.toLowerCase() === b) || null; };
   function vfs(it) { return it.vfs || (it.vfs = new Map()); }
   function vfsFind(it, name) { const b = base(name).toLowerCase(); for (const [k, v] of vfs(it)) if (k.toLowerCase() === b) return v; const r = it.ctx.statFile && it.ctx.statFile(base(name)); if (r) { const e = {name: r.name, size: r.size, remote: true}; vfs(it).set(r.name, e); return e; } return null; }
   ML.vfsAdd = (it, name, bytes) => { vfs(it).set(base(name), {name: base(name), size: bytes.length, bytes}); };
@@ -289,15 +294,44 @@
     });
     if (r == null || !r.length) return no > 1 ? [num(0), num(0), num(0)] : num(0);
     const fn = multi && r.length > 1 ? {cell: true, r: 1, c: r.length, v: r.map(str)} : str(r[0]);
-    return [fn, str(VFS_DIR), num(1)].slice(0, Math.max(1, no));
+    return [fn, str(dirOf(this) + sepOf(this)), num(1)].slice(0, Math.max(1, no));
   };
-  B.uiputfile = function (a, no) { const def = a.length > 1 ? S(a[1]) : a.length && /^[^*]+\.\w+$/.test(S(a[0])) ? S(a[0]) : 'cikti.mat'; const r = blocking(this, 'uiputfile', {def}, () => def); if (r == null) return [num(0), num(0), num(0)].slice(0, Math.max(1, no)); return [str(base(r)), str(VFS_DIR), num(1)].slice(0, Math.max(1, no)); };
-  B.uigetdir = () => str(VFS_DIR.slice(0, -1));
+  B.uiputfile = function (a, no) { const def = a.length > 1 ? S(a[1]) : a.length && /^[^*]+\.\w+$/.test(S(a[0])) ? S(a[0]) : 'cikti.mat'; const r = blocking(this, 'uiputfile', {def}, () => def); if (r == null) return [num(0), num(0), num(0)].slice(0, Math.max(1, no)); return [str(base(r)), str(dirOf(this) + sepOf(this)), num(1)].slice(0, Math.max(1, no)); };
+  B.uigetdir = function () { return str(dirOf(this)); };
   B.fullfile = a => { const parts = a.map(S).filter(Boolean); let s = parts.map((p, i) => i ? p.replace(/^[\\/]+/, '') : p).map((p, i, arr) => i < arr.length - 1 ? p.replace(/[\\/]+$/, '') : p).join('\\'); return str(s); };
   B.fileparts = (a, no) => { const p = S(a[0]), i = Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/')), d = i >= 0 ? p.slice(0, i) : '', f = p.slice(i + 1), j = f.lastIndexOf('.'); return [str(d), str(j > 0 ? f.slice(0, j) : f), str(j > 0 ? f.slice(j) : '')].slice(0, Math.max(1, no)); };
-  B.filesep = () => str('\\'); B.pwd = () => str(VFS_DIR.slice(0, -1)); B.isfile = function (a) { return bool(!!vfsFind(this, S(a[0]))); }; B.isfolder = B.isdir = () => bool(false);
-  const origExist = B.exist; B.exist = function (a, no, sc) { if (a.length > 1 && /file/i.test(S(a[1]))) return num(vfsFind(this, S(a[0])) ? 2 : 0); const r = origExist.call(this, a, no, sc); if (r.re[0] === 0 && /\.\w+$/.test(S(a[0])) && vfsFind(this, S(a[0]))) return num(2); return r; };
-  B.dir = function (a) { const pat = a.length ? base(S(a[0])) : '*'; const re = new RegExp('^' + pat.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$', 'i'); const list = [...vfs(this).values()].filter(e => re.test(e.name)); return {sa: true, r: list.length, c: 1, v: list.map(e => { const o = Object.create(null); o.name = str(e.name); o.folder = str(VFS_DIR.slice(0, -1)); o.bytes = num(e.size); o.isdir = bool(false); o.date = str(''); return o; })}; };
+  B.filesep = () => str('\\'); B.pwd = function () { return str(dirOf(this)); };
+  const isDirName = (it, n) => { n = String(n).replace(/[\\/]+$/, ''); if (n === '.' || n === '..' || n === dirOf(it)) return true; const e = fitem(it, n); return !!(e && e.dir); };
+  B.isfile = function (a) { const n = S(a[0]), e = fitem(this, n); return bool(e ? !e.dir : !!vfsFind(this, n)); }; B.isfolder = B.isdir = function (a) { return bool(isDirName(this, S(a[0]))); };
+  const origExist = B.exist; B.exist = function (a, no, sc) {
+    const n = S(a[0]), fe = fitem(this, n) || (/\.\w+$/.test(n) ? null : fitem(this, n + '.m'));
+    if (a.length > 1 && /^dir$/i.test(S(a[1]))) return num(isDirName(this, n) ? 7 : 0);
+    if (a.length > 1 && /file/i.test(S(a[1]))) return num(fe ? (fe.dir ? 7 : 2) : vfsFind(this, n) ? 2 : 0);
+    const r = origExist.call(this, a, no, sc); if (r.re[0] !== 0) return r;
+    if (fe) return num(fe.dir ? 7 : 2); if (/\.\w+$/.test(n) && vfsFind(this, n)) return num(2); return r;
+  };
+  function dirList(it, pat) {
+    const re = new RegExp('^' + pat.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i');
+    const out = [], seen = new Set();
+    if (it.folder && pat === '*') out.push({name: '.', dir: true, size: 0, date: ''}, {name: '..', dir: true, size: 0, date: ''});
+    for (const e of fitems(it)) if (re.test(e.name)) { out.push(e); seen.add(e.name.toLowerCase()); }
+    for (const e of vfs(it).values()) if (!e.remote && re.test(e.name) && !seen.has(e.name.toLowerCase())) out.push({name: e.name, dir: false, size: e.size, date: ''});
+    return out;
+  }
+  B.dir = function (a, no) {
+    const pat = a.length ? base(S(a[0])) || '*' : '*', list = dirList(this, pat);
+    if (no === 0) { const nm = list.map(e => e.name + (e.dir && e.name[0] !== '.' ? sepOf(this) : '')); this.out(nm.length ? '\n' + nm.join('  ') + '\n\n' : 'Klasörde eşleşen dosya yok.\n'); return; }
+    return {sa: true, r: list.length, c: 1, v: list.map(e => { const o = Object.create(null); o.name = str(e.name); o.folder = str(dirOf(this)); o.date = str(e.date || ''); o.bytes = num(e.dir ? 0 : e.size || 0); o.isdir = bool(!!e.dir); o.datenum = num(e.mtime ? e.mtime / 86400000 + 719529 : 0); return o; })};
+  };
+  B.ls = function (a, no) { const list = dirList(this, a.length ? base(S(a[0])) || '*' : '*').filter(e => e.name[0] !== '.'); if (no === 0) { this.out(list.length ? list.map(e => e.name).join('  ') + '\n' : '\n'); return; } return str(list.map(e => e.name).join('  ')); };
+  B.cd = function (a, no) {
+    if (!a.length) { if (no === 0) { this.out(dirOf(this) + '\n'); return; } return str(dirOf(this)); }
+    const t = S(a[0]).trim(); if (!t || t === '.') return no ? str(dirOf(this)) : undefined;
+    if (!this.folder) E('MATLAB:cd:NoFolder', 'cd: önce soldaki “Klasör” panelinden bir çalışma klasörü açın.');
+    if (t !== '..' && !/^([A-Za-z]:|[\\/])/.test(t) && !isDirName(this, t)) E('MATLAB:cd:NonExistentFolder', `cd: '${t}' klasörü bulunamadı.`);
+    if (this.ctx.notify) this.ctx.notify('cd', t);
+    return no ? str(dirOf(this)) : undefined;   // klasör değişikliği çalışma bitince arayüzde uygulanır
+  };
   // fopen / fread / fwrite ...
   const PREC = {uint8: ['u8', 1], uchar: ['u8', 1], 'unsigned char': ['u8', 1], int8: ['i8', 1], schar: ['i8', 1], char: ['c', 1], 'char*1': ['c', 1], uint16: ['u16', 2], ushort: ['u16', 2], int16: ['i16', 2], short: ['i16', 2], uint32: ['u32', 4], uint: ['u32', 4], ulong: ['u32', 4], int32: ['i32', 4], int: ['i32', 4], long: ['i32', 4], uint64: ['u64', 8], int64: ['i64', 8], single: ['s', 4], float32: ['s', 4], float: ['s', 4], double: ['d', 8], float64: ['d', 8]};
   function parsePrec(p) { p = p.trim().toLowerCase(); let outT = 'd', inP = p; if (p.startsWith('*')) { inP = p.slice(1); outT = null; } else if (p.includes('=>')) { const [x, y] = p.split('=>').map(s => s.trim()); inP = x; outT = (PREC[y] || [y === 'logical' ? 'l' : 'd'])[0]; } const ip = PREC[inP]; if (!ip) E('MATLAB:fread:prec', `fread: '${p}' duyarlılığı desteklenmiyor.`); if (outT === null) outT = ip[0] === 'c' ? 'c' : ip[0]; return {t: ip[0], sz: ip[1], out: outT}; }

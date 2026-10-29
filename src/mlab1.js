@@ -106,6 +106,11 @@ const MLAB = (() => {
         const prev = toks[toks.length - 1];
         if (KW.has(w) && !(prev && prev.k === 'op' && prev.v === '.' )) push('kw', w === 'endif' || w === 'endfor' || w === 'endwhile' || w === 'endfunction' || w === 'endswitch' || w === 'end_try_catch' ? 'end' : (w === 'parfor' ? 'for' : w), {raw: w});
         else push('id', w);
+        // komut sözdizimi (yol argümanlı): cd ..\veri, ls *.mat, dir C:\Test
+        if ((w === 'cd' || w === 'ls' || w === 'dir') && !stack.length && (!prev || prev.k === 'nl' || (prev.k === 'op' && (prev.v === ';' || prev.v === ',')))) {
+          let k = j; while (src[k] === ' ' || src[k] === '\t') k++;
+          if (k > j && k < n && !/[\n\r;,%=(]/.test(src[k])) { let e = k; while (e < n && !/[\n\r;,%]/.test(src[e])) e++; let raw = src.slice(k, e).trim(); if (/^'.*'$|^".*"$/.test(raw)) raw = raw.slice(1, -1); push('str', raw, {sp: true}); i = e; continue; }
+        }
         i = j; continue;
       }
       if (c === '"' || (c === "'" && !(prevEnds() && !(sp && inMat())))) {
@@ -135,7 +140,7 @@ const MLAB = (() => {
   }
 
   /* ---------- ayrıştırıcı ---------- */
-  const CMDS = new Set(['hold', 'close', 'clear', 'clc', 'format', 'warning', 'grid', 'axis', 'box', 'figure', 'clf', 'more', 'clearvars', 'disp_off', 'pkg', 'drawnow', 'shg', 'colormap', 'cla', 'colorbar', 'zoom', 'pause']);
+  const CMDS = new Set(['cd', 'ls', 'dir', 'hold', 'close', 'clear', 'clc', 'format', 'warning', 'grid', 'axis', 'box', 'figure', 'clf', 'more', 'clearvars', 'disp_off', 'pkg', 'drawnow', 'shg', 'colormap', 'cla', 'colorbar', 'zoom', 'pause']);
   function parse(src) {
     const toks = lex(src); let p = 0; const funcs = [];
     const T = () => toks[p], at = (k, v) => toks[p].k === k && (v === undefined || toks[p].v === v), isOp = v => toks[p].k === 'op' && toks[p].v === v;
@@ -187,6 +192,7 @@ const MLAB = (() => {
       if (t.k === 'id' && CMDS.has(t.v)) {
         const n1 = toks[p + 1];
         if (n1.k === 'nl' || n1.k === 'eof' || (n1.k === 'op' && (n1.v === ';' || n1.v === ','))) { p++; const pr = endStmtLoose(); return {t: 'expr', e: {t: 'call', f: {t: 'id', n: t.v, line}, args: [], line}, print: false, line, cmd: true}; }
+        if (n1.k === 'str' && n1.sp && (t.v === 'cd' || t.v === 'ls' || t.v === 'dir')) { p += 2; endStmtLoose(); return {t: 'expr', e: {t: 'call', f: {t: 'id', n: t.v, line}, args: [{t: 'str', v: n1.v}], line}, print: false, line, cmd: true}; }
         if (n1.k === 'id' && n1.sp && !(toks[p + 2].k === 'op' && (toks[p + 2].v === '=' || toks[p + 2].v === '('))) { p++; const args = []; while (at('id') || at('num') || at('str')) { const a = next(); args.push({t: 'str', v: String(a.v)}); } endStmtLoose(); return {t: 'expr', e: {t: 'call', f: {t: 'id', n: t.v, line}, args, line}, print: false, line, cmd: true}; }
       }
       // atama veya ifade

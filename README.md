@@ -16,6 +16,17 @@ MATLAB `.mat` dosyalarını okuyan, MATLAB benzeri grafik çizen; yakınlaştır
 - Dışa aktarma: PNG, CSV, MAT (v5), oturum.
 - **Kod** görünümü: MATLAB alt kümesini (matris, hücre, yapı, işlev, döngüler, fft/butter/filtfilt/pwelch…) kurulum olmadan çalıştırır; `ch('kanal')` ile açık kanalları okur, `addch` ile sonuç ekler; `figure/subplot/plot` ile **Figür** görünümüne çizer. `.m` dosyaları açılır/kaydedilir. GUIDE arayüzleri (`.m` + `.fig`) **Arayüz** görünümünde çalışır.
 
+## Çalışma klasörü (sol panel → Klasör)
+
+MATLAB'daki *Current Folder* gibi çalışır. Sol paneldeki **Veri / Klasör** sekmelerinden **Klasör**'e geçin (Ctrl+Shift+O).
+
+- **Klasör açma:** “Klasör seç…” düğmesi (okuma + yazma izni), klasörü pencereye sürükleyip bırakma ya da son klasörler listesi (▾). Son açılan klasör bir sonraki açılışta geri gelir.
+- **Yol yazarak açma:** `MATView.exe` ile açıldığında üstteki kutuya `C:\Veriler\Test` ya da `\\sunucu\paylasim\veri` yazıp Enter. Bu kipte klasör salt okunurdur (tarayıcı yerel dosyaya yazamaz); kaydetmek için aynı klasörü “Klasör seç…” ile açın. Düz `matview.html` tarayıcıda yalnızca “Klasör seç…” / sürükle-bırak ile çalışır.
+- **Dosyalar:** çift tık ya da Enter — `.mat` kanalları açar (Kod görünümündeyken çalışma alanına yükler), `.bin` Excel çerçeveyle çözme penceresini açar, `.m` düzenleyicide açılır, `.fig` arayüz önizlemesi. Sağ tık menüsünde diğer seçenekler; dosyayı grafiğe ya da editöre sürükleyebilirsiniz.
+- **Kodla birlikte:** klasördeki `.m` işlevleri ve betikleri adlarıyla çağrılır (MATLAB yolu gibi), `load('veri.mat')`, `fopen('ham.bin')` klasörden okur; `pwd`, `cd alt`, `cd ..`, `dir`, `ls`, `exist`, `isfile`, `isfolder` klasörü görür. Yazılabilir klasörde `save`, `fwrite` çıktıları ve **Kaydet (Ctrl+S)** doğrudan klasöre yazılır.
+- **Kod sekmeleri:** sekme çubuğundaki “Tümünü kapat” ya da sekmeye sağ tık → Kapat / Diğerlerini kapat / Sağdakileri kapat / Tümünü kapat. Kaydedilmemiş sekmeler tek pencerede listelenir. Orta tık sekmeyi kapatır.
+- **Exe'ye bırakma:** dosyaları `MATView.exe` simgesinin üzerine bırakınca açılır, bulundukları klasör çalışma klasörü olur.
+
 ## Derleme
 ```
 python3 build.py                      # src/* -> dist/matview.html (+ launcher/matview.html)
@@ -25,7 +36,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H=windowsg
 Go yalnızca standart kütüphaneyi kullanır. `test/` altında Node ve Playwright testleri bulunur (gerçek veri dosyaları depoda yoktur).
 
 ## Yapı
-`src/mat.js` (v5 okuyucu), `src/h5.js` (HDF5), `src/dsp.js`, `src/expr.js`, `src/plot.js` (grafik motoru), `src/store.js` (veri modeli), `src/app1.js`/`app2.js` (arayüz), `src/mlab1-3.js` (MATLAB alt kümesi: ayrıştırıcı, yorumlayıcı, işlev kütüphanesi), `src/app13.js` (Kod/Figür arayüzü), `launcher/main.go` (yerel sunucu + tarayıcı başlatıcı).
+`src/mat.js` (v5 okuyucu), `src/h5.js` (HDF5), `src/dsp.js`, `src/expr.js`, `src/plot.js` (grafik motoru), `src/store.js` (veri modeli), `src/app1.js`/`app2.js` (arayüz), `src/mlab1-3.js` (MATLAB alt kümesi: ayrıştırıcı, yorumlayıcı, işlev kütüphanesi), `src/app13.js` (Kod/Figür arayüzü), `src/wsp.js` (çalışma klasörü paneli), `launcher/main.go` (yerel sunucu + tarayıcı başlatıcı).
 
 ## Testler hakkında
 `bash test/run_tests.sh` tüm testleri çalıştırır; testler yalnızca betiklerin ürettiği yapay verilerle çalışır, depoda gerçek ölçüm verisi yoktur.
