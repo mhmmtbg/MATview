@@ -6,8 +6,8 @@
 <title>MATView – .mat Veri Gözlemci</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='2' y='2' width='60' height='60' rx='13' fill='%230072BD'/><path d='M12.5 41 L22.5 23.5 L31.5 37.5 L41.5 15 L51.5 32' fill='none' stroke='%23fff' stroke-width='5.5' stroke-linecap='round' stroke-linejoin='round'/><path d='M12.5 50 H51.5' stroke='%23fff' stroke-opacity='.6' stroke-width='3.5' stroke-linecap='round'/></svg>">
 <style>#v-tlm{overflow:hidden}#v-tlm iframe{display:block;width:100%;height:100%;border:0;background:var(--bg)}
-body.tlm-on #app:not(.wide){grid-template-columns:290px 1fr 0}body.tlm-on #right{display:none}
-@media (max-width:1100px){body.tlm-on #app:not(.wide){grid-template-columns:250px 1fr 0}}
+body.tlm-on #app:not(.wide){grid-template-columns:var(--lw,290px) 1fr 0}body.tlm-on #right{display:none}
+@media (max-width:1100px){body.tlm-on #app:not(.wide){grid-template-columns:var(--lw,250px) 1fr 0}}
 :root{--bg:#f6f7f9;--panel:#ffffff;--border:#d9dde2;--fg:#1b1f24;--muted:#6b7280;--accent:#0072BD;--accent-fg:#fff;--hover:#eef1f4;--danger:#c0392b;--field:#ffffff}
 :root[data-theme=dark]{--bg:#0f1114;--panel:#171a1e;--border:#2c3137;--fg:#e6e8eb;--muted:#8b929b;--accent:#3b9ae1;--accent-fg:#0b0d10;--hover:#22262b;--danger:#ff6b6b;--field:#1e2227}
 *{box-sizing:border-box}
@@ -28,7 +28,7 @@ input[type=color]{width:24px;height:20px;padding:0;border:1px solid var(--border
 .hidden{display:none!important}
 .muted{color:var(--muted)}
 .spacer{flex:1}
-#app{display:grid;grid-template-columns:290px 1fr 360px;grid-template-rows:44px minmax(0,1fr);height:100vh;overflow:hidden}
+#app{display:grid;grid-template-columns:var(--lw,290px) 1fr var(--rw,360px);grid-template-rows:44px minmax(0,1fr);height:100vh;overflow:hidden}
 #top{grid-column:1/4;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--border)}
 .brand{display:flex;align-items:center;gap:8px;margin-right:12px}.brand .sub{color:var(--muted)}
 #left,#right{background:var(--panel);display:flex;flex-direction:column;min-height:0;min-width:0}
@@ -98,7 +98,7 @@ input[type=color]{width:24px;height:20px;padding:0;border:1px solid var(--border
 .tact{background:none;border:1px solid currentColor;color:inherit;padding:0 8px;border-radius:3px}.tact:hover{background:none;text-decoration:underline}
 table.kv{border-collapse:collapse;width:100%}table.kv td,table.kv th{border-bottom:1px solid var(--border);padding:4px 6px;text-align:left}
 kbd{border:1px solid var(--border);border-radius:3px;padding:0 4px;font-size:12px;background:var(--bg)}
-@media (max-width:1100px){#app{grid-template-columns:250px 1fr 340px}}
+@media (max-width:1100px){#app{grid-template-columns:var(--lw,250px) 1fr var(--rw,340px)}}
 
 .ftab{border-collapse:collapse;font-size:12px}.ftab th{text-align:left;color:var(--muted);font-weight:600;padding:2px 4px;position:sticky;top:0;background:var(--panel)}.ftab td{padding:1px 2px}
 .ftab input,.ftab select{padding:1px 3px}
@@ -305,6 +305,24 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 .curpanel .cpt{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.curpanel .cpt th{text-align:left;color:var(--muted);font-weight:500}.curpanel .cpt td{padding:1px 4px 1px 0}
 .curpanel .cpp{margin-top:5px;border-top:1px dashed var(--border);padding-top:3px}.curpanel .cpk{font-weight:600;margin-bottom:1px}
 .curpanel .cpr{display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}.curpanel .cpr span:first-child{color:var(--muted)}
+
+.search{display:flex;gap:4px;align-items:center}.search input{flex:1;min-width:0}
+.search button{padding:2px 7px;line-height:18px;color:var(--muted)}.search button.on{color:#e6a700;border-color:#e6a700}
+.trow .fav{border:none;background:none;padding:0 1px;margin-left:-16px;width:15px;color:var(--muted);visibility:hidden;font-size:12px;line-height:14px}
+.trow:hover .fav,.trow .fav.on{visibility:visible}.trow .fav.on{color:#e6a700}
+.tbody.virt{overflow-anchor:none}.tbody.virt>.trow,.tbody.virt>.tdev{height:22px;box-sizing:border-box;padding-top:0;padding-bottom:0}.tbody .vsp{flex:none}
+
+#left,#right{position:relative}
+.split{position:absolute;top:0;bottom:0;width:6px;cursor:col-resize;z-index:20;touch-action:none}
+.split:hover,.split.drag{background:color-mix(in srgb,var(--accent) 35%,transparent)}
+#left>.split{right:-1px}#right>.split{left:-1px}
+#app.hideL #left,#app.hideR #right{display:none}
+#center{position:relative}.reveal{position:absolute;top:50%;z-index:15;width:14px;height:44px;margin-top:-22px;padding:0;border:1px solid var(--border);background:var(--panel);color:var(--muted);font-size:10px;line-height:1;display:none}
+.reveal.l{left:0;border-left:none;border-radius:0 5px 5px 0}.reveal.r{right:0;border-right:none;border-radius:5px 0 0 5px}
+#app.hideL .reveal.l,#app.hideR .reveal.r{display:block}body.tlm-on .reveal.r{display:none!important}
+body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!important}
+#left{grid-column:1;grid-row:2}#center{grid-column:2;grid-row:2}#right{grid-column:3;grid-row:2}#app.wide #center{grid-column:1/-1}
+.bode{margin:6px 0 2px;border:1px solid var(--border);border-radius:4px;overflow:hidden}.bode canvas{display:block;width:100%;height:190px}
 </style>
 </head>
 <body>
@@ -1906,34 +1924,36 @@ const DSP = (() => {
 
   // Welch PSD. opt: nfft, overlap(0..0.9), win, detrend('mean'|'none'), scale('psd'|'amp')
   function welch(x, fs, opt, onProgress) {
-    const nfft = Math.min(opt.nfft, nextPow2(x.length));
+    // opt.df verilirse NFFT = fs/Δf (ikinin kuvveti olması gerekmez; Bluestein DFT) — tam Δf çözünürlüğü
+    const anyN = opt.df > 0, nfft = anyN ? Math.max(8, Math.min(Math.round(fs / opt.df), x.length)) : Math.min(opt.nfft, nextPow2(x.length)), F = anyN ? fftAny : fft;
     const w = window(opt.win || 'hann', nfft);
     let s1 = 0, s2 = 0; for (let i = 0; i < nfft; i++) { s1 += w[i]; s2 += w[i] * w[i]; }
     let hop = Math.max(1, Math.round(nfft * (1 - (opt.overlap ?? 0.5))));
     const maxSeg = opt.maxSeg || 4000;
     if ((x.length - nfft) / hop + 1 > maxSeg) hop = Math.ceil((x.length - nfft) / (maxSeg - 1));
-    const nb = nfft / 2 + 1, acc = new Float64Array(nb);
+    const nb = Math.floor(nfft / 2) + 1, acc = new Float64Array(nb), last = nfft % 2 === 0 ? nb - 1 : -1;
     const re = new Float64Array(nfft), im = new Float64Array(nfft);
     let nseg = 0;
     for (let st = 0; st + nfft <= x.length; st += hop) {
       let mean = 0;
       if (opt.detrend !== 'none') { for (let i = 0; i < nfft; i++) mean += x[st + i]; mean /= nfft; }
       for (let i = 0; i < nfft; i++) { re[i] = (x[st + i] - mean) * w[i]; im[i] = 0; }
-      fft(re, im, false);
+      F(re, im, false);
       for (let k = 0; k < nb; k++) acc[k] += re[k] * re[k] + im[k] * im[k];
       nseg++;
     }
     if (!nseg) { // veri nfft'den kısa
       for (let i = 0; i < nfft; i++) { re[i] = (i < x.length ? x[i] : 0) * w[i]; im[i] = 0; }
-      fft(re, im, false); for (let k = 0; k < nb; k++) acc[k] = re[k] * re[k] + im[k] * im[k]; nseg = 1;
+      F(re, im, false); for (let k = 0; k < nb; k++) acc[k] = re[k] * re[k] + im[k] * im[k]; nseg = 1;
     }
     const f = new Float64Array(nb), y = new Float64Array(nb);
     for (let k = 0; k < nb; k++) {
       f[k] = k * fs / nfft;
       const p = acc[k] / nseg;
-      if (opt.scale === 'amp') { y[k] = Math.sqrt(p) * (k === 0 || k === nb - 1 ? 1 : 2) / s1; }       // tepe genlik
-      else if (opt.scale === 'rms') { y[k] = Math.sqrt(p) * (k === 0 || k === nb - 1 ? 1 : Math.SQRT2) / s1; }
-      else { y[k] = p / (fs * s2) * (k === 0 || k === nb - 1 ? 1 : 2); }                           // birim²/Hz
+      const e1 = k === 0 || k === last;
+      if (opt.scale === 'amp') { y[k] = Math.sqrt(p) * (e1 ? 1 : 2) / s1; }       // tepe genlik
+      else if (opt.scale === 'rms') { y[k] = Math.sqrt(p) * (e1 ? 1 : Math.SQRT2) / s1; }
+      else { y[k] = p / (fs * s2) * (e1 ? 1 : 2); }                           // birim²/Hz
     }
     // Doğruluk bilgileri: ENBW, etkin ortalama sayısı ve serbestlik derecesi (Welch, örtüşmeli pencere korelasyonu ile)
     const enbw = fs * s2 / (s1 * s1); let K = nseg, ro = 0;
@@ -2353,7 +2373,248 @@ const DSP = (() => {
     return {f, h1, h2, phase: ph, coh, nseg, nfft, df: fs / nfft};
   }
 
-  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC};
+
+  // ---- Faz 4: genel IIR tasarımı (analog prototip → frekans dönüşümü → bilineer, scipy.signal ile aynı zpk) ----
+  const C = {add: (a, b) => [a[0] + b[0], a[1] + b[1]], sub: (a, b) => [a[0] - b[0], a[1] - b[1]], mul: (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]],
+    div: (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; },
+    sqrt: a => { const r = Math.hypot(a[0], a[1]), m = Math.sqrt((r + Math.abs(a[0])) / 2); if (m === 0) return [0, 0]; return a[0] >= 0 ? [m, a[1] / (2 * m)] : [Math.abs(a[1]) / (2 * m), a[1] >= 0 ? m : -m]; },
+    sc: (a, k) => [a[0] * k, a[1] * k]};
+  const cprod = (arr, f) => arr.reduce((acc, v) => C.mul(acc, f(v)), [1, 0]);
+  // polinom kökleri (Aberth–Ehrlich); katsayılar yüksekten düşüğe, gerçel
+  function polyRoots(c) {
+    const n = c.length - 1, a = c.map(v => v / c[0]); let z = [];
+    const R = 1 + Math.max(...a.slice(1).map(Math.abs));
+    for (let k = 0; k < n; k++) { const t = 2 * Math.PI * k / n + 0.4; z.push([R * 0.7 * Math.cos(t), R * 0.7 * Math.sin(t)]); }
+    const ev = (x) => { let p = [1, 0], d = [0, 0]; for (let i = 1; i <= n; i++) { d = C.add(C.mul(d, x), p); p = C.add(C.mul(p, x), [a[i], 0]); } return [p, d]; };
+    for (let it = 0; it < 500; it++) {
+      let mx = 0;
+      for (let i = 0; i < n; i++) {
+        const [p, d] = ev(z[i]); const r = C.div(p, d); let s = [0, 0];
+        for (let j = 0; j < n; j++) if (j !== i) s = C.add(s, C.div([1, 0], C.sub(z[i], z[j])));
+        const w = C.div(r, C.sub([1, 0], C.mul(r, s))); z[i] = C.sub(z[i], w); mx = Math.max(mx, Math.hypot(w[0], w[1]) / (1 + Math.hypot(z[i][0], z[i][1])));
+      }
+      if (mx < 1e-15) break;
+    }
+    return z;
+  }
+  // analog alçak geçiren prototipler (ωc = 1 rad/s): {z, p, k}
+  function protoButter(N) { const p = []; for (let k = 0; k < N; k++) { const t = Math.PI * (2 * k + N + 1) / (2 * N); p.push([Math.cos(t), Math.sin(t)]); } return {z: [], p, k: 1}; }
+  function protoCheby1(N, rp) {
+    const eps = Math.sqrt(Math.pow(10, rp / 10) - 1), mu = Math.asinh(1 / eps) / N, p = [];
+    for (let k = 1; k <= N; k++) { const t = Math.PI * (2 * k - 1) / (2 * N); p.push([-Math.sinh(mu) * Math.sin(t), Math.cosh(mu) * Math.cos(t)]); }
+    let k = cprod(p, v => C.sc(v, -1))[0]; if (N % 2 === 0) k /= Math.sqrt(1 + eps * eps); return {z: [], p, k};
+  }
+  // Bessel, scipy norm='phase' (yüksek frekansta faz eğrisi ile Butterworth uyumlu)
+  function protoBessel(N) {
+    const fac = n => { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; }, c = [];
+    for (let k = N; k >= 0; k--) c.push(fac(2 * N - k) / (Math.pow(2, N - k) * fac(k) * fac(N - k)));   // ters Bessel polinomu, yüksek→düşük derece
+    const a0 = c[c.length - 1], sc = Math.pow(a0, -1 / N), p = polyRoots(c).map(v => C.sc(v, sc));
+    return {z: [], p, k: 1};
+  }
+  function lp2(zpk, type, w1, w2) {
+    const {z, p, k} = zpk, deg = p.length - z.length;
+    if (type === 'lp') return {z: z.map(v => C.sc(v, w1)), p: p.map(v => C.sc(v, w1)), k: k * Math.pow(w1, deg)};
+    if (type === 'hp') { const z2 = z.map(v => C.div([w1, 0], v)).concat(Array(deg).fill([0, 0])), p2 = p.map(v => C.div([w1, 0], v)); return {z: z2, p: p2, k: k * C.div(cprod(z, v => C.sc(v, -1)), cprod(p, v => C.sc(v, -1)))[0]}; }
+    const wo = Math.sqrt(w1 * w2), bw = w2 - w1;
+    if (type === 'bp') {
+      const tr = arr => { const o = []; for (const v of arr) { const h = C.sc(v, bw / 2), r = C.sqrt(C.sub(C.mul(h, h), [wo * wo, 0])); o.push(C.add(h, r), C.sub(h, r)); } return o; };
+      return {z: tr(z).concat(Array(deg).fill([0, 0])), p: tr(p), k: k * Math.pow(bw, deg)};
+    }
+    if (type === 'bs') {
+      const tr = arr => { const o = []; for (const v of arr) { const h = C.div([bw / 2, 0], v), r = C.sqrt(C.sub(C.mul(h, h), [wo * wo, 0])); o.push(C.add(h, r), C.sub(h, r)); } return o; };
+      const zz = tr(z); for (let i = 0; i < deg; i++) zz.push([0, wo], [0, -wo]);
+      return {z: zz, p: tr(p), k: k * C.div(cprod(z, v => C.sc(v, -1)), cprod(p, v => C.sc(v, -1)))[0]};
+    }
+    throw new Error('tür');
+  }
+  function bilinearZpk({z, p, k}, fs) {
+    const f2 = 2 * fs, bz = v => C.div(C.add([f2, 0], v), C.sub([f2, 0], v));
+    const zd = z.map(bz).concat(Array(p.length - z.length).fill([-1, 0])), pd = p.map(bz);
+    const kd = k * C.div(cprod(z, v => C.sub([f2, 0], v)), cprod(p, v => C.sub([f2, 0], v)))[0];
+    return {z: zd, p: pd, k: kd};
+  }
+  // zpk → ikinci derece bölümler: eşlenik kutuplar birim çembere yakınlığa göre, sıfırlar en yakın olanlarla eşlenir
+  function zpk2sos({z, p, k}) {
+    const pairs = arr => { const re = [], cx = []; for (const v of arr) { if (Math.abs(v[1]) < 1e-10 * (1 + Math.abs(v[0]))) re.push(v[0]); else if (v[1] > 0) cx.push(v); } re.sort((a, b) => Math.abs(a) - Math.abs(b)); return {re, cx}; };
+    const P = pairs(p), Z = pairs(z), secs = [];
+    const pq = P.cx.map(v => ({c: v, d: 1 - Math.hypot(v[0], v[1])})).sort((a, b) => b.d - a.d);   // içten dışa: en son en keskin
+    let zc = Z.cx.slice(), zr = Z.re.slice(), pr = P.re.slice();
+    const takeZ = (near) => {   // iki sıfır: önce eşlenik çift, yoksa iki gerçel
+      if (zc.length) { let bi = 0, bd = Infinity; zc.forEach((v, i) => { const d = Math.hypot(v[0] - near[0], v[1] - near[1]); if (d < bd) { bd = d; bi = i; } }); const v = zc.splice(bi, 1)[0]; return [-2 * v[0], v[0] * v[0] + v[1] * v[1]]; }
+      const a = zr.length ? zr.shift() : null, b = zr.length ? zr.shift() : null;
+      if (a === null) return [0, 0]; if (b === null) return [-a, 0]; return [-(a + b), a * b];
+    };
+    for (const {c} of pq) { const [b1, b2] = takeZ(c); secs.push([1, b1, b2, -2 * c[0], c[0] * c[0] + c[1] * c[1]]); }
+    while (pr.length) {
+      const a = pr.shift(), b = pr.length ? pr.shift() : null; const [b1, b2] = takeZ([a, 0]);
+      const a1 = b === null ? -a : -(a + b), a2 = b === null ? 0 : a * b;
+      if (b === null && zr.length === 0 && zc.length === 0 && b2 !== 0) secs.push([1, b1, b2, a1, a2]); else secs.push([1, b1, b2, a1, a2]);
+    }
+    while (zc.length || zr.length) { const [b1, b2] = takeZ([0, 0]); secs.push([1, b1, b2, 0, 0]); }
+    if (!secs.length) secs.push([1, 0, 0, 0, 0]);
+    // biçim: [b0,b1,b2,a1,a2] (a0=1) — kazanç ilk bölüme
+    secs[0][0] *= k; secs[0][1] *= k; secs[0][2] *= k;
+    return secs;
+  }
+  // design2: {family:'butter'|'cheby1'|'bessel', type, order, f1, f2, rp} → sos ([b0,b1,b2,a1,a2] dizisi)
+  function iirDesign(o, fs) {
+    const N = Math.max(1, Math.min(20, o.order | 0)), proto = o.family === 'cheby1' ? protoCheby1(N, o.rp || 1) : o.family === 'bessel' ? protoBessel(N) : protoButter(N);
+    const nyq = fs / 2, wa = f => { if (!(f > 0 && f < nyq)) throw new Error('Kesim frekansı 0 ile Nyquist (' + nyq + ' Hz) arasında olmalı'); return 2 * fs * Math.tan(Math.PI * f / fs); };
+    const t = o.type, w1 = wa(o.f1), w2 = (t === 'bp' || t === 'bs') ? wa(o.f2) : 0;
+    if ((t === 'bp' || t === 'bs') && !(o.f2 > o.f1)) throw new Error('f2 > f1 olmalı');
+    const s = sosFix(zpk2sos(bilinearZpk(lp2(proto, t, w1, w2), fs)));
+    return s;
+  }
+  // bölümlerdeki b dizilerini a0 = 1 ile; (zaten) — sayısal küçük sanal kalıntılar yok
+  function sosFix(s) { return s.map(r => r.map(v => Math.abs(v) < 1e-300 ? 0 : v)); }
+  // ---- FIR: pencereli sinc (scipy.signal.firwin, scale=True) ----
+  function i0(x) { let s = 1, t = 1; for (let k = 1; k < 60; k++) { t *= (x / (2 * k)) * (x / (2 * k)); s += t; if (t < 1e-17 * s) break; } return s; }
+  function symWindow(type, n, beta) {
+    const w = new Float64Array(n), M = n - 1;
+    for (let i = 0; i < n; i++) {
+      const x = M ? i / M : 0.5;
+      switch (type) {
+        case 'hann': w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * x); break;
+        case 'hamming': w[i] = 0.54 - 0.46 * Math.cos(2 * Math.PI * x); break;
+        case 'blackman': w[i] = 0.42 - 0.5 * Math.cos(2 * Math.PI * x) + 0.08 * Math.cos(4 * Math.PI * x); break;
+        case 'kaiser': { const r = M ? 2 * i / M - 1 : 0; w[i] = i0((beta || 8.6) * Math.sqrt(Math.max(0, 1 - r * r))) / i0(beta || 8.6); break; }
+        default: w[i] = 1;
+      }
+    }
+    return w;
+  }
+  function firwin(numtaps, type, f1, f2, fs, win, beta) {
+    const nyq = fs / 2; let edges, passZero;
+    if (type === 'lp') { edges = [f1]; passZero = true; } else if (type === 'hp') { edges = [f1]; passZero = false; }
+    else if (type === 'bp') { edges = [f1, f2]; passZero = false; } else if (type === 'bs') { edges = [f1, f2]; passZero = true; } else throw new Error('FIR türü: lp/hp/bp/bs');
+    for (const e of edges) if (!(e > 0 && e < nyq)) throw new Error('Kesim frekansı 0 ile Nyquist arasında olmalı');
+    if (edges.length === 2 && !(f2 > f1)) throw new Error('f2 > f1 olmalı');
+    if (!passZero && type !== 'bp' && numtaps % 2 === 0) numtaps++;   // yüksek geçiren / band söndüren: tek sayıda katsayı gerekli
+    if (type === 'bs' && numtaps % 2 === 0) numtaps++;
+    const cut = edges.map(e => e / nyq), bands = [];
+    let list = (passZero ? [0] : []).concat(cut); if (list.length % 2) list.push(1);
+    for (let i = 0; i < list.length; i += 2) bands.push([list[i], list[i + 1]]);
+    const al = (numtaps - 1) / 2, h = new Float64Array(numtaps), sinc = x => x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+    for (let i = 0; i < numtaps; i++) { const m = i - al; let v = 0; for (const [l, r] of bands) v += r * sinc(r * m) - l * sinc(l * m); h[i] = v; }
+    const w = symWindow(win || 'hamming', numtaps, beta); for (let i = 0; i < numtaps; i++) h[i] *= w[i];
+    // ölçekleme: ilk geçirme bandının merkezinde (ya da DC'de) kazanç 1
+    const [l, r] = bands[0], fsc = l === 0 ? 0 : r === 1 ? 1 : (l + r) / 2; let sr = 0, si = 0;
+    for (let i = 0; i < numtaps; i++) { const m = i - al; sr += h[i] * Math.cos(Math.PI * m * fsc); }
+    for (let i = 0; i < numtaps; i++) h[i] /= sr; void si;
+    return h;
+  }
+  // FIR uygulama: FFT ile doğrusal evrişim; zero=true → (N-1)/2 gecikme düzeltilir (doğrusal faz → sıfır faz)
+  function firApply(b, x, zero) {
+    const n = x.length, m = b.length; if (!n) return new Float64Array(0);
+    const L = n + m - 1, N = nextPow2(Math.min(L, Math.max(4 * m, 1 << 14)) + m), blk = N - m + 1, out = new Float64Array(L);
+    const hr = new Float64Array(N), hi = new Float64Array(N); hr.set(b); fft(hr, hi, false);
+    const xr = new Float64Array(N), xi = new Float64Array(N);
+    for (let s0 = 0; s0 < n; s0 += blk) {
+      xr.fill(0); xi.fill(0); const e = Math.min(n, s0 + blk); for (let i = s0; i < e; i++) xr[i - s0] = x[i];
+      fft(xr, xi, false);
+      for (let k = 0; k < N; k++) { const a = xr[k] * hr[k] - xi[k] * hi[k], c = xr[k] * hi[k] + xi[k] * hr[k]; xr[k] = a; xi[k] = c; }
+      fft(xr, xi, true); const lim = Math.min(N, L - s0); for (let i = 0; i < lim; i++) out[s0 + i] += xr[i] / N;
+    }
+    if (!zero) return out.slice(0, n);
+    const d = Math.floor((m - 1) / 2); return out.slice(d, d + n);
+  }
+  // tek tip süzgeç nesnesi: {kind:'sos', sos} | {kind:'fir', b}
+  function filterDesign(o, fs) {
+    if (o.family === 'fir') return {kind: 'fir', b: firwin(Math.max(3, o.taps | 0), o.type, o.f1, o.f2, fs, o.win, o.beta)};
+    if (o.family === 'butter' && o.type === 'notch') return {kind: 'sos', sos: design('notch', o, fs)};
+    return {kind: 'sos', sos: iirDesign(o, fs)};
+  }
+  function filterApply(F, x, zero) {
+    if (F.kind === 'fir') return firApply(F.b, x, zero !== false);
+    if (zero !== false) return filtfilt(F.sos, x);
+    const y = new Float64Array(x.length); sosRun(F.sos, x, y, false); return y;
+  }
+  // frekans yanıtı: f (Hz), genlik (dB), faz (derece, açılmış), grup gecikmesi yok; zero → |H|² ve 0 faz (ileri-geri)
+  function freqResp(F, fs, n, zero) {
+    n = n || 512; const f = new Float64Array(n), mag = new Float64Array(n), ph = new Float64Array(n);
+    let prev = 0, off = 0;
+    for (let i = 0; i < n; i++) {
+      const fr = (i / (n - 1)) * fs / 2; f[i] = fr; const w = 2 * Math.PI * fr / fs; let H = [1, 0];
+      if (F.kind === 'fir') { let r = 0, im = 0; for (let k = 0; k < F.b.length; k++) { r += F.b[k] * Math.cos(w * k); im -= F.b[k] * Math.sin(w * k); } H = [r, im]; }
+      else for (const [b0, b1, b2, a1, a2] of F.sos) { const c1 = Math.cos(w), s1 = -Math.sin(w), c2 = Math.cos(2 * w), s2 = -Math.sin(2 * w); H = C.mul(H, C.div([b0 + b1 * c1 + b2 * c2, b1 * s1 + b2 * s2], [1 + a1 * c1 + a2 * c2, a1 * s1 + a2 * s2])); }
+      let a = Math.hypot(H[0], H[1]), p = Math.atan2(H[1], H[0]);
+      if (zero) { a = a * a; p = 0; if (F.kind === 'fir') a = Math.sqrt(a); }
+      else if (F.kind === 'fir' && zero !== false) { /* doğrusal faz */ }
+      if (i) { let d = p + off - prev; while (d > Math.PI) { off -= 2 * Math.PI; d -= 2 * Math.PI; } while (d < -Math.PI) { off += 2 * Math.PI; d += 2 * Math.PI; } }
+      mag[i] = 20 * Math.log10(a + 1e-300); ph[i] = (p + off) * 180 / Math.PI; prev = p + off;
+    }
+    return {f, mag, ph};
+  }
+  // ---- Rainflow çevrim sayımı (ASTM E1049-85, 3 nokta yöntemi; yarım çevrimler 0.5) ----
+  function turningPoints(x, del) {
+    const tp = [], ix = []; let last = NaN, dir = 0;
+    for (let i = 0; i < x.length; i++) {
+      const v = x[i]; if ((del && del[i]) || !isFinite(v)) continue;
+      if (isNaN(last)) { tp.push(v); ix.push(i); last = v; continue; }
+      if (v === last) continue; const d = v > last ? 1 : -1;
+      if (dir === 0 || d === dir) { if (dir !== 0) { tp[tp.length - 1] = v; ix[ix.length - 1] = i; } else { tp.push(v); ix.push(i); } }
+      else { tp.push(v); ix.push(i); }
+      dir = d; last = v;
+    }
+    return {tp, ix};
+  }
+  function rainflow(x, del) {
+    const {tp} = turningPoints(x, del), st = [], cyc = [];   // [aralık, ortalama, sayım]
+    for (const v of tp) {
+      st.push(v);
+      while (st.length >= 3) {
+        const n = st.length, X = Math.abs(st[n - 1] - st[n - 2]), Y = Math.abs(st[n - 2] - st[n - 3]);
+        if (X < Y) break;
+        if (n === 3) { cyc.push([Y, (st[0] + st[1]) / 2, 0.5]); st.shift(); }
+        else { cyc.push([Y, (st[n - 2] + st[n - 3]) / 2, 1]); st.splice(n - 3, 2); }
+      }
+    }
+    for (let i = 0; i + 1 < st.length; i++) cyc.push([Math.abs(st[i + 1] - st[i]), (st[i + 1] + st[i]) / 2, 0.5]);
+    const n = cyc.length, range = new Float64Array(n), mean = new Float64Array(n), count = new Float64Array(n);
+    cyc.forEach((c, i) => { range[i] = c[0]; mean[i] = c[1]; count[i] = c[2]; });
+    return {range, mean, count, nTurning: tp.length};
+  }
+  // aralık histogramı + Basquin/Miner eşdeğer hasar: D_rel = Σ n·S^m, S_eq(N_eq) = (Σ n·S^m / N_eq)^(1/m)
+  function rainflowSummary(rf, opt) {
+    opt = opt || {}; const m = opt.m || 5, nb = opt.bins || 32, Neq = opt.neq || 1e6; let mx = 0, tot = 0, dm = 0;
+    for (let i = 0; i < rf.range.length; i++) { mx = Math.max(mx, rf.range[i]); tot += rf.count[i]; dm += rf.count[i] * Math.pow(rf.range[i], m); }
+    const edges = new Float64Array(nb + 1), hist = new Float64Array(nb), dmg = new Float64Array(nb);
+    for (let i = 0; i <= nb; i++) edges[i] = mx * i / nb;
+    for (let i = 0; i < rf.range.length; i++) { const k = mx > 0 ? Math.min(nb - 1, Math.floor(rf.range[i] / mx * nb)) : 0; hist[k] += rf.count[i]; dmg[k] += rf.count[i] * Math.pow(rf.range[i], m); }
+    let D = null; if (opt.sref > 0 && opt.nref > 0) D = dm / (opt.nref * Math.pow(opt.sref, m));
+    return {edges, hist, dmg, cycles: tot, maxRange: mx, m, pseudo: dm, seq: Math.pow(dm / Neq, 1 / m), neq: Neq, seqAvg: tot ? Math.pow(dm / tot, 1 / m) : 0, damage: D};
+  }
+  // ---- kayan basıklık (kurtosis, Pearson: Gauss = 3) ve tepe faktörü (|x−ort|maks / std) ----
+  function slidingStats(x, fs, win, hop) {
+    const W = Math.max(4, Math.round(win * fs)), H = Math.max(1, Math.round((hop || win / 2) * fs)), n = x.length;
+    const nf = Math.max(0, Math.floor((n - W) / H) + 1), kurt = new Float64Array(nf), crest = new Float64Array(nf), rms = new Float64Array(nf);
+    for (let j = 0; j < nf; j++) {
+      const a = j * H; let s = 0; for (let i = a; i < a + W; i++) s += x[i]; const mu = s / W;
+      let m2 = 0, m4 = 0, pk = 0; for (let i = a; i < a + W; i++) { const d = x[i] - mu, d2 = d * d; m2 += d2; m4 += d2 * d2; const ad = Math.abs(d); if (ad > pk) pk = ad; }
+      m2 /= W; m4 /= W; kurt[j] = m2 > 0 ? m4 / (m2 * m2) : NaN; rms[j] = Math.sqrt(m2); crest[j] = m2 > 0 ? pk / Math.sqrt(m2) : NaN;
+    }
+    return {kurt, crest, rms, W, H, dt: H / fs, t0: (W - 1) / 2 / fs};
+  }
+  // ---- keyfi uzunlukta DFT (Bluestein) — tam Δf çözünürlüğü için (ör. fs=1000, Δf=1 → N=1000) ----
+  const blueCache = {};
+  function fftAny(re, im, inverse) {
+    const n = re.length; if ((n & (n - 1)) === 0) return fft(re, im, inverse);
+    const M = nextPow2(2 * n - 1), key = n + (inverse ? 'i' : 'f'); let B = blueCache[key];
+    if (!B) {
+      const wr = new Float64Array(n), wi = new Float64Array(n), sg = inverse ? 1 : -1;
+      for (let k = 0; k < n; k++) { const a = Math.PI * ((k * k) % (2 * n)) / n; wr[k] = Math.cos(a); wi[k] = sg * Math.sin(a); }
+      const br = new Float64Array(M), bi = new Float64Array(M); br[0] = wr[0]; bi[0] = -wi[0];
+      for (let k = 1; k < n; k++) { br[k] = br[M - k] = wr[k]; bi[k] = bi[M - k] = -wi[k]; }
+      fft(br, bi, false); B = blueCache[key] = {wr, wi, br, bi}; if (Object.keys(blueCache).length > 16) for (const k in blueCache) { if (k !== key) { delete blueCache[k]; break; } }
+    }
+    const ar = new Float64Array(M), ai = new Float64Array(M);
+    for (let k = 0; k < n; k++) { ar[k] = re[k] * B.wr[k] - im[k] * B.wi[k]; ai[k] = re[k] * B.wi[k] + im[k] * B.wr[k]; }
+    fft(ar, ai, false);
+    for (let k = 0; k < M; k++) { const r = ar[k] * B.br[k] - ai[k] * B.bi[k], i = ar[k] * B.bi[k] + ai[k] * B.br[k]; ar[k] = r; ai[k] = i; }
+    fft(ar, ai, true);
+    for (let k = 0; k < n; k++) { const r = ar[k] / M, i = ai[k] / M; re[k] = r * B.wr[k] - i * B.wi[k]; im[k] = r * B.wi[k] + i * B.wr[k]; }
+  }
+  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC, iirDesign, firwin, firApply, filterDesign, filterApply, freqResp, rainflow, rainflowSummary, turningPoints, slidingStats, fftAny, polyRoots};
 })();
 
 return DSP;
@@ -3609,10 +3870,44 @@ function renderChips() {
   for (const k of Object.keys(KIND)) if (kinds.has(k)) box.append(h('span', {class: 'chip' + (S.kinds.has(k) ? ' on' : ''), title: KIND[k].name + ' kanallarını süz', role: 'button', 'aria-label': KIND[k].name, tabindex: 0, onkeydown: e => { if (e.key === 'Enter') e.target.click(); }, onclick: () => { S.kinds.has(k) ? S.kinds.delete(k) : S.kinds.add(k); renderChips(); renderTree(); }}, kic(k, 15)));
 }
 const allFiles = () => S.derived && S.derived.channels.length ? [...S.files, S.derived] : S.files;
-function chMatches(c) { if (S.kinds.size && !S.kinds.has(c.kind)) return false; if (S.q && !c.name.toLowerCase().includes(S.q)) return false; return true; }
+// Arama sözdizimi: düz metin (alt dize, büyük/küçük harf duyarsız) · /düzenli ifade/i · [g] [°C] (birim) · fs>1000, fs<=500, fs=2000 · ★ (yalnız sık kullanılanlar)
+function parseQuery(raw) {
+  const q = {text: '', re: null, units: [], fs: [], fav: false, err: ''}; let s = String(raw || '').trim();
+  s = s.replace(/\/((?:\\.|[^/])+)\/([gimsuy]*)/, (_, src, fl) => { try { q.re = new RegExp(src, fl.replace(/g/g, '') || 'i'); } catch (e) { q.err = 'Geçersiz düzenli ifade'; } return ' '; });
+  s = s.replace(/\[([^\]]*)\]/g, (_, u) => { q.units.push(u.trim().toLowerCase()); return ' '; });
+  s = s.replace(/\bfs\s*(<=|>=|=|:|<|>)\s*([\d.]+(?:e[-+]?\d+)?)\s*(k?)(?:hz)?/gi, (_, op, v, k) => { q.fs.push([op === ':' ? '=' : op, +v * (k ? 1000 : 1)]); return ' '; });
+  s = s.replace(/★|\bfav:?(?=\s|$)/gi, () => { q.fav = true; return ' '; });
+  q.text = s.replace(/\s+/g, ' ').trim().toLowerCase(); return q;
+}
+function favKey(c) { return (c.file && c.file.name || '') + '|' + c.name; }
+function isFav(c) { return S.fav && S.fav.has(favKey(c)); }
+function toggleFav(c, on) {
+  if (!S.fav) S.fav = new Set(); const k = favKey(c); (on == null ? !S.fav.has(k) : on) ? S.fav.add(k) : S.fav.delete(k);
+  try { localStorage.setItem('mv.fav', JSON.stringify([...S.fav].slice(-5000))); } catch (_) {}
+  renderTree();
+}
+function getQF() {
+  if (S._qfFor !== S.q) { const el = typeof document !== 'undefined' && document.getElementById('q'), raw = el && el.value.trim().toLowerCase() === S.q ? el.value : S.q; S.qf = S.q ? parseQuery(raw) : null; S._qfFor = S.q; }
+  return S.qf;
+}
+function chMatches(c) {
+  if (S.kinds.size && !S.kinds.has(c.kind)) return false;
+  if (S.favOnly && !isFav(c)) return false;
+  const q = getQF(); if (!q) return true;
+  if (q.fav && !isFav(c)) return false;
+  if (q.text && !c.name.toLowerCase().includes(q.text)) return false;
+  if (q.re && !q.re.test(c.name)) return false;
+  if (q.units.length) { const u = (c.unit || (KIND[c.kind] && KIND[c.kind].ylabel) || '').toLowerCase().replace(/[\[\]()]/g, '').trim(); if (!q.units.some(x => x === u)) return false; }
+  if (q.fs.length) { const f = c.fs; if (!isFinite(f)) return false; for (const [op, v] of q.fs) { const tol = Math.max(1e-9, Math.abs(v) * 1e-6); if (op === '=' ? Math.abs(f - v) > tol : op === '<' ? !(f < v) : op === '>' ? !(f > v) : op === '<=' ? !(f <= v + tol) : !(f >= v - tol)) return false; } }
+  return true;
+}
+// Kanal ağacı: satırlar önce tanımlayıcı listesi olarak kurulur; bir dosyada çok satır varsa yalnız görünen pencere DOM'a
+// eklenir (sanal kaydırma — 10 000+ kanal akıcı). Satır yüksekliği sabittir (TREE_RH).
+const TREE_RH = 22, TREE_VIRT = 250;
 function renderTree() {
-  const box = $('#tree'); const scs = {}; box.querySelectorAll('.tbody').forEach(x => scs[x.dataset.f] = x.scrollTop); box.replaceChildren(); S.rowOrder = [];
-  const filtering = S.q || S.kinds.size;
+  const box = $('#tree'); const scs = {}; box.querySelectorAll('.tbody').forEach(x => scs[x.dataset.f] = x.scrollTop); box.replaceChildren(); S.rowOrder = []; S.treeIdx = new Map();
+  const filtering = S.q || S.kinds.size || S.favOnly;
+  const virt = [];
   for (const f of allFiles()) {
     const chs = f.channels.filter(chMatches);
     if (!S.seenF.has(f.id)) { S.seenF.add(f.id); S.fopen.add(f.id); }
@@ -3622,46 +3917,81 @@ function renderTree() {
       h('span', {class: 'twisty'}, fop ? '▼' : '▶'), h('span', {class: 'nm'}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
       f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => matDlg(f, {t: 'all'})}, '.mat') : null,
       f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
-    const devs = new Map();
+    if (!fop) { box.append(grp); continue; }
+    const items = [], devs = new Map();
     for (const c of chs) { if (!devs.has(c.dev)) devs.set(c.dev, new Map()); const bm = devs.get(c.dev); if (!bm.has(c.base)) bm.set(c.base, []); bm.get(c.base).push(c); }
     for (const [dev, bm] of devs) {
       const dk = f.id + '/' + dev, open = filtering || S.open.has(dk);
-      const total = [...bm.values()].reduce((a, b) => a + b.length, 0);
-      body.append(h('div', {class: 'tdev', oncontextmenu: e => { e.preventDefault(); devMenu(f, dev, e.clientX, e.clientY); }, onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')));
+      let total = 0; for (const l of bm.values()) total += l.length;
+      items.push({k: 'dev', dev, dk, open, total, f});
       if (!open) continue;
       for (const [base, list] of bm) {
         if (list.length > 1 && list.every(c => c.base === base)) {
           const bk = dk + '/' + base, bo = filtering || S.open.has(bk);
-          body.append(h('div', {class: 'trow', ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
-            h('span', {class: 'twisty'}, bo ? '▼' : '▶'), kic(list[0].kind), h('span', {class: 'nm'}, hl(base)), h('span', {class: 'meta'}, list.length + ' kanal'),
-            h('button', {class: 'add', 'data-ic': 'stack', title: 'Her kanalı ayrı alt grafiğe ekle', onclick: e => { e.stopPropagation(); addToNewAxes(list, false); }}), h('button', {class: 'add', 'data-ic': 'layers', title: 'Hepsini tek (yeni) grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addGroup(list); }}), h('button', {class: 'add', 'data-ic': 'swap', title: 'Mevcut grafiği kaldırıp bu kanalları tek grafikte çiz', onclick: e => { e.stopPropagation(); replacePlot(list, true); }})));
-          if (bo) for (const c of list) body.append(chRow(c, c.comp || c.rest, true));
-        } else { if ((f.binary || f.unv) && !S.q && (bm._n = (bm._n || 0) + 1) > 150) { if (bm._n === 151) body.append(h('div', {class: 'note', style: 'padding:2px 14px'}, '… ' + (bm.size - 150) + ' kanal daha (Ara kutusuyla bulun)')); continue; } for (const c of list) body.append(chRow(c, c.rest, false)); }
+          items.push({k: 'grp', base, bk, bo, list});
+          if (bo) for (const c of list) items.push({k: 'ch', c, label: c.comp || c.rest, sub: true});
+        } else for (const c of list) items.push({k: 'ch', c, label: c.rest, sub: false});
       }
     }
-    if (fop) grp.append(body); box.append(grp);
+    items.forEach((it, i) => { if (it.k === 'ch') { S.rowOrder.push(it.c); S.treeIdx.set(it.c.uid, {body, i}); } });
+    body._items = items;
+    if (items.length <= TREE_VIRT) { for (const it of items) body.append(treeItemEl(it)); }
+    else { body.classList.add('virt'); body._top = h('div', {class: 'vsp'}); body._bot = h('div', {class: 'vsp'}); body.append(body._top, body._bot); body.addEventListener('scroll', () => { if (!body._raf) body._raf = requestAnimationFrame(() => { body._raf = 0; treeSlice(body); }); }, {passive: true}); virt.push(body); }
+    grp.append(body); box.append(grp);
   }
   if (!S.files.length) box.append(h('div', {class: 'note', style: 'padding:14px'}, 'Henüz dosya yok. "Dosya aç…" düğmesini kullanın veya .mat dosyalarını pencereye sürükleyin.'));
+  if (S.qf && S.qf.err) box.prepend(h('div', {class: 'note', style: 'padding:4px 10px;color:var(--danger)'}, S.qf.err));
   if (typeof syncFeatUI === 'function' && S.xyPlot) syncFeatUI(); if (typeof syncWelcome === 'function') syncWelcome();
-  for (const x of box.querySelectorAll('.tbody')) if (scs[x.dataset.f]) x.scrollTop = scs[x.dataset.f]; updateSelInfo();
+  for (const x of box.querySelectorAll('.tbody')) { if (x._top) treeSlice(x, scs[x.dataset.f] || 0); if (scs[x.dataset.f]) x.scrollTop = scs[x.dataset.f]; if (x._top) treeSlice(x); }
+  updateSelInfo();
   uiChanged();
 }
-const hl = label => { const q = S.q, i = q ? String(label).toLowerCase().indexOf(q) : -1; return i < 0 ? [label] : [label.slice(0, i), h('mark', null, label.slice(i, i + q.length)), label.slice(i + q.length)]; };
+// sanal gövdede görünen pencereyi (± tampon) çiz
+function treeSlice(body, st) {
+  const items = body._items, n = items.length, H = body.clientHeight || 600, top = st != null ? st : body.scrollTop;
+  const a = Math.max(0, Math.floor(top / TREE_RH) - 20), b = Math.min(n, Math.ceil((top + H) / TREE_RH) + 20);
+  if (body._a === a && body._b === b) return; body._a = a; body._b = b;
+  const foc = document.activeElement && body.contains(document.activeElement) ? document.activeElement._uid : null;
+  while (body._top.nextSibling && body._top.nextSibling !== body._bot) body._top.nextSibling.remove();
+  const frag = document.createDocumentFragment(); for (let i = a; i < b; i++) frag.append(treeItemEl(items[i]));
+  body._top.style.height = a * TREE_RH + 'px'; body._bot.style.height = (n - b) * TREE_RH + 'px';
+  body.insertBefore(frag, body._bot); if (typeof decorate === 'function') decorate(body);
+  if (foc != null) { const r = [...body.querySelectorAll('.trow')].find(x => x._uid === foc); if (r) r.focus({preventScroll: true}); }
+}
+// kanal satırına git (sanal gövdede gerekirse kaydırıp çizer) ve odakla
+function treeFocusUid(uid) {
+  const e = S.treeIdx && S.treeIdx.get(uid); if (!e) return null; const {body, i} = e;
+  if (body._top) { const y = i * TREE_RH; if (y < body.scrollTop || y + TREE_RH > body.scrollTop + body.clientHeight) body.scrollTop = Math.max(0, y - body.clientHeight / 2); treeSlice(body); }
+  const r = [...body.querySelectorAll('.trow')].find(x => x._uid === uid); if (r) r.focus(); return r;
+}
+function treeItemEl(it) {
+  if (it.k === 'ch') return chRow(it.c, it.label, it.sub);
+  if (it.k === 'dev') { const {dev, dk, open, total, f} = it; return h('div', {class: 'tdev', oncontextmenu: e => { e.preventDefault(); devMenu(f, dev, e.clientX, e.clientY); }, onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')); }
+  const {base, bk, bo, list} = it;
+  return h('div', {class: 'trow', ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
+    h('span', {class: 'twisty'}, bo ? '▼' : '▶'), kic(list[0].kind), h('span', {class: 'nm'}, hl(base)), h('span', {class: 'meta'}, list.length + ' kanal'),
+    h('button', {class: 'add', 'data-ic': 'stack', title: 'Her kanalı ayrı alt grafiğe ekle', onclick: e => { e.stopPropagation(); addToNewAxes(list, false); }}), h('button', {class: 'add', 'data-ic': 'layers', title: 'Hepsini tek (yeni) grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addGroup(list); }}), h('button', {class: 'add', 'data-ic': 'swap', title: 'Mevcut grafiği kaldırıp bu kanalları tek grafikte çiz', onclick: e => { e.stopPropagation(); replacePlot(list, true); }}));
+}
+const hl = label => {
+  label = String(label); const q = getQF(); if (!q) return [label];
+  if (q.re) { const m = q.re.exec(label); if (m && m[0]) return [label.slice(0, m.index), h('mark', null, m[0]), label.slice(m.index + m[0].length)]; }
+  const t = q.text, i = t ? label.toLowerCase().indexOf(t) : -1; return i < 0 ? [label] : [label.slice(0, i), h('mark', null, label.slice(i, i + t.length)), label.slice(i + t.length)];
+};
 function dblAct(e, list) {
   if (list.length && list.every(c => c.file && c.file.feature)) return featAdd(list); const same = (S.pref.dbl === 'same') !== !!e.shiftKey; return same ? addToAxes(activeAxes(), list) : addToNewAxes(list, false); }
 function chMM(c) { if (!c.data) return ''; if (!c._mm) { let lo = Infinity, hi = -Infinity; const d = c.data; for (let i = 0; i < d.length; i++) { const v = d[i]; if (v < lo) lo = v; if (v > hi) hi = v; } c._mm = [lo, hi]; } return '\nmin ' + fmtNum(c._mm[0], 5) + ' · max ' + fmtNum(c._mm[1], 5); }
 function chRow(c, label, sub) {
-  S.rowOrder.push(c);
   const row = h('div', {class: 'trow' + (sub ? ' sub' : '') + (S.selCh.has(c.uid) ? ' sel' : ''), draggable: 'true', tabindex: 0,
     onclick: e => {
       if (e.target.closest('button')) return;
       if (e.shiftKey && S.lastSel) { const o = S.rowOrder.map(x => x.uid), a = o.indexOf(S.lastSel), b = o.indexOf(c.uid); if (a >= 0 && b >= 0) { for (let i = Math.min(a, b); i <= Math.max(a, b); i++) S.selCh.add(o[i]); } else S.selCh.add(c.uid); }
       else if (e.ctrlKey || e.metaKey) { S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); S.lastSel = c.uid; } else { S.selCh = new Set([c.uid]); S.lastSel = c.uid; }
-      renderTree(); const r = [...document.querySelectorAll('#tree .trow')].find(x => x._uid === c.uid); if (r && e.detail === 0) r.focus();
+      renderTree(); treeFocusUid(c.uid);
     },
     oncontextmenu: e => { e.preventDefault(); if (!S.selCh.has(c.uid)) { S.selCh = new Set([c.uid]); S.lastSel = c.uid; renderTree(); } chMenu(c, e.clientX, e.clientY); }, ondblclick: e => dblAct(e, [c]), ondragstart: e => dragStart(e, S.selCh.has(c.uid) ? chsFromSel() : [c]), ondragend: () => hideDZ(),
-    onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); dblAct(e, S.selCh.size > 1 && S.selCh.has(c.uid) ? chsFromSel() : [c]); } else if (e.key === ' ') { e.preventDefault(); S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); S.lastSel = c.uid; const u = c.uid; renderTree(); const r = [...document.querySelectorAll('#tree .trow')].find(x => x._uid === u); if (r) r.focus(); } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const rows = [...document.querySelectorAll('#tree .trow')], i = rows.indexOf(row), n = rows[i + (e.key === 'ArrowDown' ? 1 : -1)]; if (n) n.focus(); } },
+    onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); dblAct(e, S.selCh.size > 1 && S.selCh.has(c.uid) ? chsFromSel() : [c]); } else if (e.key === ' ') { e.preventDefault(); S.selCh.has(c.uid) ? S.selCh.delete(c.uid) : S.selCh.add(c.uid); S.lastSel = c.uid; const u = c.uid; renderTree(); treeFocusUid(u); } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const o = S.rowOrder, i = o.indexOf(c), n = o[i + (e.key === 'ArrowDown' ? 1 : -1)]; if (n) treeFocusUid(n.uid); } else if (e.key === '*' || (e.key.toLowerCase() === 'f' && e.altKey)) { e.preventDefault(); const u = c.uid; toggleFav(c); treeFocusUid(u); } },
     title: c.name + '\n' + fmtCnt(c.n) + ' örnek · ' + fmtNum(c.fs, 6) + ' Hz' + chMM(c)},
+    h('button', {class: 'fav noic' + (isFav(c) ? ' on' : ''), title: isFav(c) ? 'Sık kullanılanlardan çıkar (*)' : 'Sık kullanılanlara ekle (*)', 'aria-label': 'Sık kullanılan', onclick: e => { e.stopPropagation(); toggleFav(c); }}, isFav(c) ? '★' : '☆'),
     kic(c.kind), h('span', {class: 'nm'}, hl(label)), h('span', {class: 'meta'}, c.n >= 1e6 ? (c.n / 1e6).toFixed(1) + 'M' : c.n >= 1e3 ? (c.n / 1e3).toFixed(0) + 'k' : c.n),
     h('button', {class: 'add', 'data-ic': 'stack', title: 'Yeni alt grafik olarak ekle', onclick: e => { e.stopPropagation(); addToNewAxes([c]); }}),
     h('button', {class: 'add', 'data-ic': 'layers', title: 'Aktif grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addToAxes(activeAxes(), [c]); }}),
@@ -3828,7 +4158,7 @@ function switchView(v) {
 
 /* ===== Uygulama: paneller, analiz, akustik, çıktı, başlatma ===== */
 const fr = (label, ...c) => h('div', {class: 'fr'}, h('label', null, label), ...c);
-const numIn = (id, v, o = {}) => h('input', {type: 'number', id, value: v, step: o.step ?? 'any', min: o.min, max: o.max});
+const numIn = (id, v, o = {}) => h('input', {type: 'number', id, value: v, step: o.step ?? 'any', min: o.min, max: o.max, placeholder: o.placeholder, title: o.title});
 const selIn = (id, opts, v) => h('select', {id}, opts.map(([val, txt]) => h('option', {value: val, selected: String(val) === String(v)}, txt)));
 const chkIn = (id, label, on) => h('div', {class: 'fr chk'}, h('label', {for: id}, label), h('input', {type: 'checkbox', id, checked: on}));
 const num = id => parseFloat($('#' + id).value), sv = id => $('#' + id).value, ck = id => $('#' + id).checked;
@@ -4004,6 +4334,7 @@ function buildAnalyze() {
   r.append(card('Spektrum (FFT / PSD)',
     fr('Hesap', selIn('spScale', [['psd', 'PSD (Welch)'], ['amp', 'Genlik spektrumu (tepe)'], ['rms', 'Genlik spektrumu (RMS)']], 'psd')),
     fr('NFFT', selIn('spN', [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536].map(v => [v, v]), 4096)),
+    fr('Tam Δf (Hz)', numIn('spDf', '', {min: 0, step: 'any', placeholder: 'boş: NFFT', title: 'Verilirse pencere uzunluğu fs/Δf olur (ikinin kuvveti olması gerekmez): ör. fs=1000 Hz, Δf=1 Hz → 1000 nokta. NFFT seçimini geçersiz kılar.'})),
     fr('Pencere', selIn('spWin', [['hann', 'Hann'], ['hamming', 'Hamming'], ['blackman', 'Blackman'], ['flattop', 'Flat-top'], ['rect', 'Dikdörtgen']], 'hann')),
     fr('Örtüşme', selIn('spOv', [['0', '%0'], ['0.5', '%50'], ['0.75', '%75']], '0.5')),
     fr('Kapsam', selIn('spScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
@@ -4025,12 +4356,8 @@ function buildAnalyze() {
     h('div', {class: 'note'}, 'Çok uzun aralıklarda kare sayısı 1500 ile sınırlıdır; daha ayrıntı için önce yakınlaştırın.')));
   for (const c of extraAnalysisCards()) r.append(c);
   setTimeout(refreshFrfPick);
-  r.append(card('Süzgeç (sıfır faz, Butterworth)',
-    fr('Tür', selIn('flType', [['lp', 'Alçak geçiren'], ['hp', 'Yüksek geçiren'], ['bp', 'Band geçiren'], ['bs', 'Band söndüren'], ['notch', 'Notch (çentik)']], 'lp')),
-    fr('f1 / f2 (Hz)', numIn('flF1', 100), numIn('flF2', 500)),
-    fr('Derece', numIn('flOrd', 4, {min: 1, max: 12, step: 1})), fr('Q (notch)', numIn('flQ', 30)),
-    fr('Kapsam', selIn('flScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
-    h('div', {class: 'btns'}, btn('Süz ve yeni kanal olarak ekle', applyFilterUI, 'primary'))));
+  if (typeof faz4Cards === 'function') for (const c of faz4Cards()) r.append(c);
+  r.append(filterCard());
   return r;
 }
 function specRange(tr, ax, scope) { const ch = tr.ch; return scope === 'vis' ? visRange(tr, ax) : [0, ch.n]; }
@@ -4038,7 +4365,7 @@ async function computeSpectrum(only) {
   const ax = activeAxes(); if (!ax || !ax.traces.length) return toast('Önce Zaman grafiğine bir iz ekleyin');
   const list = only && only.ch ? [only] : ax.traces.filter(t => t.ch);
   await busy('Spektrum hesaplanıyor…', async prog => {
-    const o = {nfft: +sv('spN'), win: sv('spWin'), overlap: +sv('spOv'), scale: sv('spScale'), maxSeg: 4000};
+    const o = {nfft: +sv('spN'), win: sv('spWin'), overlap: +sv('spOv'), scale: sv('spScale'), maxSeg: 4000}; { const df = num('spDf'); if (df > 0) o.df = df; }
     const ys = sv('spY'), P = S.specPlot; P.axes.slice().forEach(a => P.removeAxes(a));
     const sa = P.addAxes({xlog: sv('spX') === 'log', ylog: ys === 'log', title: ax.title || ''});
     const k0 = list.find(t => t.visible && t.ch), ku = k0 ? (k0.ch.unit || (k0.ch.kind === 'vib' ? 'g' : 'birim')) : 'birim', u2 = ku.length > 1 ? '(' + ku + ')' : ku;
@@ -4089,15 +4416,67 @@ function addDerived(name, data, src, i0, full) {
   S.derived.channels.push(c); logOp('derived', {name, src: src ? src.name : '', desc: S.opDesc || ''}); S.opDesc = ''; renderChips(); renderTree(); return c;
 }
 async function addDerivedToPlot(c, ax) { const tr = makeTrace(c); (ax || activeAxes() || S.plot.addAxes()).traces.push(tr); const a = ax || activeAxes(); if (!S.plot.active) S.plot.active = a; switchView('time'); refreshAll(); }
+// Süzgeç: Butterworth / Chebyshev I / Bessel (IIR, bilineer) ve pencereli sinc FIR; canlı Bode (genlik / faz) önizlemesi
+function filterCard() {
+  const fam = selIn('flFam', [['butter', 'Butterworth'], ['cheby1', 'Chebyshev Tip I'], ['bessel', 'Bessel'], ['fir', 'FIR (pencereli sinc)']], 'butter');
+  const c = card('Süzgeç (IIR / FIR, canlı Bode)',
+    fr('Tasarım', fam),
+    fr('Tür', selIn('flType', [['lp', 'Alçak geçiren'], ['hp', 'Yüksek geçiren'], ['bp', 'Band geçiren'], ['bs', 'Band söndüren'], ['notch', 'Notch (çentik, Butterworth)']], 'lp')),
+    fr('f1 / f2 (Hz)', numIn('flF1', 100), numIn('flF2', 500)),
+    h('div', {class: 'fr', id: 'flOrdRow'}, h('label', null, 'Derece'), numIn('flOrd', 4, {min: 1, max: 20, step: 1})),
+    h('div', {class: 'fr', id: 'flRpRow'}, h('label', null, 'Dalgalanma (dB)'), numIn('flRp', 1, {min: 0.01, max: 10, step: 0.1})),
+    h('div', {class: 'fr', id: 'flQRow'}, h('label', null, 'Q (notch)'), numIn('flQ', 30)),
+    h('div', {class: 'fr', id: 'flTapRow'}, h('label', null, 'FIR katsayı / pencere'), numIn('flTaps', 101, {min: 3, max: 8191, step: 2}), selIn('flWin', [['hamming', 'Hamming'], ['hann', 'Hann'], ['blackman', 'Blackman'], ['kaiser', 'Kaiser'], ['rect', 'Dikdörtgen']], 'hamming')),
+    h('div', {class: 'fr', id: 'flBetaRow'}, h('label', null, 'Kaiser β'), numIn('flBeta', 8.6, {min: 0, step: 0.1})),
+    chkIn('flZero', 'Sıfır faz (IIR: ileri-geri · FIR: gecikme düzeltmeli)', true),
+    fr('Kapsam', selIn('flScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
+    h('div', {class: 'bode'}, h('canvas', {id: 'flBode', width: 320, height: 190, 'aria-label': 'Bode diyagramı'})), h('div', {id: 'flInfo', class: 'note'}, ''),
+    h('div', {class: 'btns'}, btn('Süz ve yeni kanal olarak ekle', applyFilterUI, 'primary')));
+  c.addEventListener('input', () => bodeSoon()); c.addEventListener('change', () => bodeSoon());
+  setTimeout(bodeSoon, 0); return c;
+}
+let _bodeT = 0; function bodeSoon() { clearTimeout(_bodeT); _bodeT = setTimeout(drawBode, 60); }
+function filterSpec() {
+  return {family: sv('flFam'), type: sv('flType'), order: num('flOrd') | 0, f1: num('flF1'), f2: num('flF2'), Q: num('flQ'), rp: num('flRp'), taps: num('flTaps') | 0, win: sv('flWin'), beta: num('flBeta')};
+}
+function filterFs() { const tr = typeof activeTrace === 'function' && activeTrace(); return tr && tr.ch && tr.ch.fs > 0 ? tr.ch.fs : null; }
+function drawBode() {
+  const cv = $('#flBode'); if (!cv) return; const sp = filterSpec(), fir = sp.family === 'fir', zero = ck('flZero');
+  const vis = (id, on) => { const e = $('#' + id); if (e) e.style.display = on ? '' : 'none'; };
+  vis('flOrdRow', !fir && sp.type !== 'notch'); vis('flRpRow', sp.family === 'cheby1'); vis('flQRow', sp.type === 'notch'); vis('flTapRow', fir); vis('flBetaRow', fir && sp.win === 'kaiser');
+  const fs = filterFs() || 2 * Math.max(1000, (sp.f2 || sp.f1) * 4), info = $('#flInfo');
+  const W = cv.clientWidth || 320, H = 190, dpr = devicePixelRatio || 1; cv.width = W * dpr; cv.height = H * dpr; const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const T = curTheme(); g.fillStyle = T.bg; g.fillRect(0, 0, W, H); g.font = '10px system-ui'; g.textBaseline = 'middle';
+  let F, R; try { if (sp.type === 'notch' && fir) throw new Error('Notch yalnız IIR (Butterworth) ile'); if (sp.type === 'notch' && sp.family !== 'butter') sp.family = 'butter'; F = DSP.filterDesign(sp, fs); R = DSP.freqResp(F, fs, 400, zero && !fir); }
+  catch (e) { g.fillStyle = T.muted; g.textAlign = 'center'; g.fillText(e.message, W / 2, H / 2); if (info) info.textContent = ''; return; }
+  const L = 40, Rr = W - 40, top = 8, h1 = (H - 34) * 0.62, h2 = (H - 34) * 0.38 - 8, y2 = top + h1 + 10, lx = f => L + Math.log10(Math.max(f, fs / 2000)) / 1 * 0, xf = f => L + (Math.log10(Math.max(f, fs / 1e4)) - Math.log10(fs / 1e4)) / (Math.log10(fs / 2) - Math.log10(fs / 1e4)) * (Rr - L);
+  void lx; const mLo = -100, mHi = 5, ym = v => top + (mHi - Math.max(mLo, Math.min(mHi, v))) / (mHi - mLo) * h1;
+  let pmin = Infinity, pmax = -Infinity; for (const v of R.ph) { pmin = Math.min(pmin, v); pmax = Math.max(pmax, v); } if (pmax - pmin < 1) { pmin -= 90; pmax += 90; }
+  const yp = v => y2 + (pmax - v) / (pmax - pmin) * h2;
+  g.strokeStyle = T.grid; g.lineWidth = 1; g.beginPath();
+  for (const v of [0, -20, -40, -60, -80]) { g.moveTo(L, ym(v) + .5); g.lineTo(Rr, ym(v) + .5); }
+  for (let e = Math.ceil(Math.log10(fs / 1e4)); Math.pow(10, e) <= fs / 2; e++) { const x = Math.round(xf(Math.pow(10, e))) + .5; g.moveTo(x, top); g.lineTo(x, y2 + h2); }
+  g.stroke(); g.strokeStyle = T.axis; g.strokeRect(L + .5, top + .5, Rr - L, h1); g.strokeRect(L + .5, y2 + .5, Rr - L, h2);
+  g.fillStyle = T.muted; g.textAlign = 'right'; for (const v of [0, -40, -80]) g.fillText(v + ' dB', L - 3, ym(v)); g.fillText(Math.round(pmax) + '°', L - 3, y2 + 4); g.fillText(Math.round(pmin) + '°', L - 3, y2 + h2 - 4);
+  g.textAlign = 'center'; for (let e = Math.ceil(Math.log10(fs / 1e4)); Math.pow(10, e) <= fs / 2; e++) g.fillText(fmtNum(Math.pow(10, e), 3), xf(Math.pow(10, e)), y2 + h2 + 9);
+  g.textAlign = 'left'; g.fillText('Hz (fs = ' + fmtNum(fs, 5) + (filterFs() ? '' : ', örnek') + ')', Rr - 70, y2 + h2 + 20);
+  const line = (ys, col) => { g.strokeStyle = col; g.lineWidth = 1.5; g.beginPath(); let st = false; for (let i = 1; i < R.f.length; i++) { const x = xf(R.f[i]), y = ys[i]; if (!isFinite(y)) { st = false; continue; } st ? g.lineTo(x, y) : g.moveTo(x, y); st = true; } g.stroke(); };
+  line(Array.from(R.mag, ym), '#0072BD'); line(Array.from(R.ph, yp), '#D95319');
+  g.strokeStyle = '#e15759'; g.setLineDash([3, 3]); g.beginPath(); for (const f of [sp.f1, ['bp', 'bs'].includes(sp.type) ? sp.f2 : null]) if (f > 0) { const x = Math.round(xf(f)) + .5; g.moveTo(x, top); g.lineTo(x, y2 + h2); } g.stroke(); g.setLineDash([]);
+  const at = f => { let i = 1; while (i < R.f.length - 1 && R.f[i] < f) i++; const t = (f - R.f[i - 1]) / (R.f[i] - R.f[i - 1]); return R.mag[i - 1] + (R.mag[i] - R.mag[i - 1]) * Math.max(0, Math.min(1, t)); };
+  if (info) info.textContent = (fir ? `FIR ${F.b.length} katsayı · gecikme ${fmtNum((F.b.length - 1) / 2 / fs * 1000, 4)} ms` : `IIR ${F.sos.length} ikinci derece bölüm`) + ` · |H(f1)| = ${at(sp.f1).toFixed(2)} dB` + (zero ? (fir ? ' · sıfır faz (gecikme düzeltildi)' : ' · ileri-geri: genlik², faz 0') : ' · tek geçiş (nedensel) faz');
+}
 async function applyFilterUI() {
   const tr = activeTrace(), ax = activeAxes(); if (!tr) return toast('Önce bir iz seçin');
   await busy('Süzülüyor…', async () => {
     const ch = tr.ch; await ensureLoaded(ch); const [a, b] = specRange(tr, ax, sv('flScope'));
-    const type = sv('flType'), p = {order: num('flOrd') | 0, f1: num('flF1'), f2: num('flF2'), Q: num('flQ')};
-    if ((type === 'bp' || type === 'bs') && !(p.f2 > p.f1)) throw new Error('f2, f1\'den büyük olmalı');
-    const sos = DSP.design(type, p, ch.fs); const seg = DSP.segment(ch.data, ch.del, a, b); const y = await DSPW.run('filtfilt', [sos, seg], [seg]);
-    const tag = {lp: 'LP' + p.f1, hp: 'HP' + p.f1, bp: 'BP' + p.f1 + '-' + p.f2, bs: 'BS' + p.f1 + '-' + p.f2, notch: 'N' + p.f1}[type];
-    S.opDesc = `Butterworth ${type.toUpperCase()} sıfır faz (filtfilt), derece ${p.order}, f1=${p.f1}${type === 'bp' || type === 'bs' ? ', f2=' + p.f2 : ''}${type === 'notch' ? ', Q=' + p.Q : ''} Hz`; const c = addDerived(ch.name + '_' + tag, y, ch, a, a === 0 && b === ch.n); await addDerivedToPlot(c, ax);
+    const sp = filterSpec(), zero = ck('flZero'); if (sp.type === 'notch') sp.family = sp.family === 'fir' ? 'butter' : 'butter';
+    if ((sp.type === 'bp' || sp.type === 'bs') && !(sp.f2 > sp.f1)) throw new Error('f2, f1\'den büyük olmalı');
+    const F = DSP.filterDesign(sp, ch.fs), seg = DSP.segment(ch.data, ch.del, a, b); const y = await DSPW.run('filterApply', [F, seg, zero], [seg]);
+    const nm = {butter: 'Butterworth', cheby1: 'Chebyshev I (' + sp.rp + ' dB)', bessel: 'Bessel', fir: 'FIR ' + (F.b ? F.b.length : '') + ' katsayı ' + sp.win}[sp.family];
+    const tag = {lp: 'LP' + sp.f1, hp: 'HP' + sp.f1, bp: 'BP' + sp.f1 + '-' + sp.f2, bs: 'BS' + sp.f1 + '-' + sp.f2, notch: 'N' + sp.f1}[sp.type] + (sp.family === 'butter' ? '' : '_' + {cheby1: 'C1', bessel: 'BE', fir: 'FIR'}[sp.family]);
+    S.opDesc = `${nm} ${sp.type.toUpperCase()} ${zero ? 'sıfır faz' : 'tek geçiş'}${sp.family !== 'fir' && sp.type !== 'notch' ? ', derece ' + sp.order : ''}, f1=${sp.f1}${sp.type === 'bp' || sp.type === 'bs' ? ', f2=' + sp.f2 : ''}${sp.type === 'notch' ? ', Q=' + sp.Q : ''} Hz`;
+    const c = addDerived(ch.name + '_' + tag, y, ch, a, a === 0 && b === ch.n); await addDerivedToPlot(c, ax);
     toast('Süzülmüş kanal eklendi: ' + c.name);
   });
 }
@@ -4412,7 +4791,11 @@ function init() {
   $('#fileIn').onchange = e => { openFiles(e.target.files); e.target.value = ''; };
   $('#btnTime').onclick = timeDialog; $('#btnHelp').onclick = helpDialog; $('#btnFree').onclick = freeMemory;
   $('#btnTheme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
-  $('#q').oninput = e => { S.q = e.target.value.trim().toLowerCase(); renderTree(); };
+  $('#q').oninput = e => { S.q = e.target.value.trim().toLowerCase(); clearTimeout(S._qT); S._qT = setTimeout(renderTree, S.rowOrder && S.rowOrder.length > 3000 ? 120 : 0); };
+  try { S.fav = new Set(JSON.parse(localStorage.getItem('mv.fav') || '[]')); } catch (_) { S.fav = new Set(); }
+  { const fb = h('button', {id: 'btnFavOnly', class: 'noic', title: 'Yalnız sık kullanılan (★) kanalları göster', 'aria-pressed': 'false', onclick: () => { S.favOnly = !S.favOnly; fb.classList.toggle('on', S.favOnly); fb.setAttribute('aria-pressed', S.favOnly); renderTree(); }}, '★');
+    const hb = h('button', {class: 'noic qhelp', title: 'Arama sözdizimi:\n  metin — ad içinde geçen\n  /^acc_.*x$/i — düzenli ifade\n  [g]  [°C]  [m/s²] — birim süzgeci\n  fs>1000  fs<=500  fs=2k — örnekleme frekansı\n  ★ veya fav — yalnız sık kullanılanlar\nHepsi birleştirilebilir: /^T/ [°C] fs>=10\nKanal satırında ☆ ya da * tuşu: sık kullanılan', 'aria-label': 'Arama sözdizimi'}, '?');
+    $('#q').parentElement.append(fb, hb); $('#q').placeholder = 'Ara: ad, /regex/, [g], fs>1000, ★'; }
   $('#btnStack').onclick = () => { const l = chsFromSel(); if (l.length) addToNewAxes(l); else toast('Önce soldan kanal seçin'); };
   $('#btnOverlay').onclick = () => { const l = chsFromSel(); if (l.length) addToAxes(activeAxes(), l); else toast('Önce soldan kanal seçin'); };
   // sürükle-bırak
@@ -5004,7 +5387,9 @@ function closeMenus() { for (const m of document.querySelectorAll('.ddm')) m.cla
 function shortcutsDialog() {
   const rows = [['Delete', 'Seçili noktaları sil'], ['Ctrl+Z / Ctrl+Y', 'Geri al / yinele (nokta silme)'], ['P · Z · C · B · L', 'Gez · Yakınlaştır · İmleç · Kutu · Kement'], ['+ / −', 'Yakınlaş / uzaklaş'], ['Home', 'Tümünü sığdır'],
     ['Esc', 'Seçimi kaldır / menüyü kapat'], ['Çift tık (ağaç)', 'Kanalı yeni alt grafiğe ekle (Ayarlar’dan değişir)'], ['Shift + çift tık', 'Tercihin tersi: aktif grafiğe ekle'], ['Shift + tık (ağaç)', 'Aralık seç'], ['Ctrl + tık (ağaç)', 'Çoklu seç'],
-    ['Lejanta tık', 'İzi göster / gizle'], ['Lejanta sağ tık', 'Renk, kalınlık, taşı, kaldır'], ['Lejantı sürükle', 'İzi başka alt grafiğe taşı'], ['Alt grafik ayırıcısı', 'Sürükle: yükseklik · çift tık: eşitle'], ['↑ ↓ Enter (ağaç)', 'Klavyeyle gezin / ekle'], ['?', 'Bu pencere']];
+    ['Lejanta tık', 'İzi göster / gizle'], ['Lejanta sağ tık', 'Renk, kalınlık, taşı, kaldır'], ['Lejantı sürükle', 'İzi başka alt grafiğe taşı'], ['Alt grafik ayırıcısı', 'Sürükle: yükseklik · çift tık: eşitle'], ['↑ ↓ Enter (ağaç)', 'Klavyeyle gezin / ekle'], ['* (ağaç)', 'Kanalı sık kullanılanlara ekle / çıkar'],
+    ['Alt+← / Alt+→', 'Önceki / sonraki görünüm (yakınlaştırma geçmişi)'], ['X', 'Senkron dikey izleme (tüm alt grafiklerde değerler)'], ['Shift + tık (İmleç)', 'Yeni imleç ekle (çoklu imleç, ölçüm paneli)'], ['Esc', 'İmleçleri temizle'],
+    ['Ctrl+B / Ctrl+Shift+B', 'Sol / sağ paneli gizle-göster'], ['Panel kenarı', 'Sürükle: genişlik · çift tık: varsayılan'], ['F11', 'Tam ekran'], ['?', 'Bu pencere']];
   modal('Klavye kısayolları ve fare', h('table', {class: 'kv'}, rows.map(r => h('tr', null, h('td', null, h('kbd', null, r[0])), h('td', null, r[1])))), [{t: 'Kapat', primary: true}]);
 }
 function updDblBtn() { const b = $('#btnDbl'); if (!b) return; const s = b.querySelector('.lbltxt') || (() => { const t = h('span', {class: 'lbltxt'}); b.append(t); b.childNodes.forEach(c => { if (c.nodeType === 3) c.remove(); }); return t; })(); s.textContent = 'Çift tık: ' + (S.pref.dbl === 'same' ? 'aktif grafiğe ekle' : 'yeni alt grafik'); }
@@ -10728,6 +11113,106 @@ function renderCursorPanel(P) {
     updHistBtns();
   }, 0));
 })();
+
+/* ---------- Faz 3: yeniden boyutlanabilir yan paneller, gizle/göster kısayolları ---------- */
+const PANES = {
+  lw: null, rw: null, hideL: false, hideR: false,
+  load() { try { const o = JSON.parse(localStorage.getItem('mv.panes') || '{}'); Object.assign(this, {lw: o.lw || null, rw: o.rw || null, hideL: !!o.hideL, hideR: !!o.hideR}); } catch (_) {} },
+  save() { try { localStorage.setItem('mv.panes', JSON.stringify({lw: this.lw, rw: this.rw, hideL: this.hideL, hideR: this.hideR})); } catch (_) {} },
+  apply() {
+    const app = $('#app'); if (!app) return;
+    app.classList.toggle('hideL', this.hideL); app.classList.toggle('hideR', this.hideR);
+    const set = (k, v, hid) => { if (hid) app.style.setProperty(k, '0px'); else if (v) app.style.setProperty(k, v + 'px'); else app.style.removeProperty(k); };
+    set('--lw', this.lw, this.hideL); set('--rw', this.rw, this.hideR);
+    if (S.plot) requestAnimationFrame(() => { for (const P of [S.plot, S.specPlot, S.xyPlot, S.specView]) if (P && P.resize) P.resize(); });
+  }
+};
+function togglePane(which, on) {
+  const k = which === 'l' ? 'hideL' : 'hideR'; PANES[k] = on == null ? !PANES[k] : !on; PANES.apply(); PANES.save();
+}
+(function () {
+  window.addEventListener('DOMContentLoaded', () => {
+    PANES.load(); PANES.apply();
+    const app = $('#app'), center = $('#center');
+    for (const [id, side] of [['left', 'l'], ['right', 'r']]) {
+      const pane = $('#' + id); if (!pane) continue;
+      const sp = h('div', {class: 'split', role: 'separator', 'aria-orientation': 'vertical', title: 'Sürükle: genişlik · çift tık: varsayılan genişlik · ' + (side === 'l' ? 'Ctrl+B' : 'Ctrl+Shift+B') + ': gizle/göster'});
+      sp.addEventListener('pointerdown', e => {
+        e.preventDefault(); sp.setPointerCapture(e.pointerId); sp.classList.add('drag'); document.body.classList.add('dragging');
+        const ar = app.getBoundingClientRect();
+        sp.onpointermove = ev => {
+          if (side === 'l') PANES.lw = Math.round(Math.max(170, Math.min(Math.min(720, ar.width * .5), ev.clientX - ar.left)));
+          else PANES.rw = Math.round(Math.max(240, Math.min(Math.min(820, ar.width * .55), ar.right - ev.clientX)));
+          PANES.apply();
+        };
+        sp.onpointerup = () => { sp.onpointermove = sp.onpointerup = null; sp.classList.remove('drag'); document.body.classList.remove('dragging'); PANES.save(); };
+      });
+      sp.addEventListener('dblclick', () => { PANES[side === 'l' ? 'lw' : 'rw'] = null; PANES.apply(); PANES.save(); });
+      pane.append(sp);
+      center.append(h('button', {class: 'reveal ' + side + ' noic', title: (side === 'l' ? 'Sol paneli göster (Ctrl+B)' : 'Sağ paneli göster (Ctrl+Shift+B)'), onclick: () => togglePane(side, true)}, side === 'l' ? '▶' : '◀'));
+    }
+    window.addEventListener('keydown', e => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'b') return;
+      const t = e.target; if (t && t.closest && t.closest('.cm, .codeed')) return;
+      e.preventDefault(); togglePane(e.shiftKey ? 'r' : 'l');
+    }, true);
+  });
+})();
+
+/* ---------- Faz 4: rainflow çevrim sayımı ve kayan basıklık / tepe faktörü ---------- */
+function faz4Cards() {
+  return [
+    card('Rainflow (yorulma çevrim sayımı)',
+      fr('Wöhler eğimi m', numIn('rfM', 5, {min: 1, max: 20, step: 0.5})), fr('Eşdeğer çevrim N_eq', numIn('rfNeq', 1e6, {min: 1})),
+      fr('S_ref / N_ref (isteğe bağlı)', numIn('rfSref', '', {min: 0}), numIn('rfNref', '', {min: 0})),
+      fr('Kutu sayısı', numIn('rfBins', 32, {min: 4, max: 200, step: 1})), fr('Kapsam', selIn('rfScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
+      h('div', {class: 'btns'}, btn('Rainflow sayımı', computeRainflow, 'primary')),
+      h('div', {id: 'rfInfo', class: 'note'}, 'ASTM E1049 (3 nokta) yöntemi; yarım çevrimler 0,5 sayılır. Eşdeğer aralık S_eq = (Σ nᵢ·Sᵢᵐ / N_eq)^(1/m). S_ref/N_ref verilirse Miner hasarı D = Σ nᵢ / Nᵢ, Nᵢ = N_ref·(S_ref/Sᵢ)ᵐ.')),
+    card('Kayan basıklık / tepe faktörü',
+      fr('Pencere / adım (s)', numIn('ksWin', 1, {min: 0}), numIn('ksHop', 0.5, {min: 0})),
+      chkIn('ksK', 'Basıklık (kurtosis, Gauss = 3)', true), chkIn('ksC', 'Tepe faktörü (|x−ort|maks / std)', true), chkIn('ksR', 'Kayan RMS', false),
+      fr('Kapsam', selIn('ksScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
+      h('div', {class: 'btns'}, btn('Hesapla ve çiz', computeSliding, 'primary')),
+      h('div', {class: 'note'}, 'Darbeli / aşınma kaynaklı bileşenler basıklığı 3\'ün üzerine çıkarır. Sonuçlar türetilmiş kanal olarak yeni alt grafiğe eklenir.'))
+  ];
+}
+async function computeRainflow() {
+  const tr = activeTrace(), ax = activeAxes(); if (!tr || !tr.ch) return toast('Önce bir zaman izi seçin');
+  await busy('Rainflow sayımı…', async () => {
+    const ch = tr.ch; await ensureLoaded(ch); const [a, b] = specRange(tr, ax, sv('rfScope'));
+    const seg = ch.data.subarray ? ch.data.subarray(a, b) : ch.data.slice(a, b), del = ch.del ? ch.del.subarray(a, b) : null;
+    const rf = await DSPW.run('rainflow', [Float64Array.from(seg), del ? Uint8Array.from(del) : null]);
+    const o = {m: num('rfM') || 5, neq: num('rfNeq') || 1e6, bins: num('rfBins') | 0 || 32, sref: num('rfSref'), nref: num('rfNref')}, sm = DSP.rainflowSummary(rf, o);
+    S.lastRainflow = {ch: ch.name, rf, sm};
+    const P = S.xyPlot; P.axes.slice().forEach(q => P.removeAxes(q)); P.linkX = true; S.xyKeep = true; syncFeatUI();
+    const u = unitOf(ch), w = sm.maxRange / sm.edges.length * (sm.edges.length / (sm.edges.length - 1)) || 1, cx = new Float64Array(sm.hist.length); for (let i = 0; i < cx.length; i++) cx[i] = (sm.edges[i] + sm.edges[i + 1]) / 2;
+    const a1 = P.addAxes({xlabel: 'Çevrim aralığı' + (u ? ' (' + u + ')' : ''), ylabel: 'Çevrim sayısı', title: 'Rainflow — ' + ch.name, ylog: true});
+    a1.traces.push({kind: 'xy', x: cx, y: Float64Array.from(sm.hist, v => v > 0 ? v : NaN), bars: w, label: 'Çevrim (yarımlar 0,5)', color: '#0072BD', width: 1, visible: true});
+    const tot = sm.pseudo || 1, a2 = P.addAxes({xlabel: 'Çevrim aralığı' + (u ? ' (' + u + ')' : ''), ylabel: 'Hasar payı (%)', title: `Göreli hasar katkısı (m = ${sm.m})`});
+    a2.traces.push({kind: 'xy', x: cx, y: Float64Array.from(sm.dmg, v => 100 * v / tot), bars: w, label: 'Σ n·Sᵐ payı', color: '#D95319', width: 1, visible: true});
+    P.active = a1; switchView('xy'); P.fitAll();
+    const full = rf.count.reduce((s, v) => s + (v === 1 ? 1 : 0), 0), half = rf.count.length - full;
+    $('#rfInfo').textContent = `${ch.name}: ${fmtCnt(rf.nTurning)} dönüm noktası · ${fmtNum(sm.cycles, 6)} çevrim (${fmtCnt(full)} tam + ${fmtCnt(half)} yarım)\n` +
+      `En büyük aralık ${fmtNum(sm.maxRange, 5)}${u ? ' ' + u : ''} · Σ n·Sᵐ = ${fmtNum(sm.pseudo, 5)}\n` +
+      `Eşdeğer aralık S_eq @ N_eq=${fmtNum(sm.neq, 4)}: ${fmtNum(sm.seq, 5)} · çevrim başına eşdeğer: ${fmtNum(sm.seqAvg, 5)}` + (sm.damage != null ? `\nMiner hasarı D = ${fmtNum(sm.damage, 5)} (ömür ≈ ${sm.damage > 0 ? fmtNum(1 / sm.damage, 4) : '∞'} × bu kayıt)` : '');
+    $('#rfInfo').style.whiteSpace = 'pre-line';
+    (S.methodLog = S.methodLog || []).push({t: Date.now(), op: 'rainflow', label: ch.name, m: sm.m, neq: sm.neq, cycles: sm.cycles});
+  });
+}
+async function computeSliding() {
+  const tr = activeTrace(), ax = activeAxes(); if (!tr || !tr.ch) return toast('Önce bir zaman izi seçin');
+  await busy('Kayan istatistikler…', async () => {
+    const ch = tr.ch; await ensureLoaded(ch); const [a, b] = specRange(tr, ax, sv('ksScope'));
+    const win = num('ksWin'), hop = num('ksHop') || win / 2; if (!(win > 0)) throw new Error('Pencere süresi > 0 olmalı');
+    const seg = DSP.segment(ch.data, ch.del, a, b); if (seg.length < Math.round(win * ch.fs)) throw new Error('Aralık pencereden kısa');
+    const r = await DSPW.run('slidingStats', [seg, ch.fs, win, hop], [seg]);
+    const out = []; const mk = (nm, d, unit) => { S.opDesc = `Kayan ${nm}: pencere ${win} s, adım ${hop} s`; const c = addDerived(ch.name + '_' + nm, d, ch, a, false); c.g = null; c.dtS = r.dt; c.t0 = ch.t(a) + r.t0; c.unit = unit; c.kind = 'calc'; out.push(c); };
+    if (ck('ksK')) mk('kurt', r.kurt, ''); if (ck('ksC')) mk('crest', r.crest, ''); if (ck('ksR')) mk('rms', r.rms, unitOf(ch));
+    if (!out.length) throw new Error('En az bir çıktı seçin');
+    for (const c of out) c._mm = null;
+    await addToNewAxes(out, true); toast(out.length + ' kanal eklendi (' + r.kurt.length + ' pencere)');
+  });
+}
 
 </script>
 </body>
