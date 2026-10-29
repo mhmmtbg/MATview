@@ -172,12 +172,24 @@ function freeMemory() {
 /* ---------- grafik yönetimi ---------- */
 function nextColor() { return PAL[S.colorIdx++ % PAL.length]; }
 function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), width: 1, visible: true}; }
-function axisLabelFor(ax) { const ks = new Set(ax.traces.map(t => t.ch.kind)), us = new Set(ax.traces.map(t => t.ch.unit || '')); ax.ylabel = us.size === 1 && [...us][0] ? [...us][0] : ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; }
+function unitOf(ch) { return ch ? (ch.unit || (KIND[ch.kind] && KIND[ch.kind].ylabel) || '') : ''; }
+function axisLabelFor(ax) {
+  const lbl = trs => { const t2 = trs.filter(t => t.ch), ks = new Set(t2.map(t => t.ch.kind)), us = new Set(t2.map(t => t.ch.unit || '')); return us.size === 1 && [...us][0] ? [...us][0] : ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; };
+  ax.ylabel = lbl(ax.traces.filter(t => !t.yr)); ax.ylabel2 = lbl(ax.traces.filter(t => t.yr));
+}
+// çift Y: alt grafikte iki farklı birim varsa ikinci birimin izleri sağ eksene alınır (üçüncü birim solda kalır)
+function assignYAxes(ax, added) {
+  if (S.pref && S.pref.dualY === false) return;
+  const left = ax.traces.filter(t => !added.includes(t) && !t.yr), lu = left.length ? unitOf(left[0].ch) : unitOf(added[0] && added[0].ch);
+  let ru = (ax.traces.find(t => t.yr && !added.includes(t)) || {}).ch; ru = ru ? unitOf(ru) : null;
+  for (const t of added) { const u = unitOf(t.ch); if (!u || u === lu) continue; if (ru == null) ru = u; if (u === ru) t.yr = true; }
+  if (!ax.traces.some(t => !t.yr)) ax.traces.forEach(t => { t.yr = false; });
+}
 async function addToNewAxes(chs, one) {
   if (chs.length && chs.every(c => c.file && c.file.feature)) return featAdd(chs);
   { const sp = chs.filter(c => c.spec); if (sp.length) { await addSpec(sp); chs = chs.filter(c => !c.spec); if (!chs.length) return; } }
   const first = !S.plot.axes.length;
-  if (one) { const ax = S.plot.addAxes(); for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }
+  if (one) { const ax = S.plot.addAxes(), nt = chs.map(c => makeTrace(c)); ax.traces.push(...nt); assignYAxes(ax, nt); axisLabelFor(ax); S.plot.active = ax; }
   else for (const c of chs) { const ax = S.plot.addAxes(); ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }
   switchView('time'); refreshAll();
   await loadForPlot(chs, first);
@@ -186,7 +198,7 @@ async function addToAxes(ax, chs) {
   if (chs.length && chs.every(c => c.file && c.file.feature)) return featAdd(chs);
   { const sp = chs.filter(c => c.spec); if (sp.length) { await addSpec(sp); chs = chs.filter(c => !c.spec); if (!chs.length) return; } }
   if (!ax) return addToNewAxes(chs, true);
-  const first = !S.plot.axes.length; for (const c of chs) ax.traces.push(makeTrace(c)); axisLabelFor(ax);
+  const first = !S.plot.axes.length, nt = chs.map(c => makeTrace(c)); ax.traces.push(...nt); assignYAxes(ax, nt); axisLabelFor(ax);
   switchView('time'); refreshAll(); await loadForPlot(chs, first);
 }
 function replacePlot(chs, one) { clearPlot(); S.plot.invalidate(); return addToNewAxes(chs, one); }
@@ -234,15 +246,20 @@ const ICON = {
   fit: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
   undo: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M5 3L2 6l3 3M2 6h7a4 4 0 010 8H6" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
   redo: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M11 3l3 3-3 3M14 6H7a4 4 0 000 8h3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  back: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  fwd: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  xhair: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v14" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.5"/><rect x="9.5" y="3" width="5" height="4" rx="1" fill="none" stroke="currentColor"/><circle cx="8" cy="10" r="1.6" fill="currentColor"/></svg>',
   del: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4h10M6 4V2h4v2M5 4l.5 10h5L11 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>'
 };
-const TOOLS = [['pan', 'Gez', 'Sürükleyerek kaydır. Tekerlek: X yakınlaştır, Shift+tekerlek: Y, Ctrl+tekerlek: ikisi (P)'], ['zoom', 'Yakınlaştır', 'Kutu çiz = yakınlaştır, tıkla = 2×, Shift+tıkla = uzaklaştır (Z)'], ['cursor', 'İmleç', 'Tıkla: en yakın örnek. Shift+tıkla: ikinci imleç ve ΔX/ΔY (C)'], ['box', 'Kutu seç', 'Silinecek noktaları kutuyla seç (B)'], ['lasso', 'Kement', 'Silinecek noktaları serbest çizimle seç (L)']];
+const TOOLS = [['pan', 'Gez', 'Sürükleyerek kaydır. Tekerlek: X yakınlaştır, Shift+tekerlek: Y, Ctrl+tekerlek: ikisi (P)'], ['zoom', 'Yakınlaştır', 'Kutu çiz = yakınlaştır, tıkla = 2×, Shift+tıkla = uzaklaştır (Z)'], ['cursor', 'İmleç', 'Tıkla: en yakın örnek. Shift+tıkla: yeni imleç ekle (çoklu); imlece yakın tık: taşı. Ölçüm paneli ΔX/ΔY, eğim, alan, RMS (C) · Esc: temizle'], ['box', 'Kutu seç', 'Silinecek noktaları kutuyla seç (B)'], ['lasso', 'Kement', 'Silinecek noktaları serbest çizimle seç (L)']];
 function buildToolbar() {
   const tb = $('#toolbar'); tb.replaceChildren();
   for (const [m, name, tip] of TOOLS) tb.append(h('button', {id: 'tool-' + m, title: tip, class: S.plot.mode === m ? 'on' : '', onclick: () => setMode(m), html: 0}, ...[(() => { const s = document.createElement('span'); s.innerHTML = ICON[m]; s.style.display = 'flex'; return s; })(), h('span', {class: 'lbl'}, name)]));
   const ib = (id, ico, name, tip, fn) => { const b = h('button', {id, title: tip, onclick: fn}); const s = document.createElement('span'); s.innerHTML = ICON[ico]; s.style.display = 'flex'; b.append(s, h('span', {class: 'lbl'}, name)); return b; };
   tb.append(h('span', {class: 'sep'}), ib('tb-zin', 'zin', 'Yaklaş', 'Görünümü 2× yakınlaştır (+)', () => curPlot().zoomIn()), ib('tb-zout', 'zout', 'Uzaklaş', 'Görünümü 2× uzaklaştır (−)', () => curPlot().zoomOut()),
     ib('tb-fit', 'fit', 'Sığdır', 'Tümünü sığdır: tüm veriyi göster (Home / çift tık)', () => curPlot().fitAll()),
+    ib('tb-back', 'back', 'Geri', 'Önceki görünüm (Alt+←)', () => viewHist(-1)), ib('tb-fwd', 'fwd', 'İleri', 'Sonraki görünüm (Alt+→)', () => viewHist(1)),
+    ib('tb-xhair', 'xhair', 'İzleme', 'Senkron dikey izleme: tüm alt grafiklerde imleç altındaki değerler (X)', () => toggleCrosshair()),
     h('span', {class: 'sep'}), ib('tb-undo', 'undo', 'Geri al', 'Ctrl+Z', undo), ib('tb-redo', 'redo', 'Yinele', 'Ctrl+Y', redo),
     h('span', {class: 'sep'}), ib('tb-del', 'del', 'Sil', 'Seçili noktaları sil (Delete)', deleteSelection));
   $('#tb-del').disabled = true;

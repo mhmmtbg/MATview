@@ -189,9 +189,11 @@ function buildAnalyze() {
     fr('Pencere', selIn('sgWin', [['hann', 'Hann'], ['hamming', 'Hamming'], ['blackman', 'Blackman']], 'hann')),
     fr('Örtüşme', selIn('sgOv', [['0.5', '%50'], ['0.75', '%75'], ['0.9', '%90']], '0.75')),
     fr('Kapsam', selIn('sgScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
-    fr('Renk haritası', selIn('sgMap', [['viridis', 'Viridis'], ['turbo', 'Turbo'], ['gri', 'Gri']], 'viridis')),
+    fr('Renk haritası', selIn('sgMap', [['viridis', 'Viridis'], ['turbo', 'Turbo'], ['inferno', 'Inferno'], ['magma', 'Magma'], ['jet', 'Jet'], ['gri', 'Gri']], 'viridis')),
     fr('dB aralığı', numIn('sgLo', ''), numIn('sgHi', '')),
+    chkIn('sgLog', 'Logaritmik frekans ekseni', false), chkIn('sgSl', 'İmleç kesitleri (spektrum + zaman)', true),
     h('div', {class: 'btns'}, btn('Spektrogramı hesapla', computeSpectrogram, 'primary'), btn('Renk aralığını uygula', applyClim)),
+    h('div', {id: 'sgCur', class: 'note'}, 'Spektrogram üzerine tıklayın: imleç (t, f, dB) ve kesitler.'),
     h('div', {class: 'note'}, 'Çok uzun aralıklarda kare sayısı 1500 ile sınırlıdır; daha ayrıntı için önce yakınlaştırın.')));
   for (const c of extraAnalysisCards()) r.append(c);
   setTimeout(refreshFrfPick);
@@ -244,12 +246,14 @@ async function computeSpectrogram() {
     if (b - a < +sv('sgN') * 2) throw new Error('Aralık NFFT için çok kısa');
     const seg = DSP.segment(ch.data, ch.del, a, b);
     const sp = await DSPW.run('spectrogram', [seg, ch.fs, {nfft: +sv('sgN'), win: sv('sgWin'), overlap: +sv('sgOv'), maxFrames: 1500}], [seg]);
-    S.specView.cmap = sv('sgMap'); S.specView.setSpec(sp, ch.fs, ch.t(a));
+    S.specView.cmap = sv('sgMap'); S.specView.slices = ck('sgSl'); S.specView.logF = ck('sgLog'); S.specView.setSpec(sp, ch.fs, ch.t(a)); sgCursorInfo(null);
     $('#sgLo').value = Math.round(S.specView.clim[0]); $('#sgHi').value = Math.round(S.specView.clim[1]);
     switchView('sgram'); toast(`${sp.nf} kare · Δf=${fmtNum(sp.df, 4)} Hz · Δt=${fmtNum(sp.dt * 1000, 4)} ms`);
   });
 }
-function applyClim() { const v = S.specView; v.cmap = sv('sgMap'); const lo = num('sgLo'), hi = num('sgHi'); if (isFinite(lo) && isFinite(hi) && hi > lo) v.clim = [lo, hi]; v.rebuild(); }
+function applyClim() { const v = S.specView; v.cmap = sv('sgMap'); v.slices = ck('sgSl'); v.logF = ck('sgLog'); const lo = num('sgLo'), hi = num('sgHi'); if (isFinite(lo) && isFinite(hi) && hi > lo) v.clim = [lo, hi]; if (v.spec && v.logF && v.ylim[0] < v.fMin()) v.ylim[0] = v.fMin(); v.rebuild(); v.invalidate(); }
+function sgCursorInfo(c) { const e = $('#sgCur'); if (!e) return; e.textContent = c ? `İmleç: t = ${fmtNum(c.t, 6)} s · f = ${fmtNum(c.f, 6)} Hz · ${c.v.toFixed(2)} dB` : 'Spektrogram üzerine tıklayın: imleç (t, f, dB) ve kesitler.'; }
+document.addEventListener('change', e => { if (e.target && ['sgMap', 'sgLog', 'sgSl'].includes(e.target.id) && S.specView) applyClim(); });
 function addDerived(name, data, src, i0, full) {
   if (!S.derived) S.derived = {id: 'derived', name: 'Türetilmiş kanallar', derived: true, channels: [], mcache: new Map()};
   const c = new Channel({name, rest: name, base: name, comp: '', dev: 'türetilmiş', kind: src ? src.kind : 'calc', n: data.length, file: S.derived, label: name, derived: true, data, varIdx: -1});
@@ -551,11 +555,12 @@ function helpBody() {
 }
 
 /* ---------- başlatma ---------- */
-function onHover1(p) { const P = S.plot, hx = p ? p.x : null; if (P.axes.length > 1 && P.linkX && P.hoverX !== hx) { P.hoverX = hx; P.invalidate(); } else P.hoverX = hx; $('#hoverinfo').textContent = p ? `t = ${fmtNum(p.x, 7)} s    y = ${fmtNum(p.y, 6)}` : ''; }
+function onHover1(p) { const P = S.plot, hx = p ? p.x : null; if ((P.crosshair || (P.axes.length > 1 && P.linkX)) && P.hoverX !== hx) { P.hoverX = hx; P.invalidate(); } else P.hoverX = hx; $('#hoverinfo').textContent = p ? `t = ${fmtNum(p.x, 7)} s    y = ${fmtNum(p.y, 6)}` : ''; }
 function onPlotChange(kind) {
   if (kind === 'view') { syncLimits(); updateStats(); }
   else if (kind === 'active') { refreshAxesUI(); refreshTraceInfo(); updateStats(); }
   else if (kind === 'cursor') {
+    renderCursorPanel(S.plot);
     const c = S.plot.cursors; if (c.length === 2) { const dx = c[1].x - c[0].x, dy = c[1].y - c[0].y; $('#st2').textContent = `ΔX = ${fmtNum(dx, 6)} s   ΔY = ${fmtNum(dy, 6)}   1/ΔX = ${fmtNum(1 / Math.abs(dx), 6)} Hz`; } else $('#st2').textContent = c.length ? `İmleç: t = ${fmtNum(c[0].x, 7)} s, y = ${fmtNum(c[0].y, 6)}` : '';
   }
 }
@@ -568,7 +573,7 @@ function init() {
   S.specPlot = new Plot($('#cv-spec'), {xlabel: 'Frekans (Hz)', xName: 'f', emptyText: 'Spektrum için sağdaki "Analiz" sekmesinden "Spektrumu hesapla"ya basın',
     onHover: p => { $('#hoverinfo').textContent = p ? `f = ${fmtNum(p.x, 7)} Hz    y = ${fmtNum(p.y, 6)}` : ''; }});
   S.xyPlot = new Plot($('#cv-xy'), {xlabel: 'x', xName: 'x', emptyText: 'Sağdaki “Veri” sekmesinden X ve Y sütunlarını seçip “Çiz”e basın', onHover: p => { $('#hoverinfo').textContent = p ? `x = ${fmtNum(p.x, 7)}    y = ${fmtNum(p.y, 6)}` : ''; }}); S.xyPlot.grms = {mode: 'off', dc: true};
-  S.specView = new SpecView($('#cv-sgram')); S.specView.onHover = p => { $('#hoverinfo').textContent = `t = ${fmtNum(p.t, 6)} s   f = ${fmtNum(p.f, 6)} Hz` + (p.v != null ? `   ${p.v.toFixed(1)} dB` : ''); };
+  S.specView = new SpecView($('#cv-sgram')); S.specView.onCursor = c => sgCursorInfo(c); S.specView.onHover = p => { $('#hoverinfo').textContent = `t = ${fmtNum(p.t, 6)} s   f = ${fmtNum(p.f, 6)} Hz` + (p.v != null ? `   ${p.v.toFixed(1)} dB` : ''); };
   buildToolbar(); buildRight(); renderChips(); renderTree(); refreshAll(); refreshCleanInfo(); setMode('pan');
   for (const b of $('#viewtabs').children) b.onclick = () => { switchView(b.dataset.v); };
   $('#btnBin').onclick = () => binDialog();
@@ -606,7 +611,9 @@ function init() {
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); undo(); } else if ((e.ctrlKey || e.metaKey) && (k === 'y' || (e.shiftKey && k === 'z'))) { e.preventDefault(); redo(); }
     else if (k === 'delete' || k === 'backspace') { if (selCount()) { e.preventDefault(); deleteSelection(); } }
-    else if (k === 'escape') S.plot.clearSelection(); else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
+    else if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); viewHist(e.key === 'ArrowLeft' ? -1 : 1); }
+    else if (k === 'x' && !e.ctrlKey && !e.metaKey && !e.altKey) toggleCrosshair();
+    else if (k === 'escape') { S.plot.clearSelection(); if (S.plot.cursors.length) { S.plot.cursors = []; S.plot.invalidate(); onPlotChange('cursor'); } } else if (k === 'home') curPlot().fitAll(); else if (k === '-' || k === '_') curPlot().zoomOut(); else if (k === '+' || k === '=') curPlot().zoomIn(); else if (k === 'p') setMode('pan'); else if (k === 'z') setMode('zoom'); else if (k === 'c') setMode('cursor'); else if (k === 'b') { setMode('box'); setTab('clean'); } else if (k === 'l') { setMode('lasso'); setTab('clean'); }
   });
   S.specPlot.grms = S.plot.grms; S.plot.onChangeOrig = S.plot.onChange;
   // olay güdümlü arayüz yenileme (eskiden 1,5 sn'de bir): veri/grafik değişince ve kullanıcı etkileşiminden sonra bir kez

@@ -290,3 +290,11 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 .ctab.closeall:hover{color:var(--fg);background:var(--hover)}
 .guifig .gtb td{cursor:default;user-select:none}
 .guifig .gtb td.gsel{background:#cfe3f7;outline:1px solid #6aa3d8;outline-offset:-1px}
+
+.lrow .yr{font-size:9px;font-weight:700;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:0 2px;margin-left:3px}
+.curpanel{position:absolute;right:14px;bottom:46px;z-index:6;min-width:210px;max-width:300px;max-height:60%;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.18);font-size:11px}
+.curpanel.hidden{display:none}.curpanel .cph{display:flex;gap:6px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel)}
+.curpanel .cph b{flex:1}.curpanel select{font-size:11px;padding:1px 2px}.curpanel .cpb{padding:4px 6px}
+.curpanel .cpt{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.curpanel .cpt th{text-align:left;color:var(--muted);font-weight:500}.curpanel .cpt td{padding:1px 4px 1px 0}
+.curpanel .cpp{margin-top:5px;border-top:1px dashed var(--border);padding-top:3px}.curpanel .cpk{font-weight:600;margin-bottom:1px}
+.curpanel .cpr{display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}.curpanel .cpr span:first-child{color:var(--muted)}

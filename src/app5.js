@@ -51,9 +51,9 @@ function decorate(root) {
 }
 
 /* ---------- yapısal işlemler + geri al ---------- */
-function snapAxes(P) { return {axes: P.axes.slice(), active: P.active, st: P.axes.map(a => ({a, traces: a.traces.slice(), hw: a.hw, ylabel: a.ylabel, act: a.active}))}; }
+function snapAxes(P) { return {axes: P.axes.slice(), active: P.active, st: P.axes.map(a => ({a, traces: a.traces.slice(), yr: a.traces.map(t => !!t.yr), hw: a.hw, ylabel: a.ylabel, ylabel2: a.ylabel2, act: a.active}))}; }
 function restoreAxes(P, sn) {
-  P.axes.length = 0; for (const e of sn.st) { e.a.traces = e.traces.slice(); e.a.hw = e.hw; e.a.ylabel = e.ylabel; e.a.active = e.act; P.axes.push(e.a); }
+  P.axes.length = 0; for (const e of sn.st) { e.a.traces = e.traces.slice(); e.a.traces.forEach((t, i) => { t.yr = e.yr ? e.yr[i] : t.yr; }); e.a.hw = e.hw; e.a.ylabel = e.ylabel; e.a.ylabel2 = e.ylabel2; e.a.active = e.act; P.axes.push(e.a); }
   P.active = sn.active; P.cursors = []; P.sel = null; afterStruct(P);
 }
 function afterStruct(P) { if (P === S.plot) refreshAll(); else P.invalidate(); }
@@ -71,7 +71,7 @@ function mergeUp(P, ax) { const i = P.axes.indexOf(ax); if (i < 1) return; const
 function moveTrace(P, ax, k, to) {
   structOp(P, 'İz taşındı', () => {
     const tr = ax.traces.splice(k, 1)[0]; ax.active = 0; let dst = to; if (!dst) dst = P.addAxes();
-    dst.traces.push(tr); P.active = dst; if (!ax.traces.length && ax !== dst) dropAxes(P, ax); else relabel(P, ax); relabel(P, dst);
+    tr.yr = false; dst.traces.push(tr); if (P === S.plot && typeof assignYAxes === 'function') assignYAxes(dst, [tr]); P.active = dst; if (!ax.traces.length && ax !== dst) dropAxes(P, ax); else relabel(P, ax); relabel(P, dst);
   });
 }
 function ctxMenu(x, y, items) {
@@ -94,6 +94,10 @@ function traceMenu(P, ax, k, x, y) {
     P.axes.forEach((a, i) => { if (a !== ax) items.push({t: 'Alt grafik ' + (i + 1) + (a.traces[0] ? ' (' + a.traces[0].label + ')' : ''), ic: 'layers', fn: () => moveTrace(P, ax, k, a)}); });
     if (ax.traces.length > 1) items.push({t: 'Yeni alt grafik olarak ayır', ic: 'plus', fn: () => moveTrace(P, ax, k, null)});
   }
+  if (tr.kind === 'ts' || (tr.x && !tr.bars)) {
+    const canR = tr.yr || ax.traces.filter(t => t !== tr && !t.yr).length > 0;
+    if (canR) items.push('-', {t: tr.yr ? 'Sol Y eksenine taşı' : 'Sağ Y eksenine taşı', ic: 'layers', fn: () => { tr.yr = !tr.yr; if (!ax.traces.some(t => !t.yr)) ax.traces.forEach(t => { t.yr = false; }); ax.yAuto = true; ax.yAuto2 = true; if (typeof axisLabelFor === 'function' && P === S.plot) axisLabelFor(ax); P.invalidate(); afterStruct(P); }});
+  }
   ctxMenu(x, y, items);
 }
 
@@ -107,7 +111,7 @@ function ensureOv(P) {
 function syncOverlay(P) {
   const ov = ensureOv(P);
   if (!P.axes.length || !P.axes[0].rect || !P.W) { if (ov.firstChild) { ov.replaceChildren(); ov._parts = []; ov._sig = ''; } return; }
-  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0)).join('|') + ':' + (a.active || 0)).join(';');
+  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
   if (sig !== ov._sig) { ov._sig = sig; buildOv(P, ov); }
   for (const p of ov._parts) p.upd();
 }
@@ -130,7 +134,7 @@ function buildOv(P, ov) {
       ax.traces.forEach((tr, k) => {
         if (tr.noLegend) return;
         const ex = h('span', {class: 'ex'}), x = h('button', {class: 'ib x', title: 'İzi kaldır', 'aria-label': 'İzi kaldır'}); x.innerHTML = ic('close', 10);
-        const row = h('div', {class: 'lrow' + (tr.visible ? '' : ' off') + (P.active === ax && k === (ax.active || 0) ? ' cur' : ''), draggable: main ? 'true' : null, tabindex: 0, title: 'Tıkla: göster/gizle · Sağ tık: seçenekler' + (main ? ' · Sürükle: başka alt grafiğe taşı' : '')}, h('span', {class: 'sw', style: 'background:' + tr.color}), h('span', {class: 'nm'}, tr.label), ex, x);
+        const row = h('div', {class: 'lrow' + (tr.visible ? '' : ' off') + (P.active === ax && k === (ax.active || 0) ? ' cur' : ''), draggable: main ? 'true' : null, tabindex: 0, title: 'Tıkla: göster/gizle · Sağ tık: seçenekler' + (main ? ' · Sürükle: başka alt grafiğe taşı' : '')}, h('span', {class: 'sw', style: 'background:' + tr.color}), h('span', {class: 'nm'}, tr.label), ...(tr.yr ? [h('span', {class: 'yr', title: 'Sağ Y ekseni'}, 'R')] : []), ex, x);
         row.onclick = e => { if (e.target.closest('.x')) return; tr.visible = !tr.visible; ax.active = k; P.active = ax; P.invalidate(); afterStruct(P); };
         row.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); } else if (e.key === 'Delete') removeTraceUndo(P, ax, k); };
         x.onclick = e => { e.stopPropagation(); removeTraceUndo(P, ax, k); };

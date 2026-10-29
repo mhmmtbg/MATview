@@ -83,6 +83,7 @@ class Plot {
     this.cv = canvas; this.opts = opts; this.mode = 'pan';
     this.axes = []; this.linkX = true; this.grid = true; this.legend = true; this.grms = {mode: 'off', dc: true};
     this.cursors = []; this.sel = null; this.playhead = null; this.hover = null;
+    this.cursorOpt = {snap: 'off', max: 12}; this.crosshair = false; this.hist = {back: [], fwd: []}; this._lastWheel = 0;
     this.xBounds = null; this.dirty = true; this.dpr = window.devicePixelRatio || 1;
     this.onChange = opts.onChange || (() => {}); this.onSelect = opts.onSelect || (() => {}); this.onHover = opts.onHover || (() => {});
     this.onNeedData = opts.onNeedData || (() => {}); this.onDraw = opts.onDraw || (() => {});
@@ -92,10 +93,30 @@ class Plot {
     this.resize();
   }
   addAxes(o = {}) {
-    const ax = Object.assign({traces: [], xlim: [0, 1], ylim: [0, 1], yAuto: true, xlog: false, ylog: false, ylabel: '', xlabel: '', title: '', active: 0}, o);
+    const ax = Object.assign({traces: [], xlim: [0, 1], ylim: [0, 1], yAuto: true, ylim2: [0, 1], yAuto2: true, ylabel2: '', xlog: false, ylog: false, ylabel: '', xlabel: '', title: '', active: 0}, o);
     if (this.axes.length && this.linkX) ax.xlim = this.axes[0].xlim.slice();
     this.axes.push(ax); this.invalidate(); return ax;
   }
+  // ---------- çift Y ekseni: tr.yr = true olan izler sağ eksene (ax.ylim2, doğrusal) çizilir ----------
+  hasRight(ax) { return ax.traces.some(t => t.yr); }
+  _r(ax, fn) {   // sağ eksen bağlamında çalıştır: ylim/ylog geçici olarak sağ eksenin değerleri
+    if (!ax.ylim2) ax.ylim2 = [0, 1];
+    const yl = ax.ylim, lg = ax.ylog, ya = ax.yAuto; ax.ylim = ax.ylim2; ax.ylog = false; ax.yAuto = ax.yAuto2 !== false;
+    try { return fn(); } finally { ax.ylim2 = ax.ylim; ax.yAuto2 = ax.yAuto; ax.ylim = yl; ax.ylog = lg; ax.yAuto = ya; }
+  }
+  // sol eksen değeri → aynı pikseldeki sağ eksen değeri
+  leftToRight(ax, v) { const py = this.yPx(ax, v); return this._r(ax, () => this.pxY(ax, py)); }
+  // ---------- görünüm geçmişi (Alt+← / Alt+→) ----------
+  viewState() { return {axes: this.axes.slice(), v: this.axes.map(a => ({xl: a.xlim.slice(), yl: a.ylim.slice(), ya: a.yAuto, yl2: (a.ylim2 || [0, 1]).slice(), ya2: a.yAuto2 !== false}))}; }
+  _sameView(p, q) { return p && q && p.axes.length === q.axes.length && p.axes.every((a, i) => a === q.axes[i]) && JSON.stringify(p.v) === JSON.stringify(q.v); }
+  pushView() {
+    if (!this.axes.length) return; const st = this.viewState(), b = this.hist.back;
+    if (this._sameView(b[b.length - 1], st)) return;
+    b.push(st); if (b.length > 100) b.shift(); this.hist.fwd = [];
+  }
+  _applyView(st) { st.axes.forEach((a, i) => { if (!this.axes.includes(a)) return; const v = st.v[i]; a.xlim = v.xl.slice(); a.ylim = v.yl.slice(); a.yAuto = v.ya; a.ylim2 = v.yl2.slice(); a.yAuto2 = v.ya2; }); this.invalidate(); this.onChange('view'); }
+  viewBack() { const b = this.hist.back; while (b.length && !b[b.length - 1].axes.some(a => this.axes.includes(a))) b.pop(); if (!b.length) return false; const cur = this.viewState(); let st = b.pop(); if (this._sameView(st, cur) && b.length) st = b.pop(); this.hist.fwd.push(cur); this._applyView(st); return true; }
+  viewFwd() { const f = this.hist.fwd; if (!f.length) return false; this.hist.back.push(this.viewState()); this._applyView(f.pop()); return true; }
   removeAxes(ax) { const i = this.axes.indexOf(ax); if (i >= 0) this.axes.splice(i, 1); this.cursors = []; this.sel = null; if (this.active === ax) this.active = null; this.invalidate(); }
   invalidate() { if (this.dirty && this._raf) return; this.dirty = true; if (!this._raf) this._raf = requestAnimationFrame(() => { this._raf = null; this.draw(); }); }
   resize() {
@@ -109,7 +130,7 @@ class Plot {
   // ---------- yerleşim ----------
   layout(W, H) {
     const n = this.axes.length; if (!n) return;
-    const L = 74, R = 18, T = this.axes.some(a => a.title) ? 26 : 10, B = 40, gap = this.axes.some(a => a.title) ? 40 : 26;
+    const L = 74, R = this.axes.some(a => this.hasRight(a)) ? 72 : 18, T = this.axes.some(a => a.title) ? 26 : 10, B = 40, gap = this.axes.some(a => a.title) ? 40 : 26;
     const avail = Math.max(60 * n, H - T - B - gap * (n - 1));
     let tw = 0; for (const a of this.axes) tw += a.hw || 1;
     let y = T;
@@ -150,14 +171,17 @@ class Plot {
     return ' — ' + Math.sqrt(ms).toPrecision(4) + ' Grms';
   }
   zoomOut(f = 2) {
+    this.pushView();
     for (const ax of this.axes) {
       this.zoomX(ax, f, (ax.xlim[0] + ax.xlim[1]) / 2);
       if (!ax.yAuto) this.zoomY(ax, f, (ax.ylim[0] + ax.ylim[1]) / 2);
+      if (this.hasRight(ax) && ax.yAuto2 === false) this.zoomY2(ax, f, (ax.ylim2[0] + ax.ylim2[1]) / 2);
     }
     this.invalidate(); this.onChange('view');
   }
   zoomIn() { this.zoomOut(0.5); }
   fitAll(xOnly) {
+    this.pushView();
     const b = this.bounds();
     for (const ax of this.axes) {
       if (this.linkX || true) {
@@ -166,7 +190,7 @@ class Plot {
         for (const a of src) for (const tr of a.traces) { const bb = trBounds(tr, a.xlog); if (!bb) continue; lo = Math.min(lo, bb[0]); hi = Math.max(hi, bb[1]); }
         if (isFinite(lo)) { if (hi <= lo) hi = lo + 1; ax.xlim = [lo, hi]; }
       }
-      if (!xOnly) { ax.yAuto = true; }
+      if (!xOnly) { ax.yAuto = true; ax.yAuto2 = true; }
     }
     this.invalidate(); this.onChange('view');
   }
@@ -183,14 +207,18 @@ class Plot {
     if (!this.axes.length) { ctx.fillStyle = T.muted; ctx.font = '14px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.fillText(this.opts.emptyText || 'Soldaki listeden bir kanalı çift tıklayın veya buraya sürükleyin', W / 2, H / 2); return; }
     this.layout(W, H);
     for (const ax of this.axes) { this.autoY(ax); this.drawAxes(ctx, ax, T, forExport); }
-    if (!forExport && this.hoverX != null && this.axes.length > 1 && this.linkX) { ctx.save(); ctx.strokeStyle = T.muted; ctx.setLineDash([2, 3]); for (const ax of this.axes) { const x = this.xPx(ax, this.hoverX), r = ax.rect; if (x >= r.x && x <= r.x + r.w) { ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, r.y); ctx.lineTo(Math.round(x) + .5, r.y + r.h); ctx.stroke(); } } ctx.restore(); }
+    if (!forExport && this.crosshair && this.hoverX != null) this.drawCrosshair(ctx, T);
+    else if (!forExport && this.hoverX != null && this.axes.length > 1 && this.linkX) { ctx.save(); ctx.strokeStyle = T.muted; ctx.setLineDash([2, 3]); for (const ax of this.axes) { const x = this.xPx(ax, this.hoverX), r = ax.rect; if (x >= r.x && x <= r.x + r.w) { ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, r.y); ctx.lineTo(Math.round(x) + .5, r.y + r.h); ctx.stroke(); } } ctx.restore(); }
     this.drawOverlay(ctx, T, forExport);
   }
   autoY(ax) {
-    if (!ax.yAuto) return;
+    if (this.hasRight(ax) && ax.yAuto2 !== false) this._r(ax, () => this._autoY(ax, true));
+    if (ax.yAuto) this._autoY(ax, false);
+  }
+  _autoY(ax, right) {
     let lo = Infinity, hi = -Infinity;
     for (const tr of ax.traces) {
-      if (!tr.visible) continue;
+      if (!tr.visible || !!tr.yr !== right) continue;
       const mm = trYRange(tr, ax); if (!mm) continue;
       if (mm[0] < lo) lo = mm[0]; if (mm[1] > hi) hi = mm[1];
     }
@@ -218,7 +246,7 @@ class Plot {
     // izler
     ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
     ax._lab = [];
-    for (let k = 0; k < ax.traces.length; k++) { const tr = ax.traces[k]; if (tr.visible) drawTrace(ctx, tr, ax, this, T); }
+    for (let k = 0; k < ax.traces.length; k++) { const tr = ax.traces[k]; if (!tr.visible) continue; if (tr.yr) this._r(ax, () => drawTrace(ctx, tr, ax, this, T)); else drawTrace(ctx, tr, ax, this, T); }
     ctx.restore(); ctx.save();
     // çerçeve ve tikler
     ctx.strokeStyle = T.axis; ctx.strokeRect(r.x + .5, r.y + .5, r.w, r.h);
@@ -237,6 +265,15 @@ class Plot {
     // başlık / eksen adı
     ctx.fillStyle = T.fg; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     if (ax.title) { ctx.font = '600 12px system-ui,sans-serif'; ctx.fillText(ax.title, r.x + r.w / 2, r.y - 1); ctx.font = '11px system-ui,sans-serif'; }
+    if (this.hasRight(ax)) {   // sağ Y ekseni
+      const yt2 = niceTicks(ax.ylim2[0], ax.ylim2[1], Math.max(3, Math.floor(r.h / 40))), Y2 = v => r.y + r.h - (v - ax.ylim2[0]) / (ax.ylim2[1] - ax.ylim2[0]) * r.h;
+      ctx.strokeStyle = T.axis; ctx.beginPath();
+      for (const v of yt2.ticks) { if (v < ax.ylim2[0] || v > ax.ylim2[1]) continue; const y = Math.round(Y2(v)) + .5; ctx.moveTo(r.x + r.w, y); ctx.lineTo(r.x + r.w + 4, y); }
+      ctx.stroke(); ctx.fillStyle = T.fg; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      for (const v of yt2.ticks) { if (v < ax.ylim2[0] || v > ax.ylim2[1]) continue; ctx.fillText(fmtTick(v, yt2.step), r.x + r.w + 7, Y2(v)); }
+      const rc = ax.traces.find(t => t.yr && t.visible); if (rc) { ctx.fillStyle = rc.color; ctx.fillRect(r.x + r.w + 1, r.y, 2, r.h); }
+      if (ax.ylabel2) { ctx.save(); ctx.fillStyle = T.muted; ctx.translate(r.x + r.w + 62, r.y + r.h / 2); ctx.rotate(Math.PI / 2); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ax.ylabel2, 0, 0); ctx.restore(); }
+    }
     ctx.fillStyle = T.muted; ctx.textBaseline = 'top';
     const xl = ax.xlabel || this.opts.xlabel || 'Zaman (s)';
     if (ax === this.axes[this.axes.length - 1] || forExport) ctx.fillText(xl, r.x + r.w / 2, r.y + r.h + 21);
@@ -245,7 +282,7 @@ class Plot {
     if (this.legend && (forExport || !this.domLegend)) {
       const vis = ax.traces.filter(t => t.visible && !t.noLegend); if (vis.length) {
         ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        const lbl = new Map(vis.map(t => [t, t.label + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
+        const lbl = new Map(vis.map(t => [t, t.label + (t.yr ? ' (sağ Y)' : '') + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
         const bw = wmax + 34, bh = vis.length * 16 + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx = Math.max(r.x, Math.min(r.x + r.w - bw, r.x + r.w - bw - 6 + lp.dx)), by = Math.max(r.y, Math.min(r.y + r.h - bh, r.y + 6 + lp.dy));
         ctx.globalAlpha = .92; ctx.fillStyle = T.box; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1;
         ctx.strokeStyle = T.grid; ctx.strokeRect(bx + .5, by + .5, bw, bh);
@@ -253,6 +290,36 @@ class Plot {
       }
     }
     ctx.restore();
+  }
+  // her alt grafikte hoverX'teki tüm görünür izlerin değeri (senkron dikey imleç)
+  valueAt(tr, ax, x) {
+    if (tr.kind === 'ts') { const ch = tr.ch; if (!ch.data || !ch.n) return null; const i = Math.max(0, Math.min(ch.n - 1, Math.round(ch.timeIdx(x)))); const v = ch.data[i]; if ((ch.del && ch.del[i]) || !isFinite(v)) return null; const tt = ch.t(i); if (ch.n > 1 && Math.abs(tt - x) > 3 * Math.abs(ch.t(Math.min(ch.n - 1, i + 1)) - ch.t(Math.max(0, i - 1)) || 1e-12)) return null; return {x: tt, y: v}; }
+    if (tr.bars || !tr.x || !tr.x.length) return null;
+    let i = lowerBound(tr.x, x); if (i >= tr.x.length) i = tr.x.length - 1; if (i > 0 && Math.abs(tr.x[i - 1] - x) < Math.abs(tr.x[i] - x)) i--;
+    return isFinite(tr.y[i]) ? {x: tr.x[i], y: tr.y[i]} : null;
+  }
+  drawCrosshair(ctx, T) {
+    const x0 = this.hoverX;
+    for (const ax of this.axes) {
+      const r = ax.rect, X = this.xPx(ax, x0); if (!(X >= r.x && X <= r.x + r.w)) continue;
+      ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+      ctx.strokeStyle = T.muted; ctx.setLineDash([2, 3]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(Math.round(X) + .5, r.y); ctx.lineTo(Math.round(X) + .5, r.y + r.h); ctx.stroke(); ctx.setLineDash([]);
+      const rows = [];
+      for (const tr of ax.traces) {
+        if (!tr.visible || tr.noLegend) continue; const v = this.valueAt(tr, ax, x0); if (!v) continue;
+        const py = tr.yr ? this._r(ax, () => this.yPx(ax, v.y)) : this.yPx(ax, v.y), px = this.xPx(ax, v.x);
+        ctx.fillStyle = tr.color; ctx.beginPath(); ctx.arc(px, py, 3, 0, 6.283); ctx.fill();
+        rows.push({c: tr.color, t: (tr.label.length > 28 ? tr.label.slice(0, 27) + '…' : tr.label) + ': ' + fmtNum(v.y, 6)});
+      }
+      if (rows.length) {
+        ctx.font = '11px system-ui,sans-serif'; const head = (this.opts.xName || 't') + ' = ' + fmtNum(x0, 7); let w = ctx.measureText(head).width; for (const q of rows) w = Math.max(w, ctx.measureText(q.t).width + 12);
+        const bw = w + 12, bh = rows.length * 14 + 22; let bx = X + 10; if (bx + bw > r.x + r.w) bx = X - bw - 10; const by = r.y + Math.min(34, Math.max(6, r.h - bh - 6));
+        ctx.globalAlpha = .92; ctx.fillStyle = T.box; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1; ctx.strokeStyle = T.grid; ctx.strokeRect(bx + .5, by + .5, bw, bh);
+        ctx.fillStyle = T.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(head, bx + 6, by + 10);
+        rows.forEach((q, i) => { const y = by + 24 + i * 14; ctx.fillStyle = q.c; ctx.fillRect(bx + 6, y - 1, 8, 3); ctx.fillStyle = T.fg; ctx.fillText(q.t, bx + 18, y); });
+      }
+      ctx.restore();
+    }
   }
   drawOverlay(ctx, T, forExport) {
     // seçim kutusu / kement / yakınlaştırma çerçevesi
@@ -273,7 +340,8 @@ class Plot {
       ctx.setLineDash([]);
       for (const h of sel.hits || []) {
         const ch = h.tr.ch, idx = h.idx, step = Math.max(1, Math.floor(idx.length / 20000));
-        for (let k = 0; k < idx.length; k += step) { const i = idx[k]; const x = this.xPx(ax, ch.t(i)), y = this.yPx(ax, ch.data[i]); ctx.fillRect(x - 2.5, y - 2.5, 5, 5); }
+        const yp = h.tr.yr ? v => this._r(ax, () => this.yPx(ax, v)) : v => this.yPx(ax, v);
+        for (let k = 0; k < idx.length; k += step) { const i = idx[k]; const x = this.xPx(ax, ch.t(i)), y = yp(ch.data[i]); ctx.fillRect(x - 2.5, y - 2.5, 5, 5); }
       }
       ctx.restore();
     }
@@ -297,14 +365,15 @@ class Plot {
   }
   drawCursor(ctx, c, k, T) {
     const ax = c.axes; if (!this.axes.includes(ax) || !ax.rect) return;
-    const x = this.xPx(ax, c.x), y = this.yPx(ax, c.y), r = ax.rect;
+    const x = this.xPx(ax, c.x), y = c.tr.yr ? this._r(ax, () => this.yPx(ax, c.y)) : this.yPx(ax, c.y), r = ax.rect;
     if (x < r.x - 1 || x > r.x + r.w + 1) return;
     ctx.save(); ctx.beginPath(); ctx.rect(r.x - 1, r.y - 1, r.w + 2, r.h + 2); ctx.clip();
     ctx.strokeStyle = c.tr.color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(x + .5, r.y); ctx.lineTo(x + .5, r.y + r.h); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = T.bg; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 4, 0, 6.283); ctx.fill(); ctx.stroke();
-    const xl = this.opts.xName || 't', lines = [c.tr.label, `${xl} = ${fmtNum(c.x, 7)}`, `y = ${fmtNum(c.y, 6)}`];
-    if (c.i != null) lines.push('i = ' + c.i);
+    const xl = this.opts.xName || 't', lines = [(this.cursors.length > 1 ? 'C' + (k + 1) + ' · ' : '') + c.tr.label, `${xl} = ${fmtNum(c.x, 7)}`, `y = ${fmtNum(c.y, 6)}`];
+    if (c.i != null && this.cursors.length < 3) lines.push('i = ' + c.i);
+    if (c.snap) lines.push(c.snap === 'peak' ? 'tepe' : 'çukur');
     ctx.font = '11px system-ui,sans-serif'; let w = 0; for (const l of lines) w = Math.max(w, ctx.measureText(l).width);
     const bw = w + 14, bh = lines.length * 15 + 8; let bx = x + 10, by = y - bh - 8;
     if (bx + bw > r.x + r.w) bx = x - bw - 10; if (by < r.y) by = y + 10; if (by + bh > r.y + r.h) by = r.y + r.h - bh;
@@ -321,7 +390,7 @@ class Plot {
     cv.addEventListener('pointermove', e => this._move(e));
     cv.addEventListener('pointerup', e => this._up(e));
     cv.addEventListener('pointercancel', e => this._up(e));
-    cv.addEventListener('pointerleave', () => { this.hover = null; this.onHover(null); });
+    cv.addEventListener('pointerleave', () => { this.hover = null; this.onHover(null); if (this.crosshair && this.hoverX != null) { this.hoverX = null; this.invalidate(); } });
     cv.addEventListener('wheel', e => this._wheel(e), {passive: false});
     cv.addEventListener('dblclick', e => { const h = this.hit(e); if (h && this.mode !== 'cursor') this.fitAll(false); });
     cv.addEventListener('contextmenu', e => e.preventDefault());
@@ -334,6 +403,7 @@ class Plot {
       if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return {ax, zone: 'plot', px, py};
       if (px < r.x && py >= r.y && py <= r.y + r.h) return {ax, zone: 'y', px, py};
       if (px >= r.x && px <= r.x + r.w && py > r.y + r.h && py < r.y + r.h + 34) return {ax, zone: 'x', px, py};
+      if (px > r.x + r.w && px < r.x + r.w + 70 && py >= r.y && py <= r.y + r.h && this.hasRight(ax)) return {ax, zone: 'y2', px, py};
     }
     return null;
   }
@@ -346,34 +416,46 @@ class Plot {
     for (const a of targets) a.xlim = [lo, hi];
   }
   setYlim(ax, lo, hi) { if (!(hi > lo)) return; if (ax.ylog && lo <= 0) return; ax.ylim = [lo, hi]; ax.yAuto = false; }
+  setYlim2(ax, lo, hi) { if (!(hi > lo)) return; ax.ylim2 = [lo, hi]; ax.yAuto2 = false; }
+  zoomY2(ax, f, cy) { const [a, b] = ax.ylim2; this.setYlim2(ax, cy - (cy - a) * f, cy + (b - cy) * f); }
   zoomX(ax, f, cx) { let [a, b] = ax.xlim; if (ax.xlog) { const l0 = Math.log10(a), l1 = Math.log10(b), c = Math.log10(cx); this.setXlim(ax, Math.pow(10, c - (c - l0) * f), Math.pow(10, c + (l1 - c) * f)); } else this.setXlim(ax, cx - (cx - a) * f, cx + (b - cx) * f); }
   zoomY(ax, f, cy) { let [a, b] = ax.ylim; if (ax.ylog) { const l0 = Math.log10(a), l1 = Math.log10(b), c = Math.log10(cy); this.setYlim(ax, Math.pow(10, c - (c - l0) * f), Math.pow(10, c + (l1 - c) * f)); } else this.setYlim(ax, cy - (cy - a) * f, cy + (b - cy) * f); }
   _wheel(e) {
     const h = this.hit(e); if (!h) return; e.preventDefault();
+    const now = performance.now(); if (now - this._lastWheel > 600) this.pushView(); this._lastWheel = now;
     const f = Math.pow(1.0018, e.deltaY * (e.deltaMode === 1 ? 33 : 1)), {ax} = h;
-    const cx = this.pxX(ax, Math.min(Math.max(h.px, ax.rect.x), ax.rect.x + ax.rect.w)), cy = this.pxY(ax, Math.min(Math.max(h.py, ax.rect.y), ax.rect.y + ax.rect.h));
-    if (h.zone === 'y' || (h.zone === 'plot' && e.shiftKey)) this.zoomY(ax, f, cy);
+    const pyc = Math.min(Math.max(h.py, ax.rect.y), ax.rect.y + ax.rect.h), cx = this.pxX(ax, Math.min(Math.max(h.px, ax.rect.x), ax.rect.x + ax.rect.w)), cy = this.pxY(ax, pyc);
+    const right = this.hasRight(ax), cy2 = right ? this._r(ax, () => this.pxY(ax, pyc)) : 0;
+    if (h.zone === 'y2') this.zoomY2(ax, f, cy2);
+    else if (h.zone === 'y' || (h.zone === 'plot' && e.shiftKey)) { this.zoomY(ax, f, cy); if (right && h.zone === 'plot') this.zoomY2(ax, f, cy2); }
     else if (h.zone === 'x' || !e.ctrlKey) this.zoomX(ax, f, cx);
-    else { this.zoomX(ax, f, cx); this.zoomY(ax, f, cy); }
+    else { this.zoomX(ax, f, cx); this.zoomY(ax, f, cy); if (right) this.zoomY2(ax, f, cy2); }
     this.invalidate(); this.onChange('view');
   }
   _down(e) {
     const h = this.hit(e); if (!h) return; this.cv.setPointerCapture(e.pointerId);
     const {ax, px, py} = h; const rb = e.button === 2; if (this.active !== ax) { this.active = ax; this.onChange('active'); this.invalidate(); }
-    this.drag = {ax, zone: h.zone, x0: px, y0: py, x1: px, y1: py, xl: ax.xlim.slice(), yl: ax.ylim.slice(), moved: false, btn: e.button, shift: e.shiftKey};
-    if (h.zone !== 'plot') { this.drag.kind = 'pan'; return; }
-    if (this.mode === 'pan' || e.button === 1) { this.drag.kind = 'pan'; this.cv.style.cursor = 'grabbing'; }
-    else if (this.mode === 'zoom') { this.drag.kind = 'rubber'; this.drag.mode = 'zoom'; }
+    this.drag = {ax, zone: h.zone, x0: px, y0: py, x1: px, y1: py, xl: ax.xlim.slice(), yl: ax.ylim.slice(), yl2: (ax.ylim2 || [0, 1]).slice(), moved: false, btn: e.button, shift: e.shiftKey};
+    if (h.zone !== 'plot') { this.drag.kind = 'pan'; this.pushView(); return; }
+    if (this.mode === 'pan' || e.button === 1) { this.drag.kind = 'pan'; this.cv.style.cursor = 'grabbing'; this.pushView(); }
+    else if (this.mode === 'zoom') { this.drag.kind = 'rubber'; this.drag.mode = 'zoom'; this.pushView(); }
     else if (this.mode === 'box') { this.drag.kind = 'rubber'; this.drag.mode = 'box'; }
     else if (this.mode === 'lasso') { this.drag.kind = 'lasso'; this.drag.pts = [[px, py]]; }
-    else if (this.mode === 'cursor') { this.drag.kind = 'cursor'; this.placeCursor(ax, px, py, e.shiftKey); }
+    else if (this.mode === 'cursor') {
+      this.drag.kind = 'cursor';
+      // var olan imlece yakın tık: o imleç sürüklenir; Shift: yeni imleç eklenir; aksi hâlde tek imleç
+      let ci = -1, bd = 9;
+      this.cursors.forEach((c, k) => { if (c.axes !== ax) return; const d = Math.abs(this.xPx(ax, c.x) - px); if (d < bd) { bd = d; ci = k; } });
+      if (ci < 0) ci = e.shiftKey && this.cursors.length ? Math.min(this.cursors.length, (this.cursorOpt.max || 12) - 1) : -1;
+      this.drag.ci = ci; this.placeCursor(ax, px, py, ci);
+    }
   }
   _move(e) {
     const d = this.drag;
     if (!d) {
       const h = this.hit(e);
-      if (h && h.zone === 'plot') { const x = this.pxX(h.ax, h.px), y = this.pxY(h.ax, h.py); this.onHover({x, y, ax: h.ax}); } else this.onHover(null);
-      this.cv.style.cursor = !h ? 'default' : h.zone === 'y' ? 'ns-resize' : h.zone === 'x' ? 'ew-resize' : ({pan: 'grab', zoom: 'zoom-in', cursor: 'crosshair', box: 'crosshair', lasso: 'crosshair'}[this.mode] || 'default');
+      if (h && h.zone === 'plot') { const x = this.pxX(h.ax, h.px), y = this.pxY(h.ax, h.py); this.onHover({x, y, ax: h.ax}); if (this.crosshair && this.hoverX !== x) { this.hoverX = x; this.invalidate(); } } else { this.onHover(null); if (this.crosshair && this.hoverX != null) { this.hoverX = null; this.invalidate(); } }
+      this.cv.style.cursor = !h ? 'default' : h.zone === 'y' || h.zone === 'y2' ? 'ns-resize' : h.zone === 'x' ? 'ew-resize' : ({pan: 'grab', zoom: 'zoom-in', cursor: 'crosshair', box: 'crosshair', lasso: 'crosshair'}[this.mode] || 'default');
       return;
     }
     const [px, py] = this.pos(e); d.x1 = px; d.y1 = py;
@@ -381,6 +463,8 @@ class Plot {
     const ax = d.ax, r = ax.rect;
     if (d.kind === 'pan') {
       const dx = px - d.x0, dy = py - d.y0;
+      if (d.zone === 'y2' || (d.zone === 'plot' && this.hasRight(ax) && (ax.yAuto2 === false || Math.abs(dy) > 2))) { const s2 = dy / r.h * (d.yl2[1] - d.yl2[0]); this.setYlim2(ax, d.yl2[0] + s2, d.yl2[1] + s2); }
+      if (d.zone === 'y2') { this.invalidate(); this.onChange('view'); return; }
       if (d.zone !== 'y') {
         let lo, hi;
         if (ax.xlog) { const l0 = Math.log10(d.xl[0]), l1 = Math.log10(d.xl[1]), s = -dx / r.w * (l1 - l0); lo = Math.pow(10, l0 + s); hi = Math.pow(10, l1 + s); }
@@ -394,7 +478,7 @@ class Plot {
       this.invalidate(); this.onChange('view');
     } else if (d.kind === 'rubber') { d.x1 = Math.min(Math.max(px, r.x), r.x + r.w); d.y1 = Math.min(Math.max(py, r.y), r.y + r.h); this.invalidate(); }
     else if (d.kind === 'lasso') { d.pts.push([Math.min(Math.max(px, r.x), r.x + r.w), Math.min(Math.max(py, r.y), r.y + r.h)]); this.invalidate(); }
-    else if (d.kind === 'cursor') { this.placeCursor(ax, px, py, d.shift); }
+    else if (d.kind === 'cursor') { this.placeCursor(ax, px, py, d.ci); }
   }
   _up(e) {
     const d = this.drag; if (!d) return; this.drag = null; this.cv.style.cursor = '';
@@ -403,8 +487,8 @@ class Plot {
     if (d.kind === 'rubber') {
       const w = Math.abs(d.x1 - d.x0), h = Math.abs(d.y1 - d.y0);
       if (d.mode === 'zoom') {
-        if (w < 6 && h < 6) { const f = d.btn === 2 || d.shift ? 2 : 0.5, cx = this.pxX(ax, d.x0), cy = this.pxY(ax, d.y0); this.zoomX(ax, f, cx); this.zoomY(ax, f, cy); }
-        else { const xa = this.pxX(ax, Math.min(d.x0, d.x1)), xb = this.pxX(ax, Math.max(d.x0, d.x1)), ya = this.pxY(ax, Math.max(d.y0, d.y1)), yb = this.pxY(ax, Math.min(d.y0, d.y1)); if (w >= 6) this.setXlim(ax, xa, xb); if (h >= 6) this.setYlim(ax, ya, yb); }
+        if (w < 6 && h < 6) { const f = d.btn === 2 || d.shift ? 2 : 0.5, cx = this.pxX(ax, d.x0), cy = this.pxY(ax, d.y0); this.zoomX(ax, f, cx); this.zoomY(ax, f, cy); if (this.hasRight(ax)) this.zoomY2(ax, f, this._r(ax, () => this.pxY(ax, d.y0))); }
+        else { const xa = this.pxX(ax, Math.min(d.x0, d.x1)), xb = this.pxX(ax, Math.max(d.x0, d.x1)), ya = this.pxY(ax, Math.max(d.y0, d.y1)), yb = this.pxY(ax, Math.min(d.y0, d.y1)); if (w >= 6) this.setXlim(ax, xa, xb); if (h >= 6) { if (this.hasRight(ax)) { const y2a = this._r(ax, () => this.pxY(ax, Math.max(d.y0, d.y1))), y2b = this._r(ax, () => this.pxY(ax, Math.min(d.y0, d.y1))); this.setYlim2(ax, y2a, y2b); } this.setYlim(ax, ya, yb); } }
         this.invalidate(); this.onChange('view');
       } else if (d.mode === 'box') {
         if (w < 3 && h < 3) { this.sel = null; this.onSelect(null); this.invalidate(); return; }
@@ -418,24 +502,62 @@ class Plot {
     this.invalidate();
   }
   // en yakın örneği bul ve imleç yerleştir
-  placeCursor(ax, px, py, add) {
+  // ci: değiştirilecek imleç sırası (-1 → tek imleç; cursors.length → yeni imleç)
+  placeCursor(ax, px, py, ci) {
+    if (ci === true) ci = this.cursors.length ? Math.min(this.cursors.length, 1) : -1; else if (ci === false || ci == null) ci = -1;
     let best = null;
     for (const tr of ax.traces) {
       if (!tr.visible) continue;
-      const c = nearest(this, ax, tr, px, py); if (c && (!best || c.d < best.d)) best = c;
+      const c = tr.yr ? this._r(ax, () => nearest(this, ax, tr, px, py)) : nearest(this, ax, tr, px, py); if (c && (!best || c.d < best.d)) best = c;
     }
     if (!best) return;
     const cur = {axes: ax, tr: best.tr, x: best.x, y: best.y, i: best.i};
-    if (add && this.cursors.length) { this.cursors = [this.cursors[0], cur]; } else this.cursors = [cur];
+    const snap = this.cursorOpt.snap; if (snap && snap !== 'off') this.snapCursor(cur, px, py, snap);
+    if (ci < 0) this.cursors = [cur]; else this.cursors[ci] = cur;
+    this.cursors = this.cursors.filter(Boolean);
     this.invalidate(); this.onChange('cursor');
+  }
+  // ±14 px içindeki yerel tepe / çukur (auto: tıklanan noktaya değer olarak en yakın uç)
+  snapCursor(c, px, py, mode) {
+    const ax = c.axes, tr = c.tr, w = 14, xa = this.pxX(ax, px - w), xb = this.pxX(ax, px + w);
+    let a, b, get, tx;
+    if (tr.kind === 'ts') { const ch = tr.ch; if (!ch.data) return; a = Math.max(0, Math.floor(ch.timeIdx(xa))); b = Math.min(ch.n - 1, Math.ceil(ch.timeIdx(xb))); get = i => (ch.del && ch.del[i]) ? NaN : ch.data[i]; tx = i => ch.t(i); }
+    else if (tr.x && !tr.bars) { a = Math.max(0, lowerBound(tr.x, xa) - 1); b = Math.min(tr.x.length - 1, lowerBound(tr.x, xb)); get = i => tr.y[i]; tx = i => tr.x[i]; }
+    else return;
+    let imx = -1, imn = -1;
+    for (let i = a; i <= b; i++) { const v = get(i); if (!isFinite(v)) continue; if (imx < 0 || v > get(imx)) imx = i; if (imn < 0 || v < get(imn)) imn = i; }
+    if (imx < 0) return;
+    let i = mode === 'peak' ? imx : mode === 'valley' ? imn : null;
+    if (i == null) { const yv = tr.yr ? this._r(ax, () => this.pxY(ax, py)) : this.pxY(ax, py); i = Math.abs(get(imx) - yv) <= Math.abs(get(imn) - yv) ? imx : imn; }
+    c.i = i; c.x = tx(i); c.y = get(i); c.snap = i === imx ? 'peak' : 'valley';
+  }
+  // imleç ölçümleri: ardışık çiftler için Δ, eğim, alan (yamuk), RMS, ortalama, min/maks; x / x₁ (harmonik oranı)
+  cursorStats() {
+    const cs = this.cursors, rows = [], pairs = [];
+    cs.forEach((c, k) => rows.push({k, label: c.tr.label, x: c.x, y: c.y, ratio: k && cs[0].x ? c.x / cs[0].x : null, snap: c.snap || ''}));
+    for (let k = 1; k < cs.length; k++) {
+      const p = cs[k - 1], q = cs[k], dx = q.x - p.x, dy = q.y - p.y, o = {a: k - 1, b: k, dx, dy, inv: dx ? 1 / Math.abs(dx) : null, slope: dx ? dy / dx : null};
+      if (p.tr === q.tr) {
+        const tr = p.tr, lo = Math.min(p.x, q.x), hi = Math.max(p.x, q.x); let s1 = 0, s2 = 0, n = 0, area = 0, mn = Infinity, mx = -Infinity, px_ = null, py_ = null;
+        const add = (x, v) => { if (!isFinite(v)) return; s1 += v; s2 += v * v; n++; if (v < mn) mn = v; if (v > mx) mx = v; if (px_ !== null) area += (x - px_) * (v + py_) / 2; px_ = x; py_ = v; };
+        if (tr.kind === 'ts' && tr.ch.data) { const ch = tr.ch, i0 = Math.max(0, Math.ceil(ch.timeIdx(lo) - 1e-9)), i1 = Math.min(ch.n - 1, Math.floor(ch.timeIdx(hi) + 1e-9)); for (let i = i0; i <= i1; i++) { if (ch.del && ch.del[i]) continue; add(ch.t(i), ch.data[i]); } }
+        else if (tr.x && tr.y) { const i0 = lowerBound(tr.x, lo), i1 = Math.min(tr.x.length - 1, lowerBound(tr.x, hi + 1e-12 * Math.abs(hi)) ); for (let i = i0; i <= i1 && i < tr.x.length; i++) if (tr.x[i] <= hi) add(tr.x[i], tr.y[i]); }
+        if (n) Object.assign(o, {n, area, mean: s1 / n, rms: Math.sqrt(s2 / n), min: mn, max: mx, pp: mx - mn});
+      }
+      pairs.push(o);
+    }
+    return {rows, pairs};
   }
   makeSelection(sel) {
     // seçim kapsamındaki noktalar (yalnızca zaman izleri)
     const targets = this.selectionTargets ? this.selectionTargets(sel.axes) : sel.axes.traces.filter(t => t.visible);
     sel.hits = [];
+    let sel2 = null;
     for (const tr of targets) {
       if (tr.kind !== 'ts' || !tr.ch.data) continue;
-      const idx = pointsIn(tr, sel); if (idx.length) sel.hits.push({tr, idx});
+      let s = sel;
+      if (tr.yr) { if (!sel2) { const ax = sel.axes, cv = v => this.leftToRight(ax, v); sel2 = sel.type === 'box' ? Object.assign({}, sel, {y0: Math.min(cv(sel.y0), cv(sel.y1)), y1: Math.max(cv(sel.y0), cv(sel.y1))}) : Object.assign({}, sel, {poly: sel.poly.map(p => [p[0], cv(p[1])])}); } s = sel2; }
+      const idx = pointsIn(tr, s); if (idx.length) sel.hits.push({tr, idx});
     }
     this.sel = sel; this.onSelect(sel); this.invalidate();
   }
@@ -592,90 +714,167 @@ function inPoly(x, y, poly) {
 const CMAPS = {
   viridis: ['#440154', '#482878', '#3e4a89', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725'],
   turbo: ['#30123b', '#4662d7', '#36aaf9', '#1ae4b6', '#72fe5e', '#c7ef34', '#faba39', '#f66b19', '#ca2a04', '#7a0403'],
+  inferno: ['#000004', '#1b0c41', '#4a0c6b', '#781c6d', '#a52c60', '#cf4446', '#ed6925', '#fb9b06', '#f7d13d', '#fcffa4'],
+  magma: ['#000004', '#180f3d', '#440f76', '#721f81', '#9e2f7f', '#cd4071', '#f1605d', '#fd9668', '#feca8d', '#fcfdbf'],
+  jet: ['#00007f', '#0000ff', '#007fff', '#00ffff', '#7fff7f', '#ffff00', '#ff7f00', '#ff0000', '#7f0000'],
   gri: ['#000000', '#ffffff']
 };
 function cmapLUT(name) {
-  const st = CMAPS[name].map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+  const st = (CMAPS[name] || CMAPS.viridis).map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
   const lut = new Uint8ClampedArray(256 * 3);
   for (let i = 0; i < 256; i++) { const p = i / 255 * (st.length - 1), a = Math.min(st.length - 2, Math.floor(p)), f = p - a; for (let k = 0; k < 3; k++) lut[i * 3 + k] = st[a][k] * (1 - f) + st[a + 1][k] * f; }
   return lut;
 }
+// Spektrogram: tıklama imleç (t, f) koyar; slices = true iken sağda o andaki spektrum, altta o frekanstaki seviye-zaman kesiti
+// çizilir. logF = true: logaritmik frekans ekseni (görüntü log uzayında yeniden örneklenir).
 class SpecView {
   constructor(canvas) {
     this.cv = canvas; this.spec = null; this.xlim = [0, 1]; this.ylim = [0, 1]; this.cmap = 'viridis'; this.clim = [-100, 0];
-    this.dirty = false; this.onHover = () => {};
+    this.dirty = false; this.onHover = () => {}; this.onCursor = () => {}; this.cur = null; this.slices = false; this.logF = false;
     this.dpr = devicePixelRatio || 1;
     this._ro = new ResizeObserver(() => this.resize()); this._ro.observe(canvas.parentElement);
     canvas.addEventListener('wheel', e => this._wheel(e), {passive: false});
-    canvas.addEventListener('pointerdown', e => { const [px, py] = this.pos(e); this.drag = {px, py, xl: this.xlim.slice(), yl: this.ylim.slice()}; canvas.setPointerCapture(e.pointerId); });
+    canvas.addEventListener('pointerdown', e => { const [px, py] = this.pos(e); this.drag = {px, py, xl: this.xlim.slice(), yl: this.ylim.slice(), moved: false}; canvas.setPointerCapture(e.pointerId); });
     canvas.addEventListener('pointermove', e => this._move(e));
-    canvas.addEventListener('pointerup', () => { this.drag = null; });
+    canvas.addEventListener('pointerup', e => { const d = this.drag; this.drag = null; if (d && !d.moved && e.button === 0) { const [px, py] = this.pos(e); this.setCursorPx(px, py); } });
     canvas.addEventListener('dblclick', () => this.fit());
     this.resize();
   }
   resize() { const p = this.cv.parentElement; this.W = p.clientWidth; this.H = p.clientHeight; if (!this.W) return; this.dpr = devicePixelRatio || 1; this.cv.width = this.W * this.dpr; this.cv.height = this.H * this.dpr; this.cv.style.width = this.W + 'px'; this.cv.style.height = this.H + 'px'; this.invalidate(); }
   pos(e) { const b = this.cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; }
-  rect() { return {x: 74, y: 12, w: this.W - 74 - 86, h: this.H - 12 - 40}; }
+  rect() { const sl = this.slices && this.W > 520 && this.H > 320; return {x: 74, y: 12, w: this.W - 74 - 86 - (sl ? 160 : 0), h: this.H - 12 - 40 - (sl ? 120 : 0)}; }
+  fMin() { return this.spec ? this.spec.df : 1; }
+  // frekans ↔ eksen koordinatı (u) ↔ piksel
+  u(f) { return this.logF ? Math.log10(Math.max(f, this.fMin() * 0.5)) : f; }
+  uInv(u) { return this.logF ? Math.pow(10, u) : u; }
+  fyl() { const lo = this.logF ? Math.max(this.ylim[0], this.fMin()) : this.ylim[0]; return [this.u(lo), this.u(this.ylim[1])]; }
+  fy(f, r) { const [a, b] = this.fyl(); return r.y + r.h - (this.u(f) - a) / ((b - a) || 1) * r.h; }
+  pyF(py, r) { const [a, b] = this.fyl(); return this.uInv(a + (1 - (py - r.y) / r.h) * (b - a)); }
   setSpec(s, fs, t0) {
-    this.spec = s; this.fs = fs; this.t0 = t0 || 0; const dur = s.nf * s.dt;
+    this.spec = s; this.fs = fs; this.t0 = t0 || 0; this.cur = null;
     // yüzdelik dilimlerle otomatik renk aralığı
     const smp = []; const st = Math.max(1, Math.floor(s.z.length / 20000)); for (let i = 0; i < s.z.length; i += st) smp.push(s.z[i]); smp.sort((a, b) => a - b);
     const hi = smp[Math.floor(smp.length * 0.998)]; this.clim = [Math.max(smp[Math.floor(smp.length * 0.05)], hi - 110), hi];
     this.fit(); this.rebuild();
   }
-  fit() { if (!this.spec) return; const s = this.spec; this.xlim = [this.t0 + s.tStart, this.t0 + s.tStart + (s.nf - 1) * s.dt]; if (this.xlim[1] <= this.xlim[0]) this.xlim[1] = this.xlim[0] + 1; this.ylim = [0, this.fs / 2]; this.invalidate(); }
+  setLog(on) { this.logF = !!on; if (this.spec) { this.ylim = [this.logF ? Math.max(this.ylim[0], this.fMin()) : this.ylim[0], this.ylim[1]]; this.rebuild(); } else this.invalidate(); }
+  fit() { if (!this.spec) return; const s = this.spec; this.xlim = [this.t0 + s.tStart, this.t0 + s.tStart + (s.nf - 1) * s.dt]; if (this.xlim[1] <= this.xlim[0]) this.xlim[1] = this.xlim[0] + 1; this.ylim = [this.logF ? this.fMin() : 0, this.fs / 2]; this.invalidate(); }
+  bin(t, f) { const s = this.spec; return [Math.max(0, Math.min(s.nf - 1, Math.round((t - this.t0 - s.tStart) / s.dt))), Math.max(0, Math.min(s.nb - 1, Math.round(f / s.df)))]; }
   rebuild() {
-    const s = this.spec; if (!s) return; const c = document.createElement('canvas'); c.width = s.nf; c.height = s.nb; const g = c.getContext('2d'), im = g.createImageData(s.nf, s.nb), lut = cmapLUT(this.cmap);
+    const s = this.spec; if (!s) return;
+    // görüntü satırları u ekseninde eşit aralıklı: doğrusal → her satır bir bin; log → M satır, en yakın bin
+    let M, u0, u1, rowBin;
+    if (this.logF) { M = Math.min(1024, Math.max(256, s.nb)); u0 = Math.log10(s.df * 0.5); u1 = Math.log10((s.nb - 0.5) * s.df); rowBin = new Int32Array(M); for (let j = 0; j < M; j++) rowBin[j] = Math.max(0, Math.min(s.nb - 1, Math.round(Math.pow(10, u0 + (j + 0.5) / M * (u1 - u0)) / s.df))); }
+    else { M = s.nb; u0 = -s.df / 2; u1 = (s.nb - 0.5) * s.df; rowBin = null; }
+    this.imgU = [u0, u1];
+    const c = document.createElement('canvas'); c.width = s.nf; c.height = M; const g = c.getContext('2d'), im = g.createImageData(s.nf, M), lut = cmapLUT(this.cmap);
     const [lo, hi] = this.clim, sc = 255 / ((hi - lo) || 1);
-    for (let f = 0; f < s.nf; f++) for (let k = 0; k < s.nb; k++) { const v = Math.max(0, Math.min(255, Math.round((s.z[f * s.nb + k] - lo) * sc))); const o = ((s.nb - 1 - k) * s.nf + f) * 4; im.data[o] = lut[v * 3]; im.data[o + 1] = lut[v * 3 + 1]; im.data[o + 2] = lut[v * 3 + 2]; im.data[o + 3] = 255; }
+    for (let f = 0; f < s.nf; f++) for (let j = 0; j < M; j++) { const k = rowBin ? rowBin[j] : j; const v = Math.max(0, Math.min(255, Math.round((s.z[f * s.nb + k] - lo) * sc))); const o = ((M - 1 - j) * s.nf + f) * 4; im.data[o] = lut[v * 3]; im.data[o + 1] = lut[v * 3 + 1]; im.data[o + 2] = lut[v * 3 + 2]; im.data[o + 3] = 255; }
     g.putImageData(im, 0, 0); this.img = c; this.invalidate();
   }
   invalidate() { if (this._raf) return; this._raf = requestAnimationFrame(() => { this._raf = null; this.draw(); }); }
   draw() { const ctx = this.cv.getContext('2d'); ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.render(ctx, this.W, this.H, curTheme()); }
   toPNG(scale = 2, light = true) { const c = document.createElement('canvas'); c.width = this.W * scale; c.height = this.H * scale; const g = c.getContext('2d'); g.scale(scale, scale); this.render(g, this.W, this.H, light ? THEMES.light : curTheme()); return c; }
   toSVG(light = true) { const c = new SvgCtx(this.W, this.H); this.render(c, this.W, this.H, light ? THEMES.light : curTheme()); return c.toString(); }
+  // kesitler: o andaki spektrum (dB, bin başına) ve o frekanstaki zaman geçmişi
+  sliceT(t) { const s = this.spec, [fi] = this.bin(t, 0), out = new Float64Array(s.nb); for (let k = 0; k < s.nb; k++) out[k] = s.z[fi * s.nb + k]; return out; }
+  sliceF(f) { const s = this.spec, [, ki] = this.bin(0, f), out = new Float64Array(s.nf); for (let i = 0; i < s.nf; i++) out[i] = s.z[i * s.nb + ki]; return out; }
+  setCursorPx(px, py) {
+    const r = this.rect(); if (!this.spec || px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h) return;
+    this.setCursor(this.xlim[0] + (px - r.x) / r.w * (this.xlim[1] - this.xlim[0]), this.pyF(py, r));
+  }
+  setCursor(t, f) {
+    if (!this.spec || t == null) { this.cur = null; this.invalidate(); this.onCursor(null); return; }
+    const s = this.spec, [fi, ki] = this.bin(t, f); this.cur = {t: this.t0 + s.tStart + fi * s.dt, f: ki * s.df, v: s.z[fi * s.nb + ki], fi, ki};
+    this.invalidate(); this.onCursor(this.cur);
+  }
   render(ctx, W, H, T) {
     ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
     if (!this.spec) { ctx.fillStyle = T.muted; ctx.textAlign = 'center'; ctx.font = '14px system-ui'; ctx.fillText('Spektrogram için bir iz seçip "Hesapla"ya basın', W / 2, H / 2); return; }
     const r = this.rect(), s = this.spec;
-    const tx = t => r.x + (t - this.xlim[0]) / (this.xlim[1] - this.xlim[0]) * r.w, fy = f => r.y + r.h - (f - this.ylim[0]) / (this.ylim[1] - this.ylim[0]) * r.h;
+    const tx = t => r.x + (t - this.xlim[0]) / (this.xlim[1] - this.xlim[0]) * r.w, fy = f => this.fy(f, r);
     ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
-    // görüntü koordinatları: x -> kare, y -> bin (üstte yüksek frekans)
-    const tA = this.t0 + s.tStart, fA = (t) => (t - tA) / s.dt;
-    const sx0 = fA(this.xlim[0]) - 0.5, sx1 = fA(this.xlim[1]) + 0.5, sy0 = s.nb - 1 - this.ylim[1] / s.df - 0.5 + 0.5, sy1 = s.nb - 1 - this.ylim[0] / s.df + 0.5;
+    // görüntü koordinatları: x → kare, y → satır (üstte yüksek frekans, satırlar u ekseninde eşit)
+    const tA = this.t0 + s.tStart, fA = t => (t - tA) / s.dt, M = this.img.height, [iu0, iu1] = this.imgU, [ua, ub] = this.fyl();
+    const rowOf = u => M - (u - iu0) / (iu1 - iu0) * M;   // u → kaynak satır (üst kenar 0)
+    const sx0 = fA(this.xlim[0]) + 0.5, sx1 = fA(this.xlim[1]) + 0.5, sy0 = rowOf(ub), sy1 = rowOf(ua);
     ctx.imageSmoothingEnabled = false;
-    const dx0 = tx(tA + (Math.floor(sx0) + 0.5) * s.dt - 0 * s.dt), dummy = 0;
-    // basit eşleme: kaynak dikdörtgeni hedefe ölçekle
-    const cx0 = Math.max(0, sx0), cx1 = Math.min(s.nf, sx1), cy0 = Math.max(0, sy0), cy1 = Math.min(s.nb, sy1);
+    const cx0 = Math.max(0, sx0), cx1 = Math.min(s.nf, sx1), cy0 = Math.max(0, sy0), cy1 = Math.min(M, sy1);
     if (cx1 > cx0 && cy1 > cy0) {
       const dX0 = r.x + (cx0 - sx0) / (sx1 - sx0) * r.w, dX1 = r.x + (cx1 - sx0) / (sx1 - sx0) * r.w, dY0 = r.y + (cy0 - sy0) / (sy1 - sy0) * r.h, dY1 = r.y + (cy1 - sy0) / (sy1 - sy0) * r.h;
       ctx.drawImage(this.img, cx0, cy0, cx1 - cx0, cy1 - cy0, dX0, dY0, dX1 - dX0, dY1 - dY0);
     }
+    const c = this.cur;
+    if (c) {   // imleç artı işareti
+      const X = Math.round(tx(c.t)) + .5, Y = Math.round(fy(c.f)) + .5;
+      ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = .9; ctx.setLineDash([4, 3]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X, r.y); ctx.lineTo(X, r.y + r.h); ctx.moveTo(r.x, Y); ctx.lineTo(r.x + r.w, Y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      const lab = `t = ${fmtNum(c.t, 6)} s  f = ${fmtNum(c.f, 6)} Hz  ${c.v.toFixed(1)} dB`; ctx.font = '11px system-ui'; const w = ctx.measureText(lab).width + 10;
+      let bx = X + 8, by = Y - 22; if (bx + w > r.x + r.w) bx = X - w - 8; if (by < r.y) by = Y + 6;
+      ctx.globalAlpha = .85; ctx.fillStyle = '#000'; ctx.fillRect(bx, by, w, 17); ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(lab, bx + 5, by + 9);
+    }
     ctx.restore();
     ctx.strokeStyle = T.axis; ctx.strokeRect(r.x + .5, r.y + .5, r.w, r.h); ctx.fillStyle = T.fg; ctx.font = '11px system-ui';
-    const xt = niceTicks(this.xlim[0], this.xlim[1], Math.max(3, r.w / 90)), yt = niceTicks(this.ylim[0], this.ylim[1], Math.max(3, r.h / 40));
+    const xt = niceTicks(this.xlim[0], this.xlim[1], Math.max(3, r.w / 90));
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'; for (const v of xt.ticks) ctx.fillText(fmtTick(v, xt.step), tx(v), r.y + r.h + 6);
-    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; for (const v of yt.ticks) ctx.fillText(fmtTick(v, yt.step), r.x - 6, fy(v));
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (const v of this.fTicks(r.h)) { const y = fy(v.v); if (y < r.y - 1 || y > r.y + r.h + 1) continue; ctx.fillText(v.t, r.x - 6, y); }
     ctx.fillStyle = T.muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText('Zaman (s)', r.x + r.w / 2, r.y + r.h + 22);
-    ctx.save(); ctx.translate(14, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle'; ctx.fillText('Frekans (Hz)', 0, 0); ctx.restore();
+    ctx.save(); ctx.translate(14, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle'; ctx.fillText('Frekans (Hz)' + (this.logF ? ' — log' : ''), 0, 0); ctx.restore();
     // renk çubuğu
-    const bx = r.x + r.w + 18, bw = 14, lut = cmapLUT(this.cmap);
+    const bx = this.W - 86 + 18, bw = 14, lut = cmapLUT(this.cmap);
     for (let i = 0; i < r.h; i++) { const v = Math.round((1 - i / r.h) * 255); ctx.fillStyle = `rgb(${lut[v * 3]},${lut[v * 3 + 1]},${lut[v * 3 + 2]})`; ctx.fillRect(bx, r.y + i, bw, 1.5); }
     ctx.strokeStyle = T.axis; ctx.strokeRect(bx + .5, r.y + .5, bw, r.h); ctx.fillStyle = T.fg; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     const ct = niceTicks(this.clim[0], this.clim[1], 6); for (const v of ct.ticks) { const y = r.y + r.h - (v - this.clim[0]) / (this.clim[1] - this.clim[0]) * r.h; ctx.fillText(fmtTick(v, ct.step), bx + bw + 5, y); }
     ctx.fillStyle = T.muted; ctx.textAlign = 'left'; ctx.fillText('dB', bx, r.y - 1 + 0);
+    if (r.w < this.W - 160) this.renderSlices(ctx, r, T, tx, fy);
+  }
+  fTicks(h) {
+    if (!this.logF) { const yt = niceTicks(this.ylim[0], this.ylim[1], Math.max(3, h / 40)); return yt.ticks.map(v => ({v, t: fmtTick(v, yt.step)})); }
+    const lo = Math.max(this.ylim[0], this.fMin()), hi = this.ylim[1], out = [];
+    for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) for (const m of (hi / lo > 300 ? [1] : [1, 2, 5])) { const v = m * Math.pow(10, e); if (v >= lo * 0.999 && v <= hi * 1.001) out.push({v, t: fmtNum(v, 3)}); }
+    return out;
+  }
+  renderSlices(ctx, r, T, tx, fy) {
+    const s = this.spec, c = this.cur, [lo, hi] = this.clim, rng = (hi - lo) || 1;
+    // sağ: spektrum kesiti (yatay dB, dikey frekans — ana grafikle aynı frekans ekseni)
+    const R = {x: r.x + r.w + 12, y: r.y, w: 140, h: r.h}, B = {x: r.x, y: r.y + r.h + 40, w: r.w, h: 84};
+    ctx.strokeStyle = T.axis; ctx.strokeRect(R.x + .5, R.y + .5, R.w, R.h); ctx.strokeRect(B.x + .5, B.y + .5, B.w, B.h);
+    ctx.fillStyle = T.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(`${fmtNum(lo, 3)} … ${fmtNum(hi, 3)} dB`, R.x + R.w / 2, R.y + R.h + 6);
+    if (!c) { ctx.fillText('kesit için tıklayın', R.x + R.w / 2, R.y + R.h / 2); ctx.fillText('Kesit: spektrogram üzerine tıklayın', B.x + B.w / 2, B.y + B.h / 2 - 6); return; }
+    ctx.fillText(`t = ${fmtNum(c.t, 5)} s`, R.x + R.w / 2, R.y + 3);
+    const sp = this.sliceT(c.t), ts = this.sliceF(c.f);
+    ctx.save(); ctx.beginPath(); ctx.rect(R.x, R.y, R.w, R.h); ctx.clip(); ctx.strokeStyle = T.fg; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let k = 0; k < s.nb; k++) { const f = k * s.df; if (this.logF && k === 0) continue; const x = R.x + (sp[k] - lo) / rng * R.w, y = fy(f); k === (this.logF ? 1 : 0) ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+    ctx.stroke(); ctx.strokeStyle = '#e15759'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(R.x, fy(c.f)); ctx.lineTo(R.x + R.w, fy(c.f)); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+    // alt: zaman kesiti (o frekanstaki seviye)
+    ctx.save(); ctx.beginPath(); ctx.rect(B.x, B.y, B.w, B.h); ctx.clip(); ctx.strokeStyle = T.fg; ctx.lineWidth = 1.2; ctx.beginPath();
+    const tA = this.t0 + s.tStart; for (let i = 0; i < s.nf; i++) { const x = tx(tA + i * s.dt), y = B.y + B.h - (ts[i] - lo) / rng * B.h; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke(); ctx.strokeStyle = '#e15759'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(tx(c.t), B.y); ctx.lineTo(tx(c.t), B.y + B.h); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+    ctx.fillStyle = T.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(`f = ${fmtNum(c.f, 5)} Hz`, B.x + 4, B.y + 3);
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(fmtNum(hi, 3), B.x - 6, B.y + 6); ctx.fillText(fmtNum(lo, 3), B.x - 6, B.y + B.h - 6);
   }
   _wheel(e) {
     e.preventDefault(); const [px, py] = this.pos(e), r = this.rect(), f = Math.pow(1.0018, e.deltaY * (e.deltaMode === 1 ? 33 : 1));
-    const cx = this.xlim[0] + (px - r.x) / r.w * (this.xlim[1] - this.xlim[0]), cy = this.ylim[0] + (1 - (py - r.y) / r.h) * (this.ylim[1] - this.ylim[0]);
-    if (e.shiftKey || px < r.x) this.ylim = [Math.max(0, cy - (cy - this.ylim[0]) * f), Math.min(this.fs / 2, cy + (this.ylim[1] - cy) * f)]; else this.xlim = [cx - (cx - this.xlim[0]) * f, cx + (this.xlim[1] - cx) * f];
+    const cx = this.xlim[0] + (px - r.x) / r.w * (this.xlim[1] - this.xlim[0]);
+    if (e.shiftKey || px < r.x) {
+      const [a, b] = this.fyl(), cu = a + (1 - (py - r.y) / r.h) * (b - a), umin = this.u(this.logF ? this.fMin() : 0), umax = this.u(this.fs / 2);
+      const na = Math.max(umin, cu - (cu - a) * f), nb = Math.min(umax, cu + (b - cu) * f); if (nb > na) this.ylim = [this.uInv(na), this.uInv(nb)];
+    } else this.xlim = [cx - (cx - this.xlim[0]) * f, cx + (this.xlim[1] - cx) * f];
     this.invalidate();
   }
   _move(e) {
     const [px, py] = this.pos(e), r = this.rect();
-    if (this.drag) { const dx = (px - this.drag.px) / r.w * (this.drag.xl[1] - this.drag.xl[0]), dy = (py - this.drag.py) / r.h * (this.drag.yl[1] - this.drag.yl[0]); this.xlim = [this.drag.xl[0] - dx, this.drag.xl[1] - dx]; this.ylim = [this.drag.yl[0] + dy, this.drag.yl[1] + dy]; this.invalidate(); }
+    if (this.drag) {
+      const d = this.drag; if (Math.abs(px - d.px) + Math.abs(py - d.py) > 3) d.moved = true;
+      if (d.moved) {
+        const dx = (px - d.px) / r.w * (d.xl[1] - d.xl[0]); this.xlim = [d.xl[0] - dx, d.xl[1] - dx];
+        const ua = this.u(this.logF ? Math.max(d.yl[0], this.fMin()) : d.yl[0]), ub = this.u(d.yl[1]), du = (py - d.py) / r.h * (ub - ua); this.ylim = [this.uInv(ua + du), this.uInv(ub + du)];
+        this.invalidate();
+      }
+    }
     if (this.spec && px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
-      const t = this.xlim[0] + (px - r.x) / r.w * (this.xlim[1] - this.xlim[0]), f = this.ylim[0] + (1 - (py - r.y) / r.h) * (this.ylim[1] - this.ylim[0]), s = this.spec;
+      const t = this.xlim[0] + (px - r.x) / r.w * (this.xlim[1] - this.xlim[0]), f = this.pyF(py, r), s = this.spec;
       const fi = Math.round((t - this.t0 - s.tStart) / s.dt), ki = Math.round(f / s.df); let v = null; if (fi >= 0 && fi < s.nf && ki >= 0 && ki < s.nb) v = s.z[fi * s.nb + ki];
       this.onHover({t, f, v});
     }
