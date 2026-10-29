@@ -48,7 +48,8 @@
     '.^': [(x, y) => Math.pow(x, y), cpow],
   };
   const CMP = {'==': (x, y) => x === y ? 1 : 0, '~=': (x, y) => x !== y ? 1 : 0, '<': (x, y) => x < y ? 1 : 0, '<=': (x, y) => x <= y ? 1 : 0, '>': (x, y) => x > y ? 1 : 0, '>=': (x, y) => x >= y ? 1 : 0, '&': (x, y) => (x !== 0 && y !== 0) ? 1 : 0, '|': (x, y) => (x !== 0 || y !== 0) ? 1 : 0};
-  function elementwise(op, A, B) {
+  function elementwise(op, A, B) { const r = elementwise0(op, A, B); if ((A.nd || B.nd) && !r.nd) { const src = A.nd && A.re.length === r.re.length ? A : B.nd && B.re.length === r.re.length ? B : null; if (src) r.nd = src.nd.slice(); } return r; }
+  function elementwise0(op, A, B) {
     if (op in CMP) {
       if ((A.im || B.im) && (op === '==' || op === '~=')) { const r = ewCplx(A, B, (a, b, c, d) => [(a === c && b === d) === (op === '==') ? 1 : 0, 0], 'l'); r.t = 'l'; return r; }
       const r = ewReal(A, B, CMP[op], 'l'); return r;
@@ -180,9 +181,45 @@
       for (let j = 0; j < C; j++) { const cj = ci[j]; if (cj >= A.c) E('MATLAB:badsubscript', `Sütun dizini sınırı aşıyor (${A.c} sütun).`); for (let i = 0; i < R; i++) { re[i + j * R] = A.re[ri[i] + cj * A.r]; if (im) im[i + j * R] = A.im[ri[i] + cj * A.r]; } }
       return new M(R, C, re, im, A.t);
     }
-    // 3+ boyut: yalnız 1'e eşit ek indisler
-    for (let k = 2; k < n; k++) { const a = args[k]; if (a !== COLON && !(a.re.length === 1 && a.re[0] === 1)) E('MATLAB:badsubscript', 'İkiden fazla boyut desteklenmiyor.'); }
-    return readM(A, args.slice(0, 2), line);
+    return ndRead(A, args, line);
+  }
+  // N boyutlu okuma: indis sayısı n; dizinin boyutları n'e göre doldurulur/birleştirilir
+  function ndDims(A, n) { const d = ML.sizeOf(A); if (d.length < n) { while (d.length < n) d.push(1); return d; } if (d.length > n) { const t = d.slice(n - 1).reduce((a, b) => a * b, 1); d.length = n - 1; d.push(t); } return d; }
+  function ndRead(A, args, line) {
+    const n = args.length, D = ndDims(A, n), ix = args.map((a, k) => idxList(a, D[k]));
+    ix.forEach((l, k) => { for (const q of l) if (q >= D[k]) E('MATLAB:badsubscript', `${k + 1}. boyut dizini sınırı aşıyor (${D[k]}).`); });
+    const L = ix.map(l => l.length), tot = L.reduce((a, b) => a * b, 1), re = new Float64Array(tot), im = A.im ? new Float64Array(tot) : null;
+    const st = [1]; for (let k = 1; k < n; k++) st.push(st[k - 1] * D[k - 1]);
+    const cnt = new Array(n).fill(0);
+    for (let o = 0; o < tot; o++) {
+      let src = 0; for (let k = 0; k < n; k++) src += ix[k][cnt[k]] * st[k];
+      re[o] = A.re[src]; if (im) im[o] = A.im[src];
+      for (let k = 0; k < n; k++) { if (++cnt[k] < L[k]) break; cnt[k] = 0; }
+    }
+    return ML.setDims(new M(1, 1, re, im, A.t), L);
+  }
+  function ndAssign(A, args, B, bre, bim, line) {
+    const n = args.length, D = ndDims(A, n), ix = args.map((a, k) => idxList(a, D[k]));
+    const L = ix.map(l => l.length), tot = L.reduce((a, b) => a * b, 1);
+    if (bre.length !== 1 && bre.length !== tot) E('MATLAB:nonConformingAssign', `Atama boyutları uyuşmuyor (${L.join('×')} ≠ ${ML.sizeOf(B).join('×')}).`);
+    const N = D.slice(); ix.forEach((l, k) => { for (const q of l) if (q + 1 > N[k]) N[k] = q + 1; });
+    if (N.some((v, k) => v !== D[k])) {   // büyüt
+      if (ML.sizeOf(A).length > n && N.some((v, k) => k === n - 1 && v !== D[k])) E('MATLAB:badsubscript', 'Bu indislerle dizi büyütülemez.');
+      const tot2 = N.reduce((a, b) => a * b, 1), re = new Float64Array(tot2), im = A.im ? new Float64Array(tot2) : null;
+      const so = [1], sn = [1]; for (let k = 1; k < n; k++) { so.push(so[k - 1] * D[k - 1]); sn.push(sn[k - 1] * N[k - 1]); }
+      const old = D.reduce((a, b) => a * b, 1), c = new Array(n).fill(0);
+      for (let o = 0; o < old; o++) { let d = 0; for (let k = 0; k < n; k++) d += c[k] * sn[k]; re[d] = A.re[o]; if (im) im[d] = A.im[o]; for (let k = 0; k < n; k++) { if (++c[k] < D[k]) break; c[k] = 0; } }
+      A.re = re; A.im = im; ML.setDims(A, N);
+    }
+    const Dn = ML.sizeOf(A).length > n ? ndDims(A, n) : N, st = [1]; for (let k = 1; k < n; k++) st.push(st[k - 1] * Dn[k - 1]);
+    if (bim && !A.im) A.im = new Float64Array(A.re.length);
+    const cnt = new Array(n).fill(0);
+    for (let o = 0; o < tot; o++) {
+      let d = 0; for (let k = 0; k < n; k++) d += ix[k][cnt[k]] * st[k];
+      const s2 = bre.length === 1 ? 0 : o; A.re[d] = bre[s2]; if (A.im) A.im[d] = bim ? bim[s2] : 0;
+      for (let k = 0; k < n; k++) { if (++cnt[k] < L[k]) break; cnt[k] = 0; }
+    }
+    return A;
   }
   function growTo(A, R, C) {
     if (R === A.r && C === A.c) return;
@@ -214,7 +251,7 @@
       for (let i = 0; i < k; i++) { const q = ix[i], s = bre.length === 1 ? 0 : i; A.re[q] = bre[s]; if (A.im) A.im[q] = bim ? bim[s] : 0; }
       return A;
     }
-    for (let q = 2; q < n; q++) { const a = args[q]; if (a !== COLON && !(a.re.length === 1 && a.re[0] === 1)) E('MATLAB:badsubscript', 'İkiden fazla boyut desteklenmiyor.'); }
+    if (n > 2 || A.nd) { if (n === 1) { /* doğrusal: aşağıda */ } else return ndAssign(A, args, B, bre, bim, line); }
     const ri = idxList(args[0], A.r, '', line), ci = idxList(args[1], A.c, '', line);
     const colonR = args[0] === COLON, colonC = args[1] === COLON;
     let R = ri.length, C = ci.length;
@@ -276,9 +313,13 @@
     }
     // yerinde değiştirme için sahiplik: başkasıyla paylaşılıyorsa kopyala
     own(sc, name, v) { const tk = this.tokenOf(sc, name); if (v && v._o !== tk) { v = clone(v); v._o = tk; if (sc.globals && sc.globals.has(name)) this.globalVars.set(name, v); else sc.vars.set(name, v); } return v; }
-    load(src) {
-      const ast = ML.parse(src); for (const f of ast.funcs) this.funcs.set(f.name, f); return ast;
+    load(src, file) {
+      let ast; try { ast = ML.parse(src); } catch (e) { if (e instanceof MLError && file && !e.mfile) e.mfile = file; throw e; }
+      for (const f of ast.funcs) { if (file) f.file = file; this.funcs.set(f.name, f); }
+      return ast;
     }
+    // işlev dosyası: ilk işlev dosya adıyla da çağrılabilir
+    loadFile(src, file) { const ast = this.load(src, file); const base = String(file || '').replace(/\.m$/i, ''); if (ast.funcs.length && base && !this.funcs.has(base)) this.funcs.set(base, ast.funcs[0]); return ast; }
     run(src) {
       const ast = this.load(src);
       const st = this.execBlock(ast.body, this.base);
@@ -477,7 +518,7 @@
           return this.callNamed(n, [], nargout, node.line, sc, stmt);
         }
         case 'colon': return [str(':')];
-        case 'end': { const t = this.endStack[this.endStack.length - 1]; if (!t) E('MATLAB:end', "'end' yalnızca indis içinde kullanılabilir."); const s = sizeOf(t.v); return [num(t.n === 1 ? s[0] * s[1] : t.k === 0 ? s[0] : t.k === 1 ? s[1] : 1)]; }
+        case 'end': { const t = this.endStack[this.endStack.length - 1]; if (!t) E('MATLAB:end', "'end' yalnızca indis içinde kullanılabilir."); const s = sizeOf(t.v); if (t.n === 1) return [num(s.reduce((a, b) => a * b, 1))]; while (s.length < t.n) s.push(1); if (t.k === t.n - 1) return [num(s.slice(t.k).reduce((a, b) => a * b, 1))]; return [num(s[t.k])]; }
         case 'bin': { const a = this.eval(node.a, sc), b = this.eval(node.b, sc); this.cur = node.line; return [binop(node.op, a, b, node.line)]; }
         case 'andand': { const a = this.eval(node.a, sc); if (!(a instanceof M)) E('MATLAB:nonLogicalConditional', '&& işleneni mantıksal olmalı.'); if (!isTrue(a)) return [bool(false)]; const b = this.eval(node.b, sc); return [bool(isTrue(b))]; }
         case 'oror': { const a = this.eval(node.a, sc); if (!(a instanceof M)) E('MATLAB:nonLogicalConditional', '|| işleneni mantıksal olmalı.'); if (isTrue(a)) return [bool(true)]; const b = this.eval(node.b, sc); return [bool(isTrue(b))]; }
@@ -591,7 +632,16 @@
         if (r === undefined) return [];
         return Array.isArray(r) ? r : [r];
       }
-      E('MATLAB:UndefinedFunction', `'${name}' tanımsız: değişken ya da işlev bulunamadı` + (line ? ` (satır ${line})` : '') + '.');
+      const scr = this.ctx && this.ctx.scripts && this.ctx.scripts[name];
+      if (scr != null) {   // açık sekmedeki betik: çağıranın çalışma alanında çalışır
+        if (args.length) E('MATLAB:scriptArgs', `'${name}' bir betik; argüman alamaz.`);
+        if (this.depth > this.maxDepth) E('MATLAB:recursionLimit', 'Betik çağrısı çok derin (betik kendini çağırıyor olabilir).');
+        let ast; try { ast = this.load(scr, name + '.m'); } catch (e) { throw e; }
+        this.depth++; const save = this.cur;
+        try { this.execBlock(ast.body, sc); } catch (e) { if (e instanceof MLError && !e.mfile) { e.mfile = name + '.m'; if (!e.mline) e.mline = this.cur; } throw e; } finally { this.depth--; this.cur = save; }
+        return [];
+      }
+      E('MATLAB:UndefinedFunction', `'${name}' tanımsız: değişken ya da işlev bulunamadı` + (line ? ` (satır ${line})` : '') + '.' + (/^[a-z_]\w*$/i.test(name) && !ML.builtins[name] ? ` Kendi işlevinizse ${name}.m dosyasını da Kod sekmesinde açın; açık sekmelerdeki işlev ve betikler otomatik kullanılır.` : ''));
     }
     callUser(f, args, nargout) {
       if (this.depth > this.maxDepth) E('MATLAB:recursionLimit', 'Özyineleme sınırı aşıldı (sonsuz özyineleme olabilir).');
@@ -604,7 +654,7 @@
       const hasVO = f.outs.length && f.outs[f.outs.length - 1] === 'varargout';
       if (nargout > f.outs.length && !hasVO) E('MATLAB:TooManyOutputs', `'${f.name}' işlevi en çok ${f.outs.length} çıktı döndürür.`);
       this.depth++; const save = this.cur;
-      try { this.execBlock(f.body, sc); } finally { this.depth--; this.cur = save; }
+      try { this.execBlock(f.body, sc); } catch (e) { if (e instanceof MLError && !e.mfile) { e.mfile = f.file || ''; e.mfn = f.name; if (!e.mline) e.mline = this.cur; } throw e; } finally { this.depth--; this.cur = save; }
       const outs = [];
       const want = Math.max(1, nargout);
       for (let i = 0; i < f.outs.length && outs.length < want; i++) {
@@ -623,6 +673,12 @@
     /* ---------- gösterim ---------- */
     display(name, v) {
       const out = s => this.out(s);
+      if (v instanceof M && v.nd) {
+        const d = v.nd, pg = d[0] * d[1], np = v.re.length / (pg || 1);
+        if (v.re.length > 3000 || !pg) { out(`${name} = [${d.join('×')} ${ML.CLSNAME[v.t]}]\n`); return; }
+        const sub = []; for (let k = 0; k < np; k++) { let q = k; const idx = []; for (let j = 2; j < d.length; j++) { idx.push(q % d[j] + 1); q = Math.floor(q / d[j]); } const page = new M(d[0], d[1], v.re.slice(k * pg, (k + 1) * pg), v.im ? v.im.slice(k * pg, (k + 1) * pg) : null, v.t); out(`${name}(:,:,${idx.join(',')}) =\n\n${fmtMatrix(page)}\n`); }
+        return;
+      }
       if (v instanceof M) {
         if (v.t === 'c' && v.r <= 1) { out(`${name} = ${toStr(v)}\n`); return; }
         if (v.re.length === 0) { out(v.r === 0 && v.c === 0 ? `${name} = []\n` : `${name} = zeros(${v.r},${v.c})\n`.replace('zeros', v.t === 'c' ? '' : 'zeros')); return; }

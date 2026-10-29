@@ -176,7 +176,7 @@ function showDZ() {
 function hideDZ() { const d = $('#dz'); if (d) d.remove(); }
 
 /* ---------- karşılama, menüler, kısayollar ---------- */
-function syncWelcome() { const w = $('#welcome'); if (w) w.classList.toggle('hidden', !(!S.files.length && !S.plot.axes.length && !(S.specPlot && S.specPlot.axes.length))); }
+function syncWelcome() { const w = $('#welcome'); if (w) w.classList.toggle('hidden', S.view === 'code' || S.view === 'fig' || !(!S.files.length && !S.plot.axes.length && !(S.specPlot && S.specPlot.axes.length))); }
 function closeMenus() { for (const m of document.querySelectorAll('.ddm')) m.classList.add('hidden'); $('#ctxm').classList.add('hidden'); }
 function shortcutsDialog() {
   const rows = [['Delete', 'Seçili noktaları sil'], ['Ctrl+Z / Ctrl+Y', 'Geri al / yinele (nokta silme)'], ['P · Z · C · B · L', 'Gez · Yakınlaştır · İmleç · Kutu · Kement'], ['+ / −', 'Yakınlaş / uzaklaş'], ['Home', 'Tümünü sığdır'],

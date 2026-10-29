@@ -152,7 +152,47 @@ const MAT = (() => {
     return info.data;
   }
 
+  // Tam ağaç çözümü (hücre, yapı, karakter, mantıksal, N boyut) — Kod sekmesi load() ve .fig önizlemesi için
+  const CLSK = {6: 'd', 7: 's', 8: 'i8', 9: 'u8', 10: 'i16', 11: 'u16', 12: 'i32', 13: 'u32', 14: 'i64', 15: 'u64', 4: 'c'};
+  function readAny(dv, tag, le) {
+    let ty = tag.type; if (ty === 16) ty = 2; else if (ty === 17) ty = 4; else if (ty === 18) ty = 6;
+    const sz = (TYPE[ty] || [0, 1])[1]; return readNumeric(dv, tag.data, ty, Math.floor(tag.size / sz), le);
+  }
+  function treeAt(dv, o, le, depth) {
+    const t = readTag(dv, o, le); if (t.type !== 14) return {k: 'skip'};
+    if (t.size === 0) return {k: 'num', cls: 'd', dims: [0, 0], re: new Float64Array(0)};
+    if (depth > 40) return {k: 'skip'};
+    let p = t.data; const fl = readTag(dv, p, le), flags = dv.getUint32(fl.data, le), cls = flags & 0xFF, complex = !!(flags & 0x800), logical = !!(flags & 0x200); p = fl.next;
+    const dt = readTag(dv, p, le), dims = []; for (let i = 0; i < dt.size / 4; i++) dims.push(dv.getInt32(dt.data + 4 * i, le)); p = dt.next;
+    const nt = readTag(dv, p, le); let name = ''; for (let i = 0; i < nt.size; i++) name += String.fromCharCode(dv.getUint8(nt.data + i)); p = nt.next;
+    const count = dims.reduce((a, b) => a * b, 1);
+    if (CLSK[cls]) {
+      const rt = readTag(dv, p, le); let re = readAny(dv, rt, le); if (re.length < count) { const r2 = new Float64Array(count); r2.set(re); re = r2; } else if (re.length > count) re = re.slice(0, count); let im = null;
+      if (complex) { const it2 = readTag(dv, rt.next, le); im = readAny(dv, it2, le); }
+      return {k: 'num', name, cls: logical ? 'l' : CLSK[cls], dims, re, im};
+    }
+    if (cls === 1) { const v = []; for (let i = 0; i < count; i++) { const c = readTag(dv, p, le); v.push(treeAt(dv, p, le, depth + 1)); p = c.next; } return {k: 'cell', name, dims, v}; }
+    if (cls === 2 || cls === 3) {
+      let className = ''; if (cls === 3) { const cn = readTag(dv, p, le); for (let i = 0; i < cn.size; i++) className += String.fromCharCode(dv.getUint8(cn.data + i)); p = cn.next; }
+      const ln = readTag(dv, p, le), L = dv.getInt32(ln.data, le); p = ln.next; const fn = readTag(dv, p, le), nf = L > 0 ? Math.floor(fn.size / L) : 0, f = [];
+      for (let i = 0; i < nf; i++) { let nm = ''; for (let j = 0; j < L; j++) { const ch = dv.getUint8(fn.data + i * L + j); if (!ch) break; nm += String.fromCharCode(ch); } f.push(nm); } p = fn.next;
+      const v = []; for (let k = 0; k < count; k++) { const o2 = {}; for (let i = 0; i < nf; i++) { const c = readTag(dv, p, le); o2[f[i]] = treeAt(dv, p, le, depth + 1); p = c.next; } v.push(o2); }
+      return {k: 'struct', name, dims, f, v, className};
+    }
+    return {k: 'skip', name, cls};
+  }
+  async function readAll(m, only) {
+    if (m.h5) throw new Error('v7.3 (HDF5) dosyalarında yalnız sayısal değişkenler okunabilir');
+    const u8 = m.u8, dv0 = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), out = []; let o = 128;
+    while (o + 8 <= u8.length) {
+      const t = readTag(dv0, o, m.le);
+      if (t.type === 15) { const b = await inflate(u8.subarray(t.data, t.data + t.size)); const dv = new DataView(b.buffer, b.byteOffset, b.byteLength); const tr = treeAt(dv, 0, m.le, 0); if (!only || only.includes(tr.name)) out.push(tr); }
+      else if (t.type === 14) { const tr = treeAt(dv0, o, m.le, 0); if (!only || only.includes(tr.name)) out.push(tr); }
+      if (t.next <= o) break; o = t.next;
+    }
+    return out;
+  }
   globalThis.MATinflate = inflate; globalThis.MATreadNumeric = readNumeric;
-  return {open, load, inflate};
+  return {open, load, inflate, readAll};
 })();
 if (typeof module !== 'undefined') module.exports = MAT;

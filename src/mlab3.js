@@ -10,7 +10,7 @@
   const sc1 = (v, n) => { mat(v, n); if (!v.re.length) E('MATLAB:invalidType', `${n || 'Argüman'} boş olmamalı.`); return v.re[0]; };
   const S = v => toStr(v);
   const isVec = m => m.r === 1 || m.c === 1;
-  const like = (m, re, im, t) => new M(m.r, m.c, re, im || null, t || 'd');
+  const like = (m, re, im, t) => { const o = new M(m.r, m.c, re, im || null, t || 'd'); if (m.nd) o.nd = m.nd.slice(); return o; };
   const dbl = t => (t === 'l' || t === 'c' || t === 'd') ? 'd' : t;
 
   /* ---------- eleman-eleman matematik ---------- */
@@ -57,6 +57,8 @@
 
   /* ---------- sabitler ve oluşturucular ---------- */
   const k = (n, v) => { B[n] = function (a) { if (!a.length) return num(v); const [r, c] = dims(a); const m = zeros(r, c); m.re.fill(v); return m; }; };
+  function ndims_(a) { const args = a.filter(x => !(x instanceof M && x.t === 'c')); if (args.length === 1 && args[0].re.length > 2) return Array.from(args[0].re, v => Math.max(0, Math.floor(v))); if (args.length > 2) return args.map(v => Math.max(0, Math.floor(sc1(v)))); return null; }
+  const mkND = (a, t, fill) => { const d = ndims_(a); if (!d) return null; const n = d.reduce((p, q) => p * q, 1); if (n > 2e8) E('MATLAB:pmaxsize', 'Dizi çok büyük.'); const m = new M(1, 1, new Float64Array(n), null, t); if (fill) m.re.fill(fill); return ML.setDims(m, d); };
   function dims(a, from) {
     const args = a.filter(x => !(x instanceof M && x.t === 'c')); let r, c;
     if (!args.length) return [1, 1];
@@ -64,8 +66,8 @@
     r = Math.max(0, Math.floor(r)); c = Math.max(0, Math.floor(c)); if (r * c > 2e8) E('MATLAB:pmaxsize', 'Dizi çok büyük (bellek sınırı).'); return [r, c];
   }
   function cls(a) { const s = a.find(x => x instanceof M && x.t === 'c'); if (!s) return 'd'; const n = S(s); if (n === 'like') return 'd'; return INTNAME[n] || (n === 'single' ? 's' : n === 'logical' ? 'l' : 'd'); }
-  B.zeros = a => { const [r, c] = dims(a); return zeros(r, c, cls(a)); };
-  B.ones = a => { const [r, c] = dims(a); const m = zeros(r, c, cls(a)); m.re.fill(1); return m; };
+  B.zeros = a => mkND(a, cls(a), 0) || (() => { const [r, c] = dims(a); return zeros(r, c, cls(a)); })();
+  B.ones = a => mkND(a, cls(a), 1) || (() => { const [r, c] = dims(a); const m = zeros(r, c, cls(a)); m.re.fill(1); return m; })();
   B.nan = B.NaN = a => { if (!a.length) return num(NaN); const [r, c] = dims(a); const m = zeros(r, c); m.re.fill(NaN); return m; };
   B.inf = B.Inf = a => { if (!a.length) return num(Infinity); const [r, c] = dims(a); const m = zeros(r, c); m.re.fill(Infinity); return m; };
   B.pi = () => num(Math.PI); B.eps = a => { if (a.length) { const x = Math.abs(sc1(a[0])); if (x === 0) return num(Math.pow(2, -1074)); return num(Math.pow(2, Math.floor(Math.log2(x)) - 52)); } return num(2.220446049250313e-16); };
@@ -90,13 +92,13 @@
 
   /* ---------- boyut / tür ---------- */
   B.size = function (a, no) {
-    const [r, c] = sizeOf(a[0]);
-    if (a.length > 1) { const d = sc1(a[1]); return num(d === 1 ? r : d === 2 ? c : 1); }
-    if (no <= 1) return rowv([r, c]); const o = [num(r), num(c)]; for (let i = 2; i < no; i++) o.push(num(1)); return o;
+    const d = sizeOf(a[0]);
+    if (a.length > 1) { const k = sc1(a[1]); return num(k <= d.length ? d[k - 1] : 1); }
+    if (no <= 1) return rowv(d); const o = []; for (let i = 0; i < no; i++) { if (i === no - 1 && d.length > no) o.push(num(d.slice(i).reduce((p, q) => p * q, 1))); else o.push(num(i < d.length ? d[i] : 1)); } return o;
   };
-  B.numel = a => num(sizeOf(a[0])[0] * sizeOf(a[0])[1]); B.length = a => { const [r, c] = sizeOf(a[0]); return num(r * c === 0 ? 0 : Math.max(r, c)); }; B.ndims = () => num(2);
+  B.numel = a => num(ML.numelOf(a[0])); B.length = a => { const d = sizeOf(a[0]); return num(d.includes(0) ? 0 : Math.max(...d)); }; B.ndims = a => num(Math.max(2, sizeOf(a[0]).length));
   B.rows = a => num(sizeOf(a[0])[0]); B.columns = a => num(sizeOf(a[0])[1]);
-  B.isempty = a => bool(a[0] instanceof M || isCell(a[0]) || isSA(a[0]) ? sizeOf(a[0])[0] * sizeOf(a[0])[1] === 0 : false);
+  B.isempty = a => bool(a[0] instanceof M || isCell(a[0]) || isSA(a[0]) ? ML.numelOf(a[0]) === 0 : false);
   B.isscalar = a => bool(sizeOf(a[0])[0] * sizeOf(a[0])[1] === 1); B.isvector = a => { const [r, c] = sizeOf(a[0]); return bool((r === 1 || c === 1) && r * c >= 1); };
   B.isrow = a => bool(sizeOf(a[0])[0] === 1); B.iscolumn = a => bool(sizeOf(a[0])[1] === 1); B.ismatrix = () => bool(true);
   B.isnumeric = a => bool(a[0] instanceof M && a[0].t !== 'c' && a[0].t !== 'l'); B.ischar = a => bool(a[0] instanceof M && a[0].t === 'c'); B.islogical = a => bool(a[0] instanceof M && a[0].t === 'l');
@@ -107,8 +109,17 @@
   B.char = function (a) { if (a.length === 1 && a[0] instanceof M) { const m = castM(a[0], 'd'); m.t = 'c'; return m; } const rows = []; for (const x of a) { if (isCell(x)) for (const y of x.v) rows.push(S(y)); else rows.push(S(x)); } const w = Math.max(...rows.map(s => s.length)); return ML.vcat(rows.map(s => str(s.padEnd(w)))); };
   B.cast = a => B[S(a[1])]([a[0]]); B.isnan = a => { const m = mat(a[0]); const o = zeros(m.r, m.c, 'l'); for (let i = 0; i < o.re.length; i++) o.re[i] = Number.isNaN(m.re[i]) || (m.im && Number.isNaN(m.im[i])) ? 1 : 0; return o; };
   B.isinf = a => { const m = mat(a[0]); const o = zeros(m.r, m.c, 'l'); for (let i = 0; i < o.re.length; i++) o.re[i] = Math.abs(m.re[i]) === Infinity ? 1 : 0; return o; }; B.isfinite = a => { const m = mat(a[0]); const o = zeros(m.r, m.c, 'l'); for (let i = 0; i < o.re.length; i++) o.re[i] = Number.isFinite(m.re[i]) ? 1 : 0; return o; };
-  B.reshape = function (a) { const x = a[0]; let r, c; const n = sizeOf(x)[0] * sizeOf(x)[1]; if (a.length === 2) { r = a[1].re[0]; c = a[1].re[1]; } else { r = a[1].re.length ? a[1].re[0] : NaN; c = a[2].re.length ? a[2].re[0] : NaN; if (!a[1].re.length) r = n / c; if (!a[2].re.length) c = n / r; } if (r * c !== n) E('MATLAB:getReshapeDims:notSameNumel', `reshape: eleman sayısı değişemez (${n} → ${r}×${c}).`); if (isCell(x)) return {cell: true, r, c, v: x.v.slice()}; const o = new M(r, c, x.re.slice(), x.im ? x.im.slice() : null, x.t); return o; };
-  B.squeeze = a => a[0]; B.vec_ = null; delete B.vec_;
+  B.reshape = function (a) {
+    const x = a[0], n = ML.numelOf(x); let d;
+    if (a.length === 2) d = Array.from(mat(a[1]).re); else { d = a.slice(1).map(v => mat(v).re.length ? v.re[0] : NaN); }
+    const unk = d.filter(v => Number.isNaN(v)).length; if (unk > 1) E('MATLAB:getReshapeDims:unknownDim', 'reshape: yalnız bir boyut [] olabilir.');
+    if (unk) { const k = d.reduce((p, v) => Number.isNaN(v) ? p : p * v, 1); const i = d.findIndex(v => Number.isNaN(v)); d[i] = k ? n / k : 0; if (d[i] !== Math.floor(d[i])) E('MATLAB:getReshapeDims:notDivisible', `reshape: ${n} eleman ${k} ile bölünemiyor.`); }
+    if (d.reduce((p, v) => p * v, 1) !== n) E('MATLAB:getReshapeDims:notSameNumel', `reshape: eleman sayısı değişemez (${n} → ${d.join('×')}).`);
+    if (isCell(x)) { if (d.length > 2) E('MATLAB:unsupported', 'reshape: hücre dizileri için en çok 2 boyut.'); return {cell: true, r: d[0], c: d[1], v: x.v.slice()}; }
+    return ML.setDims(new M(1, 1, x.re.slice(), x.im ? x.im.slice() : null, x.t), d);
+  };
+  B.squeeze = a => { const x = a[0]; if (!(x instanceof M) || !x.nd) return x; let d = x.nd.filter(v => v !== 1); if (d.length === 0) d = [1, 1]; else if (d.length === 1) d = [d[0], 1]; return ML.setDims(new M(1, 1, x.re.slice(), x.im ? x.im.slice() : null, x.t), d); };
+  B.permute = a => { const x = mat(a[0]), p = Array.from(mat(a[1]).re, v => v - 1), D = sizeOf(x); while (D.length < p.length) D.push(1); const ND = p.map(k => D[k]), n = x.re.length, re = new Float64Array(n), st = [1]; for (let k = 1; k < D.length; k++) st.push(st[k - 1] * D[k - 1]); const c = new Array(ND.length).fill(0); for (let o = 0; o < n; o++) { let s2 = 0; for (let k = 0; k < ND.length; k++) s2 += c[k] * st[p[k]]; re[o] = x.re[s2]; for (let k = 0; k < ND.length; k++) { if (++c[k] < ND[k]) break; c[k] = 0; } } return ML.setDims(new M(1, 1, re, null, x.t), ND); }; B.vec_ = null; delete B.vec_;
   B.numel_ = null; delete B.numel_;
   B.transpose = a => ML.transpose(a[0], false); B.ctranspose = a => ML.transpose(a[0], true);
   B.horzcat = a => ML.hcat(a); B.vertcat = a => ML.vcat(a); B.cat = a => sc1(a[0]) === 1 ? ML.vcat(a.slice(1)) : ML.hcat(a.slice(1));
@@ -321,7 +332,13 @@
   B.clock = () => { const d = new Date(); return rowv([d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()]); }; B.now = () => num(Date.now() / 86400000 + 719529); B.cputime = () => num(performance.now() / 1000);
   B.datestr = () => str(new Date().toISOString().replace('T', ' ').slice(0, 19)); B.pause = () => {}; B.drawnow = () => {}; B.close_ = null; delete B.close_;
   B.clc = function () { this.out('', 'clc'); }; B.clear = function (a, no, sc) { if (!a.length || S(a[0]) === 'all') { sc.vars.clear(); sc.tok.clear(); } else for (const x of a) { sc.vars.delete(S(x)); } }; B.clearvars = B.clear; B.format = () => {}; B.more = () => {}; B.close = function (a) { if (this.figs) { if (a.length && S(a[0]) !== 'all') this.figs.delete(sc1(a[0])); else { this.figs.clear(); this.curFig = 0; } } }; B.rng = () => {};
-  B.who = B.whos = function (a, no, sc) { for (const [k, v] of sc.vars) this.out(`  ${k}  ${sizeOf(v).join('x')}  ${classOf(v)}\n`); };
+  const bytesOf = v => v instanceof M ? v.re.length * ({d: 8, s: 4, l: 1, c: 2, i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, i64: 8, u64: 8}[v.t] || 8) * (v.im ? 2 : 1) : isCell(v) ? v.v.reduce((p, x) => p + bytesOf(x), 0) : isSA(v) ? v.v.reduce((p, o) => p + Object.values(o).reduce((q, x) => q + bytesOf(x), 0), 0) : 8;
+  B.whos = function (a, no, sc) {
+    const names = [...sc.vars.keys()].filter(k => !a.length || a.some(p => new RegExp('^' + S(p).replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$').test(k))).sort();
+    if (no >= 1) return {sa: true, r: names.length, c: 1, v: names.map(k => { const v = sc.vars.get(k), o = Object.create(null); o.name = str(k); o.size = rowv(sizeOf(v)); o.bytes = num(bytesOf(v)); o.class = str(classOf(v)); o.global = bool(false); o.sparse = bool(false); o.complex = bool(v instanceof M && !!v.im); return o; })};
+    this.out('  Ad'.padEnd(26) + 'Boyut'.padEnd(16) + 'Bayt'.padEnd(12) + 'Sınıf\n'); for (const k of names) { const v = sc.vars.get(k); this.out(('  ' + k).padEnd(26) + sizeOf(v).join('x').padEnd(16) + String(bytesOf(v)).padEnd(12) + classOf(v) + '\n'); }
+  };
+  B.who = function (a, no, sc) { const names = [...sc.vars.keys()].sort(); if (no >= 1) return {cell: true, r: names.length, c: 1, v: names.map(str)}; this.out(names.join('  ') + '\n'); };
   B.deal = (a, no) => { if (a.length === 1) return Array.from({length: Math.max(1, no)}, () => a[0]); if (a.length !== Math.max(1, no)) E('MATLAB:deal:narginNargout', 'deal: giriş ve çıkış sayıları eşit olmalı.'); return a; };
   B.isequaln = B.isequal; B.numel2_ = null; delete B.numel2_;
   B.ifelse_ = null; delete B.ifelse_;
@@ -507,7 +524,7 @@
   B.chlist = function (a, no) { const c = this.ctx; const names = c.listChannels ? c.listChannels() : []; if (no === 0) { this.out(names.length ? names.join('\n') + '\n' : '(kanal yok)\n'); return; } return {cell: true, r: names.length, c: 1, v: names.map(str)}; };
   B.addch = function (a) { const c = this.ctx; if (!c.addChannel) E('MATLAB:addch', 'addch(): kanal köprüsü bu ortamda kullanılamıyor.'); const nm = S(a[0]), y = mat(a[1]); if (!(y.re.length > 1)) E('MATLAB:addch', 'addch: veri en az 2 örnek içermeli.'); const fs = a[2] ? sc1(a[2]) : (this.lastFs || 1); c.addChannel(nm, Float64Array.from(y.re), fs); };
   B.load = function (a, no) { const c = this.ctx; if (!c.loadMat) E('MATLAB:load', 'load: dosya erişimi yalnızca ana uygulamada (Kod sekmesinde açık .mat dosyaları) kullanılabilir. Dosyayı önce MATView içine açın, sonra load(\'dosya.mat\').'); const nm = S(a[0]); const vars = c.loadMat(nm); if (!vars) E('MATLAB:load:couldNotReadFile', `load: '${nm}' açık dosyalar arasında bulunamadı.`); const want = a.slice(1).map(S); const o = Object.create(null); for (const k in vars) { if (want.length && !want.includes(k)) continue; o[k] = vars[k]; } if (no >= 1) return {sa: true, r: 1, c: 1, v: [o]}; for (const k in o) this.setVar(this.base, k, o[k]); };
-  B.save = function (a) { const c = this.ctx; if (!c.saveMat) E('MATLAB:save', 'save: bu ortamda kullanılamıyor.'); const nm = S(a[0]); const names = a.slice(1).map(S); const vars = Object.create(null); for (const [k, v] of this.base.vars) if (!names.length || names.includes(k)) vars[k] = v; c.saveMat(nm, vars); };
+  B.save = function (a, no, sc) { const c = this.ctx; if (!c.saveMat) E('MATLAB:save', 'save: bu ortamda kullanılamıyor.'); let nm = a.length ? S(a[0]) : 'matlab.mat'; if (!/\.mat$/i.test(nm)) nm += '.mat'; const names = a.slice(1).map(S).filter(x => !x.startsWith('-')); const vars = Object.create(null); for (const n of names) if (!sc.vars.has(n)) E('MATLAB:save:couldNotFindVariable', `save: '${n}' değişkeni bulunamadı.`); for (const [k, v] of sc.vars) if (!names.length || names.includes(k)) vars[k] = v; c.saveMat(nm, vars); this.out(`'${nm}' kaydedildi (${Object.keys(vars).length} değişken).\n`); };
   B.exist_file_ = null; delete B.exist_file_;
   B.isfile = () => bool(false); B.pwd = () => str('/'); B.cd = () => {}; B.addpath = () => {}; B.mfilename = () => str('betik'); B.datenum = () => num(Date.now() / 86400000 + 719529);
 

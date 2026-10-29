@@ -184,3 +184,42 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 .figcell canvas{display:block}
 .fnlist{display:flex;flex-wrap:wrap;gap:4px 8px;max-height:50vh;overflow:auto;font:12px ui-monospace,Consolas,monospace}
 .fnlist .fn{padding:1px 6px;background:var(--hover);border-radius:3px}
+.codebar .vsep{width:1px;align-self:stretch;background:var(--border);margin:0 4px}
+.codetabs{display:flex;align-items:flex-end;gap:2px;padding:4px 6px 0;background:var(--bg);border-bottom:1px solid var(--border);overflow-x:auto;flex:none}
+.ctab{display:flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border:1px solid var(--border);border-bottom:0;border-radius:4px 4px 0 0;background:var(--hover);cursor:pointer;font-size:12px;white-space:nowrap;margin-bottom:-1px}
+.ctab.on{background:var(--field);border-color:var(--border);border-bottom:1px solid var(--field);font-weight:600}
+.ctab .cti{font:600 11px ui-monospace,Consolas,monospace;color:var(--accent)}
+.ctab .cdot{color:var(--danger);font-weight:700}
+.ctab .cx{border:0;background:none;padding:0 4px;line-height:1;color:var(--muted)}
+.ctab .cx:hover{color:var(--fg)}
+.ctab.add{padding:3px 10px;font-weight:600}
+.codearea{position:relative;flex:1;min-width:0;overflow:hidden;background:var(--field)}
+.codehl,.codearea .codeed{position:absolute;inset:0;margin:0;font:13px/1.45 ui-monospace,Consolas,"Cascadia Mono",monospace;padding:6px 8px;white-space:pre;tab-size:4;letter-spacing:0;word-spacing:0}
+.codehl{overflow:hidden;pointer-events:none;color:var(--fg)}
+.codearea .codeed{background:transparent;color:transparent;caret-color:var(--fg);overflow:auto;border:0;resize:none}
+.codearea .codeed::selection{background:color-mix(in srgb,var(--accent) 30%,transparent);color:transparent}
+.codehl .hk{color:#0e48c9;font-weight:600}.codehl .hc{color:#228b22}.codehl .hs{color:#228b22;font-weight:700;background:color-mix(in srgb,#228b22 8%,transparent);display:inline-block;width:100%}.codehl .hq{color:#a020f0}.codehl .hn{color:#b35c00}
+:root[data-theme=dark] .codehl .hk{color:#6aa7ff}:root[data-theme=dark] .codehl .hc,:root[data-theme=dark] .codehl .hs{color:#6fbf73}:root[data-theme=dark] .codehl .hq{color:#d39cf5}:root[data-theme=dark] .codehl .hn{color:#e0a060}
+.codegut{padding:6px 6px;font:13px/1.45 ui-monospace,Consolas,"Cascadia Mono",monospace}
+.codegut .gerr{color:#fff;background:var(--danger);border-radius:2px;padding:0 2px}
+.codegut .gsec{color:#228b22;font-weight:700}
+.codepos{padding:2px 10px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--bg);flex:none}
+.codehd{display:flex;align-items:center;justify-content:space-between}
+.codehd .mini{padding:0 6px;font-size:11px}
+.cmdrow{display:flex;align-items:center;gap:6px;border-top:1px solid var(--border);padding:2px 8px;font:12.5px ui-monospace,Consolas,monospace}
+.codecmd{flex:1;border:0 !important;background:transparent !important;font:12.5px ui-monospace,Consolas,monospace;padding:3px 0 !important}
+.codecmd:focus{outline:none}
+.codeout .cwarn{color:var(--muted)}.codeout .ccmd{color:var(--accent)}
+.figprevwrap{overflow:auto;max-height:62vh;margin:8px 0;border:1px solid var(--border);padding:6px;background:var(--bg)}
+.figprev{position:relative;background:#f0f0f0;margin:auto}
+.figprev .fe{position:absolute;box-sizing:border-box;border:1px solid #9aa0a6;overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;color:#111;cursor:pointer;white-space:pre-line;line-height:1.1}
+.figprev .fe>span{pointer-events:none;padding:1px 2px}
+.figprev .fe-pushbutton,.figprev .fe-togglebutton{background:#e1e1e1;border-radius:3px}
+.figprev .fe-text{border-color:transparent}
+.figprev .fe-edit,.figprev .fe-listbox{background:#fff;justify-content:flex-start;align-items:flex-start;text-align:left}
+.figprev .fe-popupmenu{background:#fff;justify-content:space-between}
+.figprev .fe-axes{background:#fff;border-color:#555;color:#777}
+.figprev .fe-uitable{background:#fff;color:#777}
+.figprev .fe-uipanel{align-items:flex-start;justify-content:flex-start;background:transparent}
+.figprev .fe.sel{outline:2px solid var(--accent);outline-offset:1px}
+.figinfo{min-height:18px}

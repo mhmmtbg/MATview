@@ -35,6 +35,13 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.5', d: 'Kod sekmesi: gerçek MATLAB ortamı gibi editör', items: [
+    'Düzeltme: veri dosyası açık değilken Kod sekmesine geçildiğinde karşılama ekranı editörü örtüyordu.',
+    'Yeni: çok sekmeli editör — sözdizimi renklendirme, satır numarası, %% bölümleri, otomatik girinti, Ctrl+R/Ctrl+T yorum, Ctrl+S kaydet; sekmeler tarayıcıda saklanır. F5 betik, Ctrl+Enter bölüm, F9 seçim çalıştırır. Alt kısımda komut penceresi (>>, ↑/↓ geçmiş) ve çalışma alanı.',
+    'Yeni: birden çok .m dosyası birlikte açılır (Aç ▸ MATLAB kodu, sürükle-bırak). Açık işlev dosyaları (funcint16.m gibi) ve betikler otomatik kullanılır; hata başka dosyadaysa o sekme açılıp satır işaretlenir. Türkçe Windows (1254) kodlamalı .m dosyaları doğru okunur.',
+    'Yeni: .mat yükle — değişkenler (uint8 dahil tüm sayısal sınıflar, 3 ve daha fazla boyut, karakter, hücre, yapı) çalışma alanına alınır; load(\'dosya.mat\') de çalışır. save(\'ad.mat\', ...) MATLAB\'ın açabileceği .mat dosyası indirir; whos çıktısı yapı dizisi olarak kullanılabilir.',
+    'Yeni: N boyutlu diziler — reshape(x,[a 1 b]), squeeze, permute, x(i,:,:) okuma/yazma, size/length/ndims/numel.',
+    'Yeni: .fig (GUIDE arayüzü) önizlemesi — düğme/menü/eksen yerleşimi ve her düğmenin geri çağırma işlevi adı gösterilir; arayüzün kendisi çalıştırılamaz.']},
   {v: '2.4', d: 'Kod sekmesi (MATLAB alt kümesi), figür/subplot, hızlı yakınlaştırma', items: [
     'Yeni: Kod görünümü — MATLAB alt kümesini çalıştırır (matris/karmaşık sayı, hücre, yapı, işlev tutamacı, if/for/while/switch/try, yerel işlevler). MATLAB kurulumu gerekmez; kod arka plan işçisinde çalışır, Durdur düğmesi vardır. Betikler .m olarak açılıp kaydedilir (sürükle-bırak da olur), tarayıcıda kitaplığa kaydedilir, örnek betikler hazırdır.',
     'Yeni: kanal köprüsü — ch(ad) kanalı sütun vektörü olarak alır, chfs(ad) örnekleme frekansı, cht(ad) zaman, chlist kanal listesi; addch(ad, y, fs) sonucu Türetilmiş kanallar altına ekler. load(\'dosya.mat\') açık .mat dosyalarından değişken okur.',

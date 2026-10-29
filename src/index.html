@@ -16,6 +16,7 @@
         <button id="btnOpen" data-ic="file" title="MATLAB (.mat) veya UNV dosyası aç">MAT / UNV dosyası…</button>
         <button id="btnTab" data-ic="table" title="CSV / Excel tablosu: zaman serisi veya özellik/regresyon verisi">Tablo (CSV / Excel)…</button>
         <button id="btnFrm" data-ic="bin" title="Alt sistem sayfalı Excel çerçevesiyle telemetre binary çöz">Binary dosya (Excel çerçeve)…</button>
+        <button id="btnCodeOpen" data-ic="file" title="MATLAB betiği / işlev dosyası (.m) ya da GUIDE arayüzü (.fig) aç">MATLAB kodu (.m / .fig)…</button>
         <button id="btnBin" data-ic="bin" title="Eski: hücre matrisi biçimindeki çerçeve tanımıyla binary çöz">Binary (eski matris çerçeve)…</button>
       </div></div>
     <div class="dd"><button id="btnSet" data-ic="settings" aria-haspopup="true" title="Ayarlar"><span class="lbl">Ayarlar</span><span class="car">▾</span></button>
@@ -27,7 +28,7 @@
         <button id="btnHelp" data-ic="help">Yardım</button>
       </div></div>
     <button id="btnTheme" data-ic="theme" title="Açık/koyu tema" aria-label="Tema"></button>
-    <input type="file" id="fileIn" accept=".m,.mat,.unv,.uff,.csv,.tsv,.txt,.xlsx,.wav,.tdms,.mf4,.mdf" multiple hidden>
+    <input type="file" id="fileIn" accept=".m,.fig,.mat,.unv,.uff,.csv,.tsv,.txt,.xlsx,.wav,.tdms,.mf4,.mdf" multiple hidden>
   </header>
   <aside id="left">
     <div class="pane-h">Dosyalar ve değişkenler</div>
@@ -57,7 +58,7 @@
       <div class="view hidden" id="v-code"></div>
       <div class="view hidden" id="v-fig"></div>
       <div id="welcome" class="hidden"><div class="wbox"><h2>MATView</h2><p class="muted">Başlamak için bir veri dosyası açın ya da pencereye sürükleyip bırakın.</p>
-        <div class="wcards"><button id="wMat" data-ic="file" class="wcard"><b>MAT dosyası</b><span>MATLAB v5 / v7.3</span></button><button id="wUnv" data-ic="unv" class="wcard"><b>UNV / UFF</b><span>Spektrum kayıtları (58)</span></button><button id="wTab" data-ic="table" class="wcard"><b>CSV / Excel</b><span>Zaman serisi veya özellik verisi</span></button><button id="wBin" data-ic="bin" class="wcard"><b>Binary</b><span>Excel çerçeve tanımıyla</span></button></div>
+        <div class="wcards"><button id="wMat" data-ic="file" class="wcard"><b>MAT dosyası</b><span>MATLAB v5 / v7.3</span></button><button id="wUnv" data-ic="unv" class="wcard"><b>UNV / UFF</b><span>Spektrum kayıtları (58)</span></button><button id="wTab" data-ic="table" class="wcard"><b>CSV / Excel</b><span>Zaman serisi veya özellik verisi</span></button><button id="wBin" data-ic="bin" class="wcard"><b>Binary</b><span>Excel çerçeve tanımıyla</span></button><button id="wCode" data-ic="file" class="wcard"><b>MATLAB kodu</b><span>.m betik yaz / aç, çalıştır</span></button></div>
         <p class="note">İpucu: Kanala çift tıklayın = yeni alt grafik · Shift+çift tık = aktif grafiğe ekle · Kanalı grafiğe sürükleyin. <kbd>?</kbd> kısayollar.</p></div></div>
       <div id="dropmsg" class="hidden">.mat dosyalarını buraya bırakın</div>
     </div>
