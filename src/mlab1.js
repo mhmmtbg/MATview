@@ -217,15 +217,15 @@ const MLAB = (() => {
     function parsePostfixLV() { const e = parsePrimaryPost(); if (!isLV(e)) err('Geçersiz döngü değişkeni', T().line); return e; }
     function parseFunction() {
       const line = T().line; p++;   // function
-      let outs = [], name, ins = [];
+      let outs = [], name, ins = [], defs = null;
       // [o1,o2] = ad(...)  |  o = ad(...)  |  ad(...)
       if (isOp('[')) { p++; while (!isOp(']')) { if (isOp(',')) { p++; continue; } outs.push(next().v); } p++; expectOp('='); name = next().v; }
       else { const a = next().v; if (isOp('=')) { p++; outs = [a]; name = next().v; } else name = a; }
       while (isOp('.')) { p++; name += '.' + next().v; }
-      if (isOp('(')) { p++; while (!isOp(')')) { if (isOp(',')) { p++; continue; } if (isOp('~')) { p++; ins.push('~'); continue; } const t = next(); ins.push(t.v); if (isOp('=')) { /* varsayılan değer yok */ } } p++; }
+      if (isOp('(')) { p++; while (!isOp(')')) { if (isOp(',')) { p++; continue; } if (isOp('~')) { p++; ins.push('~'); continue; } const t = next(); ins.push(t.v); if (isOp('=')) { p++; const save = inMatrix, sv2 = inIndexCtx; inMatrix = 0; inIndexCtx = 0; (defs || (defs = []))[ins.length - 1] = parseExpr(); inMatrix = save; inIndexCtx = sv2; } } p++; }
       const body = parseBlock(['end', 'function', 'eof']);
       if (T().k === 'kw' && T().v === 'end') p++;
-      funcs.push({name, ins, outs, body, line});
+      funcs.push({name, ins, outs, body, line, defs});
     }
     /* ifade — öncelik: || && | & karşılaştırma : + - * / unary ^ */
     function parseExpr() { return parseOrOr(); }

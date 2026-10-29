@@ -316,3 +316,14 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!important}
 #left{grid-column:1;grid-row:2}#center{grid-column:2;grid-row:2}#right{grid-column:3;grid-row:2}#app.wide #center{grid-column:1/-1}
 .bode{margin:6px 0 2px;border:1px solid var(--border);border-radius:4px;overflow:hidden}.bode canvas{display:block;width:100%;height:190px}
+
+.codemk{position:absolute;inset:0;margin:0;font:13px/1.45 ui-monospace,Consolas,"Cascadia Mono",monospace;padding:6px 8px;white-space:pre;tab-size:4;overflow:hidden;pointer-events:none;color:transparent}
+.codemk .fm{background:color-mix(in srgb,#f2c200 40%,transparent);border-radius:2px}.codemk .fm.cur{background:color-mix(in srgb,#ff8c00 60%,transparent);outline:1px solid #ff8c00}
+.codemk .bm{background:color-mix(in srgb,var(--accent) 25%,transparent);outline:1px solid color-mix(in srgb,var(--accent) 70%,transparent);border-radius:1px}.codemk .bm.bad{background:color-mix(in srgb,var(--danger) 35%,transparent);outline-color:var(--danger)}
+.codefind{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 8px;border-bottom:1px solid var(--border);background:var(--bg);font-size:12px}
+.codefind.hidden{display:none}.codefind>span{display:flex;gap:3px;align-items:center}.codefind input{width:200px;font:12px ui-monospace,Consolas,monospace;padding:2px 5px}
+.codefind button{padding:1px 7px;font-size:12px}.codefind .cftg{min-width:26px;font-family:ui-monospace,Consolas,monospace}.codefind .cftg.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.codefind .cfcount{min-width:70px;color:var(--muted);text-align:center}.codefind .cfx{margin-left:auto}
+.codefind[data-mode=find] .cf-r,.codefind[data-mode=find] .cf-l,.codefind[data-mode=replace] .cf-l,.codefind[data-mode=line] .cf-f,.codefind[data-mode=line] .cf-r{display:none}
+.codeac{position:absolute;z-index:30;margin:0;padding:2px 0;list-style:none;min-width:220px;max-width:420px;max-height:180px;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:5px;box-shadow:0 6px 18px rgba(0,0,0,.2);font:12px ui-monospace,Consolas,monospace}
+.codeac.hidden{display:none}.codeac li{display:flex;gap:10px;justify-content:space-between;padding:2px 8px;cursor:pointer;white-space:nowrap}.codeac li.on{background:var(--accent);color:var(--accent-fg)}.codeac .ack{opacity:.6;font-family:system-ui,sans-serif;font-size:11px}

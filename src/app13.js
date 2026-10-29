@@ -111,7 +111,7 @@ function codeRenderTabs() {
     h('span', {class: 'cti'}, codeIsFuncFile(d.text) ? 'ƒ' : 'M'), h('span', null, d.name), d.dirty ? h('span', {class: 'cdot', title: 'Kaydedilmedi'}, '•') : null,
     h('button', {class: 'cx', title: 'Kapat', onclick: e => { e.stopPropagation(); codeCloseDoc(i); }}, '×'))),
     h('button', {class: 'ctab add', title: 'Yeni betik', onclick: () => { codeStoreCur(); let k = CODE.docs.length + 1; while (CODE.docs.some(d => d.name === 'betik' + k + '.m')) k++; codeNewDoc('betik' + k + '.m', ''); }}, '+'),
-    CODE.docs.length > 1 ? h('button', {class: 'ctab closeall noic', id: 'codeCloseAll', title: 'Tüm sekmeleri kapat (kaydedilmemiş olanlar için bir kez sorulur)', onclick: () => codeCloseDocs(CODE.docs.map((_, k) => k))}, 'Tümünü kapat') : null);
+    ...(CODE.docs.length > 1 ? [h('button', {class: 'ctab closeall noic', id: 'codeCloseAll', title: 'Tüm sekmeleri kapat (kaydedilmemiş olanlar için bir kez sorulur)', onclick: () => codeCloseDocs(CODE.docs.map((_, k) => k))}, 'Tümünü kapat')] : []));
 }
 function codeRenameDoc(i) {
   const d = CODE.docs[i], inp = h('input', {type: 'text', value: d.name, style: 'width:100%'});

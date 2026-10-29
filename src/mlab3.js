@@ -245,8 +245,16 @@
   B.corr = a => num(B.corrcoef(a).re[1]);
   B.prctile = a => { const x = Float64Array.from(mat(a[0]).re).sort(), p = mat(a[1]); const n = x.length; return like(p, Float64Array.from(p.re, q => { const pos = q / 100 * n + 0.5; if (pos <= 1) return x[0]; if (pos >= n) return x[n - 1]; const lo = Math.floor(pos); return x[lo - 1] + (pos - lo) * (x[lo] - x[lo - 1]); })); };
   B.quantile = a => B.prctile([a[0], ML.elementwise('.*', a[1], num(100))]);
-  B.cumtrapz = a => { const y = a.length > 1 ? a[1] : a[0], x = a.length > 1 ? a[0] : null; const o = zeros(y.r, y.c); let s = 0; for (let i = 1; i < y.re.length; i++) { s += (x ? x.re[i] - x.re[i - 1] : 1) * (y.re[i] + y.re[i - 1]) / 2; o.re[i] = s; } return o; };
-  B.trapz = a => { const c = B.cumtrapz(a); return num(c.re.length ? c.re[c.re.length - 1] : 0); };
+  // trapz / cumtrapz: vektörde uzunluk boyunca, matriste sütun sütun; x skaler ise eşit aralık, vektör ise düğümler
+  const trapCols = (a, cum) => {
+    const y = mat(a.length > 1 ? a[1] : a[0]), xa = a.length > 1 ? mat(a[0]) : null, rowV = y.r === 1, R = rowV ? y.c : y.r, Cn = rowV ? 1 : y.c;
+    const dx = i => !xa ? 1 : xa.re.length === 1 ? xa.re[0] : xa.re[i] - xa.re[i - 1];
+    if (xa && xa.re.length > 1 && xa.re.length !== R) E('MATLAB:trapz:LengthXMismatch', 'trapz: x uzunluğu y\'nin satır sayısına (vektörde uzunluğuna) eşit olmalı.');
+    if (cum) { const o = zeros(y.r, y.c); for (let j = 0; j < Cn; j++) { let s = 0; for (let i = 1; i < R; i++) { s += dx(i) * (y.re[j * R + i] + y.re[j * R + i - 1]) / 2; o.re[j * R + i] = s; } } return o; }
+    const o = zeros(1, Cn); for (let j = 0; j < Cn; j++) { let s = 0; for (let i = 1; i < R; i++) s += dx(i) * (y.re[j * R + i] + y.re[j * R + i - 1]) / 2; o.re[j] = s; } return Cn === 1 ? num(o.re[0]) : o;
+  };
+  B.cumtrapz = a => trapCols(a, true);
+  B.trapz = a => trapCols(a, false);
 
   /* ---------- metin ---------- */
   B.num2str = function (a) {
@@ -441,7 +449,16 @@
     for (const w of Wn) if (!(w > 0 && w < 1)) E('MATLAB:butter:Wn', 'butter: Wn (kesim frekansı) 0 ile 1 arasında (Nyquist ile normalize) olmalı, örn. 2*fc/fs.');
     const [bz, az] = butterDesign(N, Wn, type === 'bandpass' ? 'bandpass' : type); return [rowv(bz), rowv(az)];
   };
-  B.polyfit = function (a, no) { const x = mat(a[0]).re, y = mat(a[1]).re, n = Math.floor(sc1(a[2])); if (x.length !== y.length) E('MATLAB:polyfit:XYSizeMismatch', 'polyfit: x ve y aynı uzunlukta olmalı.'); const A = zeros(x.length, n + 1); const mu = 0; for (let i = 0; i < x.length; i++) for (let j = 0; j <= n; j++) A.re[i + j * x.length] = Math.pow(x[i], n - j); const c = ML.lsq(A, colv(y)); return rowv(c.re); };
+  // [p, S, mu] = polyfit(x, y, n): üçüncü çıktı istenirse x̂ = (x − μ₁)/μ₂ ile merkezleme/ölçekleme (MATLAB ile aynı)
+  B.polyfit = function (a, no) {
+    let x = mat(a[0]).re, y = mat(a[1]).re; const n = Math.floor(sc1(a[2])); if (x.length !== y.length) E('MATLAB:polyfit:XYSizeMismatch', 'polyfit: x ve y aynı uzunlukta olmalı.');
+    let mu = null; if (no >= 3) { let m = 0; for (const v of x) m += v; m /= x.length; let s = 0; for (const v of x) s += (v - m) * (v - m); s = Math.sqrt(s / Math.max(1, x.length - 1)); mu = [m, s]; x = Float64Array.from(x, v => (v - m) / s); }
+    const A = zeros(x.length, n + 1); for (let i = 0; i < x.length; i++) for (let j = 0; j <= n; j++) A.re[i + j * x.length] = Math.pow(x[i], n - j);
+    const c = ML.lsq(A, colv(y)), p = rowv(c.re); if (!no || no < 2) return p;
+    let rr = 0; for (let i = 0; i < x.length; i++) { let f = 0; for (const q of c.re) f = f * x[i] + q; rr += (y[i] - f) ** 2; }
+    const Sx = Object.create(null); Sx.normr = num(Math.sqrt(rr)); Sx.df = num(Math.max(0, x.length - (n + 1))); Sx.R = empty();
+    const out = [p, {sa: true, r: 1, c: 1, v: [Sx]}]; if (no >= 3) out.push(colv(mu)); return out;
+  };
   B.polyval = a => { const p = mat(a[0]).re, x = mat(a[1]); return like(x, Float64Array.from(x.re, v => { let r = 0; for (const c of p) r = r * v + c; return r; })); };
   B.roots = a => { const p = Array.from(mat(a[0]).re); while (p.length && p[0] === 0) p.shift(); const n = p.length - 1; if (n < 1) return empty(); const C = zeros(n, n); for (let j = 0; j < n; j++) C.re[j * n] = -p[j + 1] / p[0]; for (let i = 1; i < n; i++) C.re[i + (i - 1) * n] = 1; return eigvals(C); };
   function eigvals(A) { // QR yinelemesi (Hessenberg'siz basit) — küçük n için
@@ -458,12 +475,53 @@
     for (let it = 0; it < 500; it++) { let md = 0; for (let i = 0; i < n; i++) { let d = [1, 0]; for (let j = 0; j < n; j++) if (j !== i) { const t = [z[i][0] - z[j][0], z[i][1] - z[j][1]]; d = [d[0] * t[0] - d[1] * t[1], d[0] * t[1] + d[1] * t[0]]; } const f = ev(z[i]); const s = d[0] * d[0] + d[1] * d[1]; if (s === 0) continue; const dl = [(f[0] * d[0] + f[1] * d[1]) / s, (f[1] * d[0] - f[0] * d[1]) / s]; z[i][0] -= dl[0]; z[i][1] -= dl[1]; md = Math.max(md, Math.hypot(dl[0], dl[1])); } if (md < 1e-14 * sc) break; }
     const re = Float64Array.from(z, q => q[0]), im = Float64Array.from(z, q => Math.abs(q[1]) < 1e-9 * sc ? 0 : q[1]); return ML.dropIm(new M(n, 1, re, im)); }
   B.poly = a => { const m = mat(a[0]); return rowv(polyFromRoots(Array.from(m.re, (v, i) => [v, m.im ? m.im[i] : 0]))); };
+  // kübik spline (MATLAB spline: 'not-a-knot' uçlar; 2 nokta → doğru, 3 nokta → parabol) ve PCHIP (Fritsch–Carlson, MATLAB pchip)
+  function splineCoef(xs, ys) {
+    const n = xs.length, h = [], d = []; for (let i = 0; i < n - 1; i++) { h.push(xs[i + 1] - xs[i]); d.push((ys[i + 1] - ys[i]) / h[i]); }
+    if (n === 2) return {s: [d[0], d[0]]};
+    if (n === 3) { const c2 = (d[1] - d[0]) / (xs[2] - xs[0]); const s0 = d[0] - c2 * h[0], s1 = d[0] + c2 * h[0], s2 = d[1] + c2 * h[1]; return {s: [s0, s1, s2]}; }
+    // eğimler s_i için üç köşegenli sistem (not-a-knot)
+    const A = Array.from({length: n}, () => [0, 0, 0]), r = new Array(n).fill(0);
+    A[0] = [0, h[1], h[0] + h[1]]; r[0] = ((h[0] + 2 * (h[0] + h[1])) * h[1] * d[0] + h[0] * h[0] * d[1]) / (h[0] + h[1]);
+    for (let i = 1; i < n - 1; i++) { A[i] = [h[i], 2 * (h[i - 1] + h[i]), h[i - 1]]; r[i] = 3 * (h[i] * d[i - 1] + h[i - 1] * d[i]); }
+    const m = n - 1; A[m] = [h[m - 1] + h[m - 2], h[m - 2], 0]; r[m] = (h[m - 1] * h[m - 1] * d[m - 2] + (2 * (h[m - 2] + h[m - 1]) + h[m - 1]) * h[m - 2] * d[m - 1]) / (h[m - 2] + h[m - 1]);
+    // Thomas: alt=A[i][0], ana=A[i][1], üst=A[i][2]; satır 0: ana=h1, üst=h0+h1 ; satır m: alt=h_{m-1}+h_{m-2}, ana=h_{m-2}
+    const c = new Array(n), dd = new Array(n), s = new Array(n);
+    c[0] = A[0][2] / A[0][1]; dd[0] = r[0] / A[0][1];
+    for (let i = 1; i < n; i++) { const den = A[i][1] - A[i][0] * c[i - 1]; c[i] = i < n - 1 ? A[i][2] / den : 0; dd[i] = (r[i] - A[i][0] * dd[i - 1]) / den; }
+    s[n - 1] = dd[n - 1]; for (let i = n - 2; i >= 0; i--) s[i] = dd[i] - c[i] * s[i + 1];
+    return {s};
+  }
+  function pchipSlopes(xs, ys) {
+    const n = xs.length, h = [], d = []; for (let i = 0; i < n - 1; i++) { h.push(xs[i + 1] - xs[i]); d.push((ys[i + 1] - ys[i]) / h[i]); }
+    const s = new Array(n).fill(0); if (n === 2) { s[0] = s[1] = d[0]; return s; }
+    for (let k = 1; k < n - 1; k++) if (d[k - 1] * d[k] > 0) { const w1 = 2 * h[k] + h[k - 1], w2 = h[k] + 2 * h[k - 1]; s[k] = (w1 + w2) / (w1 / d[k - 1] + w2 / d[k]); }
+    const end = (h0, h1, d0, d1) => { let v = ((2 * h0 + h1) * d0 - h0 * d1) / (h0 + h1); if (Math.sign(v) !== Math.sign(d0)) v = 0; else if (Math.sign(d0) !== Math.sign(d1) && Math.abs(v) > Math.abs(3 * d0)) v = 3 * d0; return v; };
+    s[0] = end(h[0], h[1], d[0], d[1]); s[n - 1] = end(h[n - 2], h[n - 3], d[n - 2], d[n - 3]);
+    return s;
+  }
+  // Hermite değerlendirme (uçlarda dış değer: son parçanın polinomu)
+  function hermiteEval(xs, ys, s, v) {
+    const n = xs.length; let lo = 0, hi = n - 1; if (v <= xs[0]) hi = 1; else if (v >= xs[n - 1]) lo = n - 2; else while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (xs[mid] <= v) lo = mid; else hi = mid; }
+    lo = Math.min(lo, n - 2); hi = lo + 1; const h = xs[hi] - xs[lo], t = (v - xs[lo]) / h, t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * ys[lo] + (t3 - 2 * t2 + t) * h * s[lo] + (-2 * t3 + 3 * t2) * ys[hi] + (t3 - t2) * h * s[hi];
+  }
+  const sortXY = (X, Y) => { const ord = Array.from(X.keys()).sort((p, q) => X[p] - X[q]); return [ord.map(i => X[i]), ord.map(i => Y[i])]; };
+  const cubicFn = (method, a) => {
+    const x = mat(a[0]), y = mat(a[1]), xq = mat(a[2]); if (x.re.length !== y.re.length) E('MATLAB:' + method + ':length', method + ': x ve y aynı uzunlukta olmalı.'); if (x.re.length < 2) E('MATLAB:' + method + ':short', method + ': en az 2 nokta gerekli.');
+    const [xs, ys] = sortXY(x.re, y.re), s = method === 'pchip' ? pchipSlopes(xs, ys) : splineCoef(xs, ys).s;
+    return like(xq, Float64Array.from(xq.re, v => Number.isNaN(v) ? NaN : hermiteEval(xs, ys, s, v)));
+  };
+  B.spline = a => { if (a.length < 3) E('MATLAB:spline:pp', 'spline: yalnız spline(x, y, xq) biçimi desteklenir.'); return cubicFn('spline', a); };
+  B.pchip = a => { if (a.length < 3) E('MATLAB:pchip:pp', 'pchip: yalnız pchip(x, y, xq) biçimi desteklenir.'); return cubicFn('pchip', a); };
   B.interp1 = function (a) {
     let x, y, xq, method = 'linear', extrap = null; const rest = a.filter(z => z instanceof M && z.t === 'c').map(S); if (rest.length) method = rest[0].toLowerCase(); const nums = a.filter(z => !(z instanceof M && z.t === 'c'));
     if (nums.length === 2) { y = nums[0]; xq = nums[1]; x = rowv(Array.from({length: y.re.length}, (_, i) => i + 1)); } else { x = nums[0]; y = nums[1]; xq = nums[2]; if (nums[3]) extrap = nums[3].re[0]; if (rest.includes('extrap')) extrap = 'extrap'; }
     const X = x.re, Y = y.re, n = X.length; if (n !== Y.length) E('MATLAB:interp1:YInvalidNumRows', 'interp1: x ve y aynı uzunlukta olmalı.');
     const ord = Array.from(X.keys()).sort((p, q) => X[p] - X[q]); const xs = ord.map(i => X[i]), ys = ord.map(i => Y[i]);
     let ex = rest.includes('extrap'); const o = like(xq, new Float64Array(xq.re.length));
+    const cub = method === 'spline' || method === 'pchip' || method === 'cubic' || method === 'makima' ? (method === 'spline' ? splineCoef(xs, ys).s : pchipSlopes(xs, ys)) : null;
+    if (cub) { if (method === 'spline' && extrap === null) ex = true; for (let k = 0; k < o.re.length; k++) { const v = xq.re[k]; o.re[k] = Number.isNaN(v) ? NaN : ((v < xs[0] || v > xs[n - 1]) && !ex) ? (typeof extrap === 'number' ? extrap : NaN) : hermiteEval(xs, ys, cub, v); } return o; }
     for (let k = 0; k < o.re.length; k++) {
       const v = xq.re[k]; if (Number.isNaN(v)) { o.re[k] = NaN; continue; }
       if ((v < xs[0] || v > xs[n - 1]) && !ex) { o.re[k] = typeof extrap === 'number' ? extrap : NaN; continue; }
