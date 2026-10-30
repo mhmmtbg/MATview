@@ -28,6 +28,7 @@ function modal(title, body, buttons) {
   $('#mclose').onclick = close; $('#modal').classList.remove('hidden');
 }
 async function saveBlob(blob, name) {
+  blob = await blob;   // zip yazıcıları Promise<Blob> döndürür
   try {
     if (window.showSaveFilePicker) { const hd = await showSaveFilePicker({suggestedName: name}); const w = await hd.createWritable(); await w.write(blob); await w.close(); return true; }
   } catch (e) { if (e && e.name === 'AbortError') return false; }

@@ -230,5 +230,52 @@ const H5 = (() => {
     const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
     return MATreadNumeric(dv, 0, MI[dt.k], count, true);
   }
-  return {open, load, SIG};
+
+  // ---- MATLAB v7.3 tam ağaç (Kod sekmesi load(): hücre, yapı, karakter, mantıksal, seyrek) ----
+  function attrs(o) { const a = {}; for (const m of o.msgs) if (m.type === 0x0c) { try { const at = parseAttr(m.data); a[at.name] = at; } catch (e) {} } return a; }
+  function attrStr(at) { if (!at) return ''; const sz = dvOf(at.dt).getUint32(4, true); return String.fromCharCode(...at.data.subarray(0, Math.min(sz, 64))).replace(/\0.*$/, '').trim(); }
+  function attrU64(at) { if (!at || at.data.length < 8) return 0; return Number(dvOf(at.data).getBigUint64(0, true)); }
+  const NUMK = {double: 'd', single: 's', int8: 'i8', uint8: 'u8', int16: 'i16', uint16: 'u16', int32: 'i32', uint32: 'u32', int64: 'i64', uint64: 'u64', logical: 'l', char: 'c'};
+  async function nodeTree(ctx, o, name, depth) {
+    if (depth > 30) return {k: 'skip', name};
+    const A = attrs(o), mclass = attrStr(A.MATLAB_class), isDs = !!(msg(o, 0x01) && msg(o, 0x03) && msg(o, 0x08));
+    if (!isDs) {   // grup: yapı (1×1) ya da seyrek matris
+      if (A.MATLAB_sparse) {
+        const nr = attrU64(A.MATLAB_sparse), kids = new Map(await listGroup(ctx, o, null)), get = async k => { if (!kids.has(k)) return null; const ob = await readObject(ctx, kids.get(k)), d = describe(ob, k); d.h5 = {ctx, obj: ob}; return d.dt && d.dt.kind === 'num' && d.count ? bytesToF64(await loadBytes(null, d), d.dt, d.count) : new Float64Array(0); };
+        const jc = await get('jc'), ir = await get('ir'), data = await get('data'); const nc = jc ? jc.length - 1 : 0;
+        if (nr * nc > 2e7) return {k: 'skip', name};
+        const re = new Float64Array(nr * nc); if (jc && ir && data) for (let j = 0; j < nc; j++) for (let p = jc[j]; p < jc[j + 1]; p++) re[ir[p] + j * nr] = data[p];
+        return {k: 'num', name, cls: mclass === 'logical' ? 'l' : 'd', dims: [nr, nc], re, sparse: true};
+      }
+      const kids = await listGroup(ctx, o, null), f = [], q = {}, sub = [];
+      for (const [k, a] of kids) { if (k === '#refs#' || k === '#subsystem#') continue; f.push(k); sub.push([k, a]); }
+      // yapı dizisi: tüm alanlar başvuru dizisi (her eleman için bir başvuru)
+      const kidObjs = []; for (const [k, a] of sub) { try { kidObjs.push([k, await readObject(ctx, a)]); } catch (e) {} }
+      const refField = ([, ob]) => { const d = describe(ob, ''); return d.dt && d.dt.kind === 'other' && d.dt.cls === 7 && !attrStr(attrs(ob).MATLAB_class); };
+      if (kidObjs.length && kidObjs.every(refField)) {
+        const d0 = describe(kidObjs[0][1], ''), n = d0.count, v = Array.from({length: n}, () => ({}));
+        for (const [k, ob] of kidObjs) { const d = describe(ob, k); d.h5 = {ctx, obj: ob}; const raw = await loadBytes(null, d), rdv = dvOf(raw); for (let i = 0; i < n && i < d.count; i++) { const ad = Number(rdv.getBigUint64(i * 8, true)); v[i][k] = ad ? await nodeTree(ctx, await readObject(ctx, ad), '', depth + 1) : {k: 'num', cls: 'd', dims: [0, 0], re: new Float64Array(0)}; } }
+        return {k: 'struct', name, dims: d0.dims, f: kidObjs.map(x => x[0]), v};
+      }
+      for (const [k, ob] of kidObjs) q[k] = await nodeTree(ctx, ob, k, depth + 1);
+      return {k: 'struct', name, dims: [1, 1], f: kidObjs.map(x => x[0]), v: [q]};
+    }
+    const d = describe(o, name); d.h5 = {ctx, obj: o};
+    if (A.MATLAB_empty) { const dims = d.count && d.dt && d.dt.kind === 'num' ? Array.from(bytesToF64(await loadBytes(null, d), d.dt, d.count)) : [0, 0]; return {k: mclass === 'cell' ? 'cell' : 'num', name, cls: NUMK[mclass] || 'd', dims, re: new Float64Array(0), v: []}; }
+    if (mclass === 'cell' || (d.dt && d.dt.kind === 'other' && d.dt.cls === 7)) {
+      if (d.count > 100000) return {k: 'skip', name};
+      const raw = await loadBytes(null, d), rdv = dvOf(raw), v = [];
+      for (let i = 0; i < d.count; i++) { const ad = Number(rdv.getBigUint64(i * 8, true)); v.push(ad ? await nodeTree(ctx, await readObject(ctx, ad), '', depth + 1) : {k: 'num', cls: 'd', dims: [0, 0], re: new Float64Array(0)}); }
+      return {k: 'cell', name, dims: d.dims, v};
+    }
+    if (!d.dt || d.dt.kind !== 'num' || d.dt.be) return {k: 'skip', name, cls: mclass};
+    const re = bytesToF64(await loadBytes(null, d), d.dt, d.count);
+    return {k: 'num', name, cls: NUMK[mclass] || 'd', dims: d.dims.length === 1 ? [d.dims[0], 1] : d.dims, re};
+  }
+  async function readTrees(m) {
+    const out = [];
+    for (const v of m.vars) { if (/[.{(]/.test(v.name) || !v.h5) continue; try { const t = await nodeTree(v.h5.ctx, v.h5.obj, v.name, 0); t.name = v.name; out.push(t); } catch (e) { out.push({k: 'skip', name: v.name}); } }
+    return out;
+  }
+  return {open, load, SIG, readTrees};
 })();

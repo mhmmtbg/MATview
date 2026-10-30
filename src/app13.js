@@ -435,6 +435,7 @@ async function codeSavedMat(sv) {
 CODE.matFiles = new Map();   // ad → ağaç listesi (load('ad') için)
 async function matTrees(m, fname) {
   if (!m.h5) return MAT.readAll(m);
+  try { return await MAT.readAll(m); } catch (_) { /* eski yol: yalnız sayısal */ }
   const out = []; for (const v of m.vars) { if (!v.numeric || /[.{(]/.test(v.name) || !v.dims) continue; try { const d = await MAT.load(m, v); const dims = v.dims.slice(); out.push({k: 'num', name: v.name, cls: 'd', dims, re: Float64Array.from(d)}); } catch (_) {} } return out;
 }
 async function codeLoadMatFiles(files) {
