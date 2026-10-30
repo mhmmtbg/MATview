@@ -568,7 +568,7 @@ function chByName(nm) { for (const f of allFiles()) for (const c of f.channels) 
 async function saveSession() {
   const o = {app: 'MATView', v: 2, notes: S.notes, linkX: S.plot.linkX, files: S.files.map(f => f.name),
     axes: S.plot.axes.map(ax => ({title: ax.title, ylabel: ax.ylabel, ylabel2: ax.ylabel2 || '', xlim: ax.xlim, ylim: ax.ylim, yAuto: ax.yAuto, ylim2: ax.ylim2, yAuto2: ax.yAuto2 !== false, ylog: ax.ylog, hw: ax.hw,
-      traces: ax.traces.filter(t => t.ch).map(t => ({name: t.ch.name, color: t.color, width: t.width, visible: t.visible, yr: !!t.yr}))})),
+      lgMin: !!ax.lgMin, hpx: ax.hpx || null, wfrac: ax.wfrac || null, traces: ax.traces.filter(t => t.ch).map(t => ({name: t.ch.name, color: t.color, width: t.width, visible: t.visible, yr: !!t.yr}))})),
     deletions: {}, timing: S.files.map(f => ({name: f.name, Tpkt: f.Tpkt, baseFs: f.baseFs}))};
   for (const f of allFiles()) for (const c of f.channels) if (c.delCount) o.deletions[c.name] = rle(c.del);
   // türetilmiş kanallar
@@ -603,7 +603,7 @@ async function loadSession(file) {
     }
     clearPlot(); S.plot.linkX = o.linkX !== false; if (o.notes) { S.notes = o.notes; if (typeof noteSave === 'function') noteSave(); S.plot.notes = S.notes; }
     for (const a of o.axes || []) {
-      const ax = S.plot.addAxes({title: a.title, ylabel: a.ylabel, ylabel2: a.ylabel2 || '', ylim: a.ylim, yAuto: a.yAuto, ylim2: a.ylim2 || [0, 1], yAuto2: a.yAuto2 !== false, ylog: a.ylog, xlim: a.xlim}); if (a.hw) ax.hw = a.hw;
+      const ax = S.plot.addAxes({title: a.title, ylabel: a.ylabel, ylabel2: a.ylabel2 || '', ylim: a.ylim, yAuto: a.yAuto, ylim2: a.ylim2 || [0, 1], yAuto2: a.yAuto2 !== false, ylog: a.ylog, xlim: a.xlim}); if (a.hw) ax.hw = a.hw; if (a.hpx) ax.hpx = a.hpx; if (a.wfrac) ax.wfrac = a.wfrac; if (a.lgMin) ax.lgMin = true;
       for (const t of a.traces) { const c = chByName(t.name); if (!c) { miss++; continue; } await ensureLoaded(c); ax.traces.push({kind: 'ts', ch: c, label: c.name, color: t.color, width: t.width, visible: t.visible, yr: !!t.yr}); }
     }
     for (const nm in o.deletions || {}) { const c = chByName(nm); if (!c) { miss++; continue; } await ensureLoaded(c); const idx = []; for (const [s, e] of o.deletions[nm]) for (let i = s; i < e; i++) idx.push(i); c.applyDelete(Uint32Array.from(idx)); }

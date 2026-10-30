@@ -119,22 +119,39 @@ class Plot {
   viewFwd() { const f = this.hist.fwd; if (!f.length) return false; this.hist.back.push(this.viewState()); this._applyView(f.pop()); return true; }
   removeAxes(ax) { const i = this.axes.indexOf(ax); if (i >= 0) this.axes.splice(i, 1); this.cursors = []; this.sel = null; if (this.active === ax) this.active = null; this.invalidate(); }
   invalidate() { if (this.dirty && this._raf) return; this.dirty = true; if (!this._raf) this._raf = requestAnimationFrame(() => { this._raf = null; this.draw(); }); }
+  // Alt grafik sayısı maxVisible'ı aşınca ya da yükseklikler elle büyütülünce tuval görünür alandan uzun olur ve üst öğe kaydırılır.
   resize() {
-    const p = this.cv.parentElement, w = p.clientWidth, h = p.clientHeight;
-    if (!w || !h) return;
-    this.dpr = window.devicePixelRatio || 1; this.W = w; this.H = h;
-    this.cv.width = Math.round(w * this.dpr); this.cv.height = Math.round(h * this.dpr);
+    const p = this.cv.parentElement, w = p.clientWidth, hv = p.clientHeight;
+    if (!w || !hv) return;
+    this.Hv = hv; const h = Math.max(hv, Math.ceil(this.contentH(hv)));
+    let dpr = window.devicePixelRatio || 1; while (dpr > 1 && w * h * dpr * dpr > 6e7) dpr = Math.max(1, dpr / 1.5);   // çok uzun tuvalde bellek sınırı
+    if (this.W === w && this.H === h && this.dpr === dpr && this.cv.width === Math.round(w * dpr)) { this.invalidate(); return; }
+    this.dpr = dpr; this.W = w; this.H = h;
+    this.cv.width = Math.round(w * dpr); this.cv.height = Math.round(h * dpr);
     this.cv.style.width = w + 'px'; this.cv.style.height = h + 'px';
+    if (p.classList) p.classList.toggle('scrolly', h > hv + 1);
     this.invalidate();
   }
+  // yerleşim ölçüleri: kenar boşlukları ve alt grafik yükseklikleri (hv: görünür yükseklik)
+  margins() { const t = this.axes.some(a => a.title); return {L: 74, R: this.axes.some(a => this.hasRight(a)) ? 72 : 18, T: t ? 26 : 10, B: 40, gap: t ? 40 : 26}; }
+  heights(hv) {
+    const n = this.axes.length; if (!n) return [];
+    const {T, B, gap} = this.margins(), mv = this.maxVisible || 5, fixed = this.axes.reduce((s, a) => s + (a.hpx ? a.hpx : 0), 0), nf = this.axes.filter(a => !a.hpx).length;
+    let tw = 0; for (const a of this.axes) if (!a.hpx) tw += a.hw || 1;
+    // görünür alan en çok mv alt grafiği sığdırır; fazlası kaydırılır
+    const slots = Math.min(n, mv), availV = Math.max(60, hv - T - B - gap * (slots - 1)), unit = availV / slots;
+    const flex = n <= mv ? Math.max(60 * nf, availV + gap * 0 - fixed - 0) : unit * tw;
+    return this.axes.map(a => a.hpx ? Math.max(50, a.hpx) : Math.max(50, n <= mv ? flex * (a.hw || 1) / (tw || 1) : unit * (a.hw || 1)));
+  }
+  contentH(hv) { if (!this.axes.length) return hv; const {T, B, gap} = this.margins(), hs = this.heights(hv); return T + B + gap * (hs.length - 1) + hs.reduce((a, b) => a + b, 0); }
+  // içerik yüksekliği değiştiyse tuvali yeniden boyutlandır (alt grafik eklendi / kaldırıldı / elle boyutlandı)
+  fitContent() { const p = this.cv.parentElement; if (!p || !this.Hv) return false; const need = Math.max(p.clientHeight, Math.ceil(this.contentH(p.clientHeight))); if (need !== this.H || p.clientWidth !== this.W) { this.resize(); return true; } return false; }
   // ---------- yerleşim ----------
   layout(W, H) {
     const n = this.axes.length; if (!n) return;
-    const L = 74, R = this.axes.some(a => this.hasRight(a)) ? 72 : 18, T = this.axes.some(a => a.title) ? 26 : 10, B = 40, gap = this.axes.some(a => a.title) ? 40 : 26;
-    const avail = Math.max(60 * n, H - T - B - gap * (n - 1));
-    let tw = 0; for (const a of this.axes) tw += a.hw || 1;
+    const {L, R, T, gap} = this.margins(), hs = this.heights(this.Hv && H === this.H ? this.Hv : H), full = Math.max(50, W - L - R);
     let y = T;
-    this.axes.forEach(ax => { const h = Math.max(50, avail * (ax.hw || 1) / tw); ax.rect = {x: L, y, w: Math.max(50, W - L - R), h}; y += h + gap; });
+    this.axes.forEach((ax, i) => { const h = hs[i]; ax.rect = {x: L, y, w: Math.max(50, full * Math.min(1, Math.max(0.2, ax.wfrac || 1))), h}; y += h + gap; });
   }
   bounds() {
     let lo = Infinity, hi = -Infinity;
@@ -201,7 +218,7 @@ class Plot {
   pxY(ax, py) { const r = ax.rect, f = 1 - (py - r.y) / r.h; if (ax.ylog) { const l0 = Math.log10(ax.ylim[0]), l1 = Math.log10(ax.ylim[1]); return Math.pow(10, l0 + f * (l1 - l0)); } return ax.ylim[0] + f * (ax.ylim[1] - ax.ylim[0]); }
 
   // ---------- çizim ----------
-  draw() { this.dirty = false; const ctx = this.cv.getContext('2d'); ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.render(ctx, this.W, this.H, curTheme(), false); this.onDraw(); }
+  draw() { if (this.fitContent && this.Hv && this.fitContent()) { /* boyut değişti, aynı karede çiz */ } this.dirty = false; const ctx = this.cv.getContext('2d'); ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.render(ctx, this.W, this.H, curTheme(), false); this.onDraw(); }
   render(ctx, W, H, T, forExport) {
     ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
     if (!this.axes.length) { ctx.fillStyle = T.muted; ctx.font = '14px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.fillText(this.opts.emptyText || 'Soldaki listeden bir kanalı çift tıklayın veya buraya sürükleyin', W / 2, H / 2); return; }
@@ -279,7 +296,7 @@ class Plot {
     if (ax === this.axes[this.axes.length - 1] || forExport) ctx.fillText(xl, r.x + r.w / 2, r.y + r.h + 21);
     if (ax.ylabel) { ctx.save(); ctx.translate(13, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ax.ylabel, 0, 0); ctx.restore(); }
     // gösterge
-    if (this.legend && (forExport || !this.domLegend)) {
+    if (this.legend && !ax.lgMin && (forExport || !this.domLegend)) {
       const vis = ax.traces.filter(t => t.visible && !t.noLegend); if (vis.length) {
         ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const lbl = new Map(vis.map(t => [t, t.label + (t.yr ? ' (sağ Y)' : '') + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
@@ -421,6 +438,7 @@ class Plot {
   zoomX(ax, f, cx) { let [a, b] = ax.xlim; if (ax.xlog) { const l0 = Math.log10(a), l1 = Math.log10(b), c = Math.log10(cx); this.setXlim(ax, Math.pow(10, c - (c - l0) * f), Math.pow(10, c + (l1 - c) * f)); } else this.setXlim(ax, cx - (cx - a) * f, cx + (b - cx) * f); }
   zoomY(ax, f, cy) { let [a, b] = ax.ylim; if (ax.ylog) { const l0 = Math.log10(a), l1 = Math.log10(b), c = Math.log10(cy); this.setYlim(ax, Math.pow(10, c - (c - l0) * f), Math.pow(10, c + (l1 - c) * f)); } else this.setYlim(ax, cy - (cy - a) * f, cy + (b - cy) * f); }
   _wheel(e) {
+    if (this.H > (this.Hv || this.H) + 1 && !e.ctrlKey && !e.shiftKey && !e.altKey) return;   // kaydırmalı düzen: tarayıcı kaydırır
     const h = this.hit(e); if (!h) return; e.preventDefault();
     const now = performance.now(); if (now - this._lastWheel > 600) this.pushView(); this._lastWheel = now;
     const f = Math.pow(1.0018, e.deltaY * (e.deltaMode === 1 ? 33 : 1)), {ax} = h;
@@ -428,7 +446,7 @@ class Plot {
     const right = this.hasRight(ax), cy2 = right ? this._r(ax, () => this.pxY(ax, pyc)) : 0;
     if (h.zone === 'y2') this.zoomY2(ax, f, cy2);
     else if (h.zone === 'y' || (h.zone === 'plot' && e.shiftKey)) { this.zoomY(ax, f, cy); if (right && h.zone === 'plot') this.zoomY2(ax, f, cy2); }
-    else if (h.zone === 'x' || !e.ctrlKey) this.zoomX(ax, f, cx);
+    else if (h.zone === 'x' || !e.ctrlKey || this.H > (this.Hv || this.H) + 1) this.zoomX(ax, f, cx);
     else { this.zoomX(ax, f, cx); this.zoomY(ax, f, cy); if (right) this.zoomY2(ax, f, cy2); }
     this.invalidate(); this.onChange('view');
   }
