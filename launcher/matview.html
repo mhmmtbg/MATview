@@ -6682,7 +6682,7 @@ async function qualAuto(files) {
 }
 
 /* ===== Faz 2: Test sekmesi — faz tablosu (B1), şartname uygunluk + şablonlar (B2), hesap kaydı (A2) ===== */
-const APP_VER = '2.7';
+const APP_VER = '2.8';
 function logOp(op, detail) { (S.methodLog = S.methodLog || []).push(Object.assign({t: Date.now(), op}, detail || {})); }
 
 /* ---------- Faz tablosu (düzenlenebilir) ---------- */
@@ -7114,6 +7114,14 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.8', d: 'Yerel Windows penceresi, çift Y, çoklu imleç, sanal ağaç, yeni süzgeçler, kod düzenleyici, oturum v2', items: [
+    'Windows: MATView.exe kendi uygulama penceresinde (WebView2, kurulumsuz) ve ilk açılışta ekranı kaplayarak açılır; F11 tam ekran.',
+    'Performans: SRS, spektrogram, FRF, filtfilt, Hampel ve spektral gürültü azaltma arka plan işçisinde; DSP / MATLAB kaynakları tek kez gömülü; olay güdümlü arayüz yenileme.',
+    'Grafik: çift Y ekseni (farklı birimler), çoklu imleç + tepe/çukur yakalama + ölçüm paneli (Δ, eğim, alan, RMS, harmonik oranı), senkron dikey izleme (X), görünüm geçmişi (Alt+← / Alt+→); spektrogram imleci, kesit grafikleri, log frekans, inferno/magma/jet.',
+    'Arayüz: sanal kaydırmalı kanal ağacı (10 000+ kanal), düzenli ifade / birim / fs / ★ arama, yeniden boyutlanan ve gizlenebilen paneller (Ctrl+B, Ctrl+Shift+B).',
+    'DSP: Chebyshev I, Bessel, FIR (pencereli sinc) + canlı Bode; rainflow çevrim sayımı ve hasar özeti; kayan basıklık / tepe faktörü; tam Δf (keyfi pencere uzunluğu).',
+    'Kod: Bul/Değiştir (Ctrl+F/H), Satıra git (Ctrl+G), ayraç eşleme, otomatik tamamlama (işlev, değişken, kanal adı); varsayılan parametreler, spline/pchip, trapz matris, polyfit [p,S,mu].',
+    'Oturum v2: türetilmiş kanallar (formülüyle), test fazları, profiller, roller, rapor öğeleri. Rapor: sürükle-bırak, açıklamalar, yan yana şekiller. MAT v7.3 hücre/yapı/char/seyrek, MAT v5 seyrek, MDF 3.x; XLSX/DOCX deflate sıkıştırmalı.']},
   {v: '2.7', d: 'Telemetri: çerçeve tipleri, canlı oynatma, kamera, tek .mat', items: [
     'Yeni: Telemetri görünümü — Telemetri Çözümleyici (telemetryParser v4.6) MATView içinde. Çerçeve tipleri ve template\'ler (belirteç index\'i ile seçim), sütun öncelikli düzen, header, sayaç, dikkate alınmayacak sütunlar, undersample paketler, multiplex formüller, tekrar index\'leri; ayar JSON\'u içe/dışa aktarma. Seri port / UDP canlı telemetri yoktur.',
     'Yeni: “Çöz ve MATView\'de aç” — tüm parametreler kanal olur; zaman ekseni sayaçtan (kayıp çerçeveler boşluk), oversample ve koşullu / undersample örnekler doğru zamanda. Veri kanal seçildikçe okunur.',

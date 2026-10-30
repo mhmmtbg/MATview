@@ -3,11 +3,11 @@
 MATLAB `.mat` dosyalarını okuyan, MATLAB benzeri grafik çizen; yakınlaştırma/uzaklaştırma, bozucu veriyi silme, FFT/PSD/spektrogram, süzgeç ve akustik temizleme sunan kurulumsuz masaüstü uygulaması. İnternet ve kurulum gerektirmez.
 
 ## Kullanım
-- `dist/MATView.exe` (Windows 10+, Edge veya Chrome gerekir): çift tıklayın ya da `.mat` dosyasını exe'nin üzerine sürükleyin.
+- `dist/MATView.exe` (Windows 10/11, **kurulum gerektirmez**): çift tıklayın ya da `.mat` dosyasını exe'nin üzerine sürükleyin. Uygulama kendi penceresinde açılır (Windows ile gelen Microsoft Edge **WebView2** çalışma zamanı; sekme / adres çubuğu yoktur) ve ilk açılışta **ekranı kaplar** (büyütülmüş). **F11** gerçek tam ekran ile pencere arasında geçer. WebView2 bulunmazsa Edge/Chrome uygulama penceresi (`--app`, büyütülmüş) kullanılır. Tarayıcı penceresini zorlamak için `MATVIEW_BROWSER=1`.
 - `dist/matview.html`: aynı arayüz, tek dosya; tarayıcıda açılır.
 
 ## Özellikler
-- MATLAB v5 (sıkıştırılmış) ve v7.3 (HDF5, klasik yapı) okuma; yalnızca seçilen değişken yüklenir.
+- MATLAB v5 (sıkıştırılmış) ve v7.3 (HDF5) okuma; yalnızca seçilen değişken yüklenir. MDF 3.x / 4.x, TDMS, UNV, CSV/XLSX, WAV.
 - Zaman ekseni `cnt` paket sayacından türetilir (varsayılan 10 ms/paket, "Zaman ayarları"ndan değiştirilebilir); kayıp paketler boşluk olarak görünür.
 - Büyük veri (14 M+ örnek) için min/max inceltme; kutu/tekerlek zoom, pan, veri imleci.
 - Kutu/kement ile nokta silme, eşik ve Hampel sıçrama tespiti, geri al/yinele (orijinal dosya değişmez).
@@ -76,12 +76,28 @@ Not: **Byte Endian** sütunu boş bırakılan çok baytlı alanlar *little-endia
 ```
 python3 build.py                      # src/* (+ src/tlm/telemetri.html) -> dist/matview.html (+ launcher/matview.html)
 cd launcher
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H=windowsgui -s -w" -o ../dist/MATView.exe .
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 GOFLAGS=-mod=vendor go build -trimpath -ldflags="-H=windowsgui -s -w" -o ../dist/MATView.exe .
 ```
-Go yalnızca standart kütüphaneyi kullanır. **Simge**: `launcher/matview.svg` → `launcher/matview.ico` → `launcher/rsrc_windows_amd64.syso` (`python3 launcher/make_icon.py`; Go derleyicisi `.syso` dosyasını exe'ye kendiliğinden ekler, böylece exe Explorer'da ve masaüstünde simgeli görünür). Uygulama penceresi ve görev çubuğu için aynı simge sayfaya favicon olarak gömülüdür. `test/` altında Node ve Playwright testleri bulunur (gerçek veri dosyaları depoda yoktur).
+Yerel pencere için saf Go (cgo'suz) `github.com/jchv/go-webview2` kullanılır; bağımlılıklar `launcher/vendor/` altında depodadır (çevrimdışı derlenir). DPI farkındalığı `launcher/matview.manifest` ile exe'ye gömülür. **Simge**: `launcher/matview.svg` → `launcher/matview.ico` → `launcher/rsrc_windows_amd64.syso` (`python3 launcher/make_icon.py`; Go derleyicisi `.syso` dosyasını exe'ye kendiliğinden ekler, böylece exe Explorer'da ve masaüstünde simgeli görünür). Uygulama penceresi ve görev çubuğu için aynı simge sayfaya favicon olarak gömülüdür. `test/` altında Node ve Playwright testleri bulunur (gerçek veri dosyaları depoda yoktur).
 
 ## Yapı
-`src/mat.js` (v5 okuyucu), `src/h5.js` (HDF5), `src/dsp.js`, `src/expr.js`, `src/plot.js` (grafik motoru), `src/store.js` (veri modeli), `src/app1.js`/`app2.js` (arayüz), `src/mlab1-3.js` (MATLAB alt kümesi: ayrıştırıcı, yorumlayıcı, işlev kütüphanesi), `src/app13.js` (Kod/Figür arayüzü), `src/wsp.js` (çalışma klasörü paneli), `src/tlm.js` + `src/tlm/telemetri.html` (Telemetri görünümü), `launcher/main.go` (yerel sunucu + tarayıcı başlatıcı).
+`src/mat.js` (v5 okuyucu), `src/h5.js` (HDF5), `src/dsp.js`, `src/expr.js`, `src/plot.js` (grafik motoru), `src/store.js` (veri modeli), `src/app1.js`/`app2.js` (arayüz), `src/mlab1-3.js` (MATLAB alt kümesi: ayrıştırıcı, yorumlayıcı, işlev kütüphanesi), `src/app13.js` (Kod/Figür arayüzü), `src/wsp.js` (çalışma klasörü paneli), `src/tlm.js` + `src/tlm/telemetri.html` (Telemetri görünümü), `launcher/main.go` (başlatıcı) + `launcher/native_windows.go` (WebView2 penceresi, tam ekran). Sürüm 2.8 ile eklenen modüller: `src/app14.js` (imleç paneli, izleme, panel boyutları, rainflow / kayan istatistik arayüzü), `src/codeed.js` (kod düzenleyici).
+
+## Sürüm 2.8 — performans, grafik, arayüz, DSP, kod düzenleyici, oturum
+
+**Windows:** `MATView.exe` artık tarayıcı sekmesi değil, kendi uygulama penceresi (WebView2, kurulumsuz); ilk açılışta büyütülmüş, F11 tam ekran.
+
+**Performans:** SRS, spektrogram, FRF, filtfilt, Hampel, spektral gürültü azaltma Web Worker'da (Transferable tamponlarla kopyasız). DSP ve MATLAB yorumlayıcısı HTML'e yalnız bir kez gömülür (işçiler kaynağı `Function.prototype.toString` ile alır; ~290 KB küçülme). Arayüz yenilemesi 1,5 sn'lik zamanlayıcı yerine olay güdümlü.
+
+**Grafik:** farklı birimli izler aynı alt grafikte **çift Y ekseni** (ikinci birim sağ eksene otomatik; lejantta sağ tık → *Sağ/Sol Y eksenine taşı*). **Çoklu imleç** (Shift+tık ekler, imlece yakın tık taşır, Esc temizler), **tepe/çukur yakalama**, ölçüm paneli (ΔX, ΔY, 1/ΔX, eğim, alan ∫y dx, ortalama, RMS, tepe-tepe, x/x₁ harmonik oranı). **Senkron dikey izleme** (X): tüm alt grafiklerde imleç altındaki değerler. **Görünüm geçmişi**: Alt+← / Alt+→ (araç çubuğunda Geri / İleri). Spektrogram: tıkla → imleç (t, f, dB), anlık spektrum ve zaman kesiti grafikleri, logaritmik frekans ekseni, *inferno / magma / jet* renk haritaları.
+
+**Arayüz:** kanal ağacı sanal kaydırmalı (150 kanal sınırı kalktı; 10 000+ kanal akıcı). Arama: `metin`, `/düzenli ifade/`, `[g]` `[°C]` birim, `fs>1000` `fs=2k`, `★` sık kullanılanlar (satırdaki ☆ ya da `*`). Sol / sağ panel kenarından sürüklenerek genişletilir (çift tık: varsayılan), **Ctrl+B / Ctrl+Shift+B** ile gizlenir.
+
+**DSP:** süzgeç kartı: Butterworth, **Chebyshev Tip I**, **Bessel**, **FIR (pencereli sinc**; Hamming/Hann/Blackman/Kaiser) — canlı **Bode** (genlik / faz) önizlemesi, sıfır faz ya da tek geçiş. **Rainflow** çevrim sayımı (ASTM E1049; aralık histogramı, hasar katkısı, S_eq, Miner hasarı). **Kayan basıklık / tepe faktörü / RMS**. Spektrumda **tam Δf** (ör. fs = 1000 Hz, Δf = 1 Hz → 1000 noktalı pencere; Bluestein DFT). Tümü scipy / rainflow paketiyle doğrulanır (`test/val_faz4.py`).
+
+**Kod sekmesi:** artımlı renklendirme, **Bul / Değiştir** (Ctrl+F / Ctrl+H; büyük-küçük harf, tam sözcük, düzenli ifade), **Satıra git** (Ctrl+G), ayraç eşleme, **otomatik tamamlama** (işlevler, değişkenler, sekmelerdeki işlevler; `ch('` içinde kanal adları; Ctrl+Space). Yorumlayıcı: varsayılan parametre değerleri `function y = f(x, a=1)`, `spline`, `pchip`, `interp1(...,'spline'|'pchip')`, sütun bazlı `trapz/cumtrapz`, `[p,S,mu] = polyfit`, `full/sparse/nnz`.
+
+**Oturum ve rapor:** `oturum.json` (v2) türetilmiş kanalları (veri + formül / işlem açıklaması), test fazlarını, şartname profillerini, kontrol/cevap rollerini, rapor öğelerini ve çift Y düzenini de saklar. Rapor düzenleyici: sürükle-bırak sıralama, başlık / açıklama düzenleme, **yan yana (2 sütun)** şekiller (HTML ve Word). Okuyucular: MAT **v7.3** hücre / yapı / karakter / mantıksal / seyrek (Kod sekmesi `load`), MAT **v5 seyrek**, **MDF 3.x** (temel). XLSX / DOCX çıktıları **deflate** sıkıştırmalı.
 
 ## Testler hakkında
 `bash test/run_tests.sh` tüm testleri çalıştırır; testler yalnızca betiklerin ürettiği yapay verilerle çalışır, depoda gerçek ölçüm verisi yoktur.
@@ -168,7 +184,9 @@ Sağ paneldeki **Kalite · Test · Araçlar** sekmeleri ve **Çıktı ▸ Yönte
 | MAT v5 **struct / cell / struct dizisi** (`S.alan`, `C{1}`, `T(2).v`) | **yalnız sentetik** | scipy.io.savemat |
 | MAT v7.3 iç içe grup / cell / struct dizisi (başvurular) | **yalnız sentetik** | hdf5storage + elle h5py |
 | **İkili UNV 58b** | **yalnız sentetik** | pyuff'un ikili yazıcısı (başlıktaki bayt sayısı hatalıysa kayıt 7'den hesaplanır) |
-| **MDF4** (.mf4/.mdf; DT/DZ/DL/HL, sıkıştırılmış/transpoze, sıralı ve sırasız, doğrusal/rasyonel/tablo dönüşümü) | **yalnız sentetik** | asammdf (4.00/4.10/4.20 × 3 sıkıştırma); sırasız kayıt-kimlikli dosya elle yazıldı. MDF3, VLSD/metin ve dizi/yapı kanalları desteklenmez |
+| **MDF4** (.mf4/.mdf; DT/DZ/DL/HL, sıkıştırılmış/transpoze, sıralı ve sırasız, doğrusal/rasyonel/tablo dönüşümü) | **yalnız sentetik** | asammdf (4.00/4.10/4.20 × 3 sıkıştırma)
+| **MDF 3.x** (.mdf; sayısal kanallar, doğrusal / tablo / polinom / rasyonel dönüşüm) | **yalnız sentetik** | asammdf (3.00 / 3.30)
+| MAT v7.3 hücre / yapı / karakter / mantıksal / **seyrek**, MAT v5 seyrek | **yalnız sentetik** | hdf5storage + h5py, scipy.io; sırasız kayıt-kimlikli dosya elle yazıldı. MDF3, VLSD/metin ve dizi/yapı kanalları desteklenmez |
 
 Gerçek dosyada sorun görürseniz `F1 ▸ Sorun bildir` ile veri içermeyen tanı paketini kaydedebilirsiniz.
 

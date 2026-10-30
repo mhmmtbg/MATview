@@ -36,7 +36,7 @@ async def main():
         await pg.wait_for_timeout(600)
         await pg.screenshot(path=SHOT + 'plot.png')
         # .mat dışa aktarma (base64 yakala)
-        res = await pg.evaluate('''async()=>{let blob=null; window.saveBlob=async(b)=>{blob=b;return true}; await binMatExport(S.files[0],{subs:null,raw:true,fields:true,nan:true,time:true});
+        res = await pg.evaluate('''async()=>{let blob=null; window.saveBlob=async(b)=>{blob=await b;return true}; await binMatExport(S.files[0],{subs:null,raw:true,fields:true,nan:true,time:true});
           const buf=new Uint8Array(await blob.arrayBuffer()); let s=''; for(let i=0;i<buf.length;i+=8192) s+=String.fromCharCode(...buf.subarray(i,i+8192)); return btoa(s);}''')
         import base64; open('/tmp/bin_out.mat', 'wb').write(base64.b64decode(res))
         # XLSX yazıcı gidiş-dönüş
