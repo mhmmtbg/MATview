@@ -336,6 +336,14 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .codeac.hidden{display:none}.codeac li{display:flex;gap:10px;justify-content:space-between;padding:2px 8px;cursor:pointer;white-space:nowrap}.codeac li.on{background:var(--accent);color:var(--accent-fg)}.codeac .ack{opacity:.6;font-family:system-ui,sans-serif;font-size:11px}
 .repItem.drag{opacity:.45}.repItem.dropA{box-shadow:0 -2px 0 var(--accent)}.repItem.dropB{box-shadow:0 2px 0 var(--accent)}.repGrip{cursor:grab;color:var(--muted);padding:0 2px;user-select:none}
 .repSub{display:flex;gap:6px;align-items:center}.repSub .repNote{flex:1}.repHalf{display:flex;gap:3px;align-items:center;font-size:12px;white-space:nowrap;color:var(--muted)}textarea.repNote{width:100%;font:inherit;resize:vertical}
+/* görünüm çubuğu: tek satır, sabit yükseklik — imleç bilgisinin uzunluğu grafik alanını büyütüp küçültmez */
+#viewbar{flex:none;flex-wrap:nowrap;height:44px;box-sizing:border-box;overflow:hidden;min-width:0}
+#viewbar>button{flex:none;white-space:nowrap}
+#viewtabs{flex:0 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;white-space:nowrap}#viewtabs::-webkit-scrollbar{display:none}#viewtabs>button{flex:none;white-space:nowrap}
+#viewbar .spacer{flex:1 1 0;min-width:0}
+#hoverinfo{flex:0 1 auto;min-width:0;max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;font-size:12px}
+@container (max-width:760px){#viewbar>button{font-size:0;padding-left:7px;padding-right:7px}#viewbar>button svg{margin:0}#viewbar{gap:6px}}
+@container (max-width:420px){#hoverinfo{max-width:40%}}
 </style>
 </head>
 <body>
@@ -4943,7 +4951,9 @@ function helpBody() {
 }
 
 /* ---------- başlatma ---------- */
-function onHover1(p) { const P = S.plot, hx = p ? p.x : null; if ((P.crosshair || (P.axes.length > 1 && P.linkX)) && P.hoverX !== hx) { P.hoverX = hx; P.invalidate(); } else P.hoverX = hx; $('#hoverinfo').textContent = p ? `t = ${fmtNum(p.x, 7)} s    y = ${fmtNum(p.y, 6)}` : ''; }
+// imleç konumu: tek satır, boşluklar bölünmez; tam metin ipucunda
+function hoverTxt(t) { const e = $('#hoverinfo'); if (!e) return; t = String(t || '').replace(/ /g, '\u00a0'); if (e.textContent !== t) { e.textContent = t; e.title = t; } }
+function onHover1(p) { const P = S.plot, hx = p ? p.x : null; if ((P.crosshair || (P.axes.length > 1 && P.linkX)) && P.hoverX !== hx) { P.hoverX = hx; P.invalidate(); } else P.hoverX = hx; hoverTxt(p ? `t = ${fmtNum(p.x, 7)} s   y = ${fmtNum(p.y, 6)}` : ''); }
 function onPlotChange(kind) {
   if (kind === 'view') { syncLimits(); updateStats(); }
   else if (kind === 'active') { refreshAxesUI(); refreshTraceInfo(); updateStats(); }
@@ -4959,9 +4969,9 @@ function init() {
   S.plot = new Plot($('#cv-time'), {onDraw: syncLimits, onChange: onPlotChange, onSelect, onHover: onHover1, xName: 't'}); S.plot.notes = S.notes;
   S.plot.selectionTargets = ax => ck('applyAll') ? ax.traces.filter(t => t.visible) : ax.traces.length ? [ax.traces[Math.min(ax.active || 0, ax.traces.length - 1)]] : [];
   S.specPlot = new Plot($('#cv-spec'), {xlabel: 'Frekans (Hz)', xName: 'f', emptyText: 'Spektrum için sağdaki "Analiz" sekmesinden "Spektrumu hesapla"ya basın',
-    onHover: p => { $('#hoverinfo').textContent = p ? `f = ${fmtNum(p.x, 7)} Hz    y = ${fmtNum(p.y, 6)}` : ''; }});
-  S.xyPlot = new Plot($('#cv-xy'), {xlabel: 'x', xName: 'x', emptyText: 'Sağdaki “Veri” sekmesinden X ve Y sütunlarını seçip “Çiz”e basın', onHover: p => { $('#hoverinfo').textContent = p ? `x = ${fmtNum(p.x, 7)}    y = ${fmtNum(p.y, 6)}` : ''; }}); S.xyPlot.grms = {mode: 'off', dc: true};
-  S.specView = new SpecView($('#cv-sgram')); S.specView.onCursor = c => sgCursorInfo(c); S.specView.onHover = p => { $('#hoverinfo').textContent = `t = ${fmtNum(p.t, 6)} s   f = ${fmtNum(p.f, 6)} Hz` + (p.v != null ? `   ${p.v.toFixed(1)} dB` : ''); };
+    onHover: p => { hoverTxt(p ? `f = ${fmtNum(p.x, 7)} Hz   y = ${fmtNum(p.y, 6)}` : ''); }});
+  S.xyPlot = new Plot($('#cv-xy'), {xlabel: 'x', xName: 'x', emptyText: 'Sağdaki “Veri” sekmesinden X ve Y sütunlarını seçip “Çiz”e basın', onHover: p => { hoverTxt(p ? `x = ${fmtNum(p.x, 7)}   y = ${fmtNum(p.y, 6)}` : ''); }}); S.xyPlot.grms = {mode: 'off', dc: true};
+  S.specView = new SpecView($('#cv-sgram')); S.specView.onCursor = c => sgCursorInfo(c); S.specView.onHover = p => { hoverTxt(`t = ${fmtNum(p.t, 6)} s   f = ${fmtNum(p.f, 6)} Hz` + (p.v != null ? `   ${p.v.toFixed(1)} dB` : '')); };
   buildToolbar(); buildRight(); renderChips(); renderTree(); refreshAll(); refreshCleanInfo(); setMode('pan');
   for (const b of $('#viewtabs').children) b.onclick = () => { switchView(b.dataset.v); };
   $('#btnBin').onclick = () => binDialog();

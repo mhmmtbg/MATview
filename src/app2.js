@@ -640,7 +640,9 @@ function helpBody() {
 }
 
 /* ---------- başlatma ---------- */
-function onHover1(p) { const P = S.plot, hx = p ? p.x : null; if ((P.crosshair || (P.axes.length > 1 && P.linkX)) && P.hoverX !== hx) { P.hoverX = hx; P.invalidate(); } else P.hoverX = hx; $('#hoverinfo').textContent = p ? `t = ${fmtNum(p.x, 7)} s    y = ${fmtNum(p.y, 6)}` : ''; }
+// imleç konumu: tek satır, boşluklar bölünmez; tam metin ipucunda
+function hoverTxt(t) { const e = $('#hoverinfo'); if (!e) return; t = String(t || '').replace(/ /g, '\u00a0'); if (e.textContent !== t) { e.textContent = t; e.title = t; } }
+function onHover1(p) { const P = S.plot, hx = p ? p.x : null; if ((P.crosshair || (P.axes.length > 1 && P.linkX)) && P.hoverX !== hx) { P.hoverX = hx; P.invalidate(); } else P.hoverX = hx; hoverTxt(p ? `t = ${fmtNum(p.x, 7)} s   y = ${fmtNum(p.y, 6)}` : ''); }
 function onPlotChange(kind) {
   if (kind === 'view') { syncLimits(); updateStats(); }
   else if (kind === 'active') { refreshAxesUI(); refreshTraceInfo(); updateStats(); }
@@ -656,9 +658,9 @@ function init() {
   S.plot = new Plot($('#cv-time'), {onDraw: syncLimits, onChange: onPlotChange, onSelect, onHover: onHover1, xName: 't'}); S.plot.notes = S.notes;
   S.plot.selectionTargets = ax => ck('applyAll') ? ax.traces.filter(t => t.visible) : ax.traces.length ? [ax.traces[Math.min(ax.active || 0, ax.traces.length - 1)]] : [];
   S.specPlot = new Plot($('#cv-spec'), {xlabel: 'Frekans (Hz)', xName: 'f', emptyText: 'Spektrum için sağdaki "Analiz" sekmesinden "Spektrumu hesapla"ya basın',
-    onHover: p => { $('#hoverinfo').textContent = p ? `f = ${fmtNum(p.x, 7)} Hz    y = ${fmtNum(p.y, 6)}` : ''; }});
-  S.xyPlot = new Plot($('#cv-xy'), {xlabel: 'x', xName: 'x', emptyText: 'Sağdaki “Veri” sekmesinden X ve Y sütunlarını seçip “Çiz”e basın', onHover: p => { $('#hoverinfo').textContent = p ? `x = ${fmtNum(p.x, 7)}    y = ${fmtNum(p.y, 6)}` : ''; }}); S.xyPlot.grms = {mode: 'off', dc: true};
-  S.specView = new SpecView($('#cv-sgram')); S.specView.onCursor = c => sgCursorInfo(c); S.specView.onHover = p => { $('#hoverinfo').textContent = `t = ${fmtNum(p.t, 6)} s   f = ${fmtNum(p.f, 6)} Hz` + (p.v != null ? `   ${p.v.toFixed(1)} dB` : ''); };
+    onHover: p => { hoverTxt(p ? `f = ${fmtNum(p.x, 7)} Hz   y = ${fmtNum(p.y, 6)}` : ''); }});
+  S.xyPlot = new Plot($('#cv-xy'), {xlabel: 'x', xName: 'x', emptyText: 'Sağdaki “Veri” sekmesinden X ve Y sütunlarını seçip “Çiz”e basın', onHover: p => { hoverTxt(p ? `x = ${fmtNum(p.x, 7)}   y = ${fmtNum(p.y, 6)}` : ''); }}); S.xyPlot.grms = {mode: 'off', dc: true};
+  S.specView = new SpecView($('#cv-sgram')); S.specView.onCursor = c => sgCursorInfo(c); S.specView.onHover = p => { hoverTxt(`t = ${fmtNum(p.t, 6)} s   f = ${fmtNum(p.f, 6)} Hz` + (p.v != null ? `   ${p.v.toFixed(1)} dB` : '')); };
   buildToolbar(); buildRight(); renderChips(); renderTree(); refreshAll(); refreshCleanInfo(); setMode('pan');
   for (const b of $('#viewtabs').children) b.onclick = () => { switchView(b.dataset.v); };
   $('#btnBin').onclick = () => binDialog();
