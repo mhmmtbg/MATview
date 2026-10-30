@@ -329,3 +329,11 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .codeac.hidden{display:none}.codeac li{display:flex;gap:10px;justify-content:space-between;padding:2px 8px;cursor:pointer;white-space:nowrap}.codeac li.on{background:var(--accent);color:var(--accent-fg)}.codeac .ack{opacity:.6;font-family:system-ui,sans-serif;font-size:11px}
 .repItem.drag{opacity:.45}.repItem.dropA{box-shadow:0 -2px 0 var(--accent)}.repItem.dropB{box-shadow:0 2px 0 var(--accent)}.repGrip{cursor:grab;color:var(--muted);padding:0 2px;user-select:none}
 .repSub{display:flex;gap:6px;align-items:center}.repSub .repNote{flex:1}.repHalf{display:flex;gap:3px;align-items:center;font-size:12px;white-space:nowrap;color:var(--muted)}textarea.repNote{width:100%;font:inherit;resize:vertical}
+/* görünüm çubuğu: tek satır, sabit yükseklik — imleç bilgisinin uzunluğu grafik alanını büyütüp küçültmez */
+#viewbar{flex:none;flex-wrap:nowrap;height:44px;box-sizing:border-box;overflow:hidden;min-width:0}
+#viewbar>button{flex:none;white-space:nowrap}
+#viewtabs{flex:0 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;white-space:nowrap}#viewtabs::-webkit-scrollbar{display:none}#viewtabs>button{flex:none;white-space:nowrap}
+#viewbar .spacer{flex:1 1 0;min-width:0}
+#hoverinfo{flex:0 1 auto;min-width:0;max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;font-size:12px}
+@container (max-width:760px){#viewbar>button{font-size:0;padding-left:7px;padding-right:7px}#viewbar>button svg{margin:0}#viewbar{gap:6px}}
+@container (max-width:420px){#hoverinfo{max-width:40%}}
