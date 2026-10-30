@@ -18,6 +18,6 @@ async def main():
         await pg.evaluate("profCompare(_p)"); await pg.wait_for_timeout(300); print(await pg.inner_text('#mbody')); await pg.screenshot(path='/tmp/unv2.png')
         await pg.evaluate("document.querySelector('#modal').classList.add('hidden')")
         await pg.evaluate("unvTableDialog()"); await pg.wait_for_timeout(300); await pg.screenshot(path='/tmp/unv3.png')
-        r = await pg.evaluate('''async()=>{let blob=null; window.saveBlob=async(b)=>{blob=b;return true}; await unvExcel(); const sh=await XLSX.read(new File([blob],'a.xlsx')); return sh.map(s=>[s.name,s.rows.length,(s.rows[0]||[]).length])}''')
+        r = await pg.evaluate('''async()=>{let blob=null; window.saveBlob=async(b)=>{blob=await b;return true}; await unvExcel(); const sh=await XLSX.read(new File([blob],'a.xlsx')); return sh.map(s=>[s.name,s.rows.length,(s.rows[0]||[]).length])}''')
         print('excel', r); print('ERR', errs); await b.close()
 asyncio.run(main())
