@@ -125,7 +125,7 @@ async function runExpr() {
       const pre = {}; if ($('#exprIn').dataset.pre === 'A') { const tr = activeTrace(); if (tr && tr.ch) pre.A = tr.ch; }
       const res = await evalFormula(src, pre);
       if (typeof res === 'number') { msg.textContent = 'Sonuç (skaler): ' + res; return; }
-      const name = sanitizeName(sv('exprName') || 'formul'); addResult(res, name, {dest: 'new'}); msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
+      const name = sanitizeName(sv('exprName') || 'formul'); S.opDesc = 'Formül: ' + src; const c = addResult(res, name, {dest: 'new'}); c.formula = src; msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
     } catch (e) { msg.textContent = 'Hata: ' + e.message; }
   });
 }

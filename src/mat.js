@@ -171,6 +171,14 @@ const MAT = (() => {
       if (complex) { const it2 = readTag(dv, rt.next, le); im = readAny(dv, it2, le); }
       return {k: 'num', name, cls: logical ? 'l' : CLSK[cls], dims, re, im};
     }
+    if (cls === 5) {   // seyrek: ir (satır), jc (sütun başı), pr (pi) → tam matris
+      const irT = readTag(dv, p, le), jcT = readTag(dv, irT.next, le), prT = readTag(dv, jcT.next, le), ir = readAny(dv, irT, le), jc = readAny(dv, jcT, le), pr = readAny(dv, prT, le), nr = dims[0], nc = dims[1] || 1;
+      if (nr * nc > 2e7) return {k: 'skip', name, cls};
+      let piA = null; if (complex) piA = readAny(dv, readTag(dv, prT.next, le), le);
+      const re = new Float64Array(nr * nc), im = piA ? new Float64Array(nr * nc) : null;
+      for (let j = 0; j < nc; j++) for (let q = jc[j]; q < jc[j + 1]; q++) { re[ir[q] + j * nr] = logical && !pr.length ? 1 : pr[q]; if (im) im[ir[q] + j * nr] = piA[q]; }
+      return {k: 'num', name, cls: logical ? 'l' : 'd', dims: [nr, nc], re, im, sparse: true};
+    }
     if (cls === 1) { const v = []; for (let i = 0; i < count; i++) { const c = readTag(dv, p, le); v.push(treeAt(dv, p, le, depth + 1)); p = c.next; } return {k: 'cell', name, dims, v}; }
     if (cls === 2 || cls === 3) {
       let className = ''; if (cls === 3) { const cn = readTag(dv, p, le); for (let i = 0; i < cn.size; i++) className += String.fromCharCode(dv.getUint8(cn.data + i)); p = cn.next; }
@@ -182,7 +190,7 @@ const MAT = (() => {
     return {k: 'skip', name, cls};
   }
   async function readAll(m, only) {
-    if (m.h5) throw new Error('v7.3 (HDF5) dosyalarında yalnız sayısal değişkenler okunabilir');
+    if (m.h5) { const t = await H5.readTrees(m); return only ? t.filter(x => only.includes(x.name)) : t; }
     const u8 = m.u8, dv0 = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), out = []; let o = 128;
     while (o + 8 <= u8.length) {
       const t = readTag(dv0, o, m.le);

@@ -334,6 +334,8 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .codefind[data-mode=find] .cf-r,.codefind[data-mode=find] .cf-l,.codefind[data-mode=replace] .cf-l,.codefind[data-mode=line] .cf-f,.codefind[data-mode=line] .cf-r{display:none}
 .codeac{position:absolute;z-index:30;margin:0;padding:2px 0;list-style:none;min-width:220px;max-width:420px;max-height:180px;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:5px;box-shadow:0 6px 18px rgba(0,0,0,.2);font:12px ui-monospace,Consolas,monospace}
 .codeac.hidden{display:none}.codeac li{display:flex;gap:10px;justify-content:space-between;padding:2px 8px;cursor:pointer;white-space:nowrap}.codeac li.on{background:var(--accent);color:var(--accent-fg)}.codeac .ack{opacity:.6;font-family:system-ui,sans-serif;font-size:11px}
+.repItem.drag{opacity:.45}.repItem.dropA{box-shadow:0 -2px 0 var(--accent)}.repItem.dropB{box-shadow:0 2px 0 var(--accent)}.repGrip{cursor:grab;color:var(--muted);padding:0 2px;user-select:none}
+.repSub{display:flex;gap:6px;align-items:center}.repSub .repNote{flex:1}.repHalf{display:flex;gap:3px;align-items:center;font-size:12px;white-space:nowrap;color:var(--muted)}textarea.repNote{width:100%;font:inherit;resize:vertical}
 </style>
 </head>
 <body>
@@ -584,6 +586,14 @@ const MAT = (() => {
       if (complex) { const it2 = readTag(dv, rt.next, le); im = readAny(dv, it2, le); }
       return {k: 'num', name, cls: logical ? 'l' : CLSK[cls], dims, re, im};
     }
+    if (cls === 5) {   // seyrek: ir (satır), jc (sütun başı), pr (pi) → tam matris
+      const irT = readTag(dv, p, le), jcT = readTag(dv, irT.next, le), prT = readTag(dv, jcT.next, le), ir = readAny(dv, irT, le), jc = readAny(dv, jcT, le), pr = readAny(dv, prT, le), nr = dims[0], nc = dims[1] || 1;
+      if (nr * nc > 2e7) return {k: 'skip', name, cls};
+      let piA = null; if (complex) piA = readAny(dv, readTag(dv, prT.next, le), le);
+      const re = new Float64Array(nr * nc), im = piA ? new Float64Array(nr * nc) : null;
+      for (let j = 0; j < nc; j++) for (let q = jc[j]; q < jc[j + 1]; q++) { re[ir[q] + j * nr] = logical && !pr.length ? 1 : pr[q]; if (im) im[ir[q] + j * nr] = piA[q]; }
+      return {k: 'num', name, cls: logical ? 'l' : 'd', dims: [nr, nc], re, im, sparse: true};
+    }
     if (cls === 1) { const v = []; for (let i = 0; i < count; i++) { const c = readTag(dv, p, le); v.push(treeAt(dv, p, le, depth + 1)); p = c.next; } return {k: 'cell', name, dims, v}; }
     if (cls === 2 || cls === 3) {
       let className = ''; if (cls === 3) { const cn = readTag(dv, p, le); for (let i = 0; i < cn.size; i++) className += String.fromCharCode(dv.getUint8(cn.data + i)); p = cn.next; }
@@ -595,7 +605,7 @@ const MAT = (() => {
     return {k: 'skip', name, cls};
   }
   async function readAll(m, only) {
-    if (m.h5) throw new Error('v7.3 (HDF5) dosyalarında yalnız sayısal değişkenler okunabilir');
+    if (m.h5) { const t = await H5.readTrees(m); return only ? t.filter(x => only.includes(x.name)) : t; }
     const u8 = m.u8, dv0 = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), out = []; let o = 128;
     while (o + 8 <= u8.length) {
       const t = readTag(dv0, o, m.le);
@@ -841,7 +851,54 @@ const H5 = (() => {
     const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
     return MATreadNumeric(dv, 0, MI[dt.k], count, true);
   }
-  return {open, load, SIG};
+
+  // ---- MATLAB v7.3 tam ağaç (Kod sekmesi load(): hücre, yapı, karakter, mantıksal, seyrek) ----
+  function attrs(o) { const a = {}; for (const m of o.msgs) if (m.type === 0x0c) { try { const at = parseAttr(m.data); a[at.name] = at; } catch (e) {} } return a; }
+  function attrStr(at) { if (!at) return ''; const sz = dvOf(at.dt).getUint32(4, true); return String.fromCharCode(...at.data.subarray(0, Math.min(sz, 64))).replace(/\0.*$/, '').trim(); }
+  function attrU64(at) { if (!at || at.data.length < 8) return 0; return Number(dvOf(at.data).getBigUint64(0, true)); }
+  const NUMK = {double: 'd', single: 's', int8: 'i8', uint8: 'u8', int16: 'i16', uint16: 'u16', int32: 'i32', uint32: 'u32', int64: 'i64', uint64: 'u64', logical: 'l', char: 'c'};
+  async function nodeTree(ctx, o, name, depth) {
+    if (depth > 30) return {k: 'skip', name};
+    const A = attrs(o), mclass = attrStr(A.MATLAB_class), isDs = !!(msg(o, 0x01) && msg(o, 0x03) && msg(o, 0x08));
+    if (!isDs) {   // grup: yapı (1×1) ya da seyrek matris
+      if (A.MATLAB_sparse) {
+        const nr = attrU64(A.MATLAB_sparse), kids = new Map(await listGroup(ctx, o, null)), get = async k => { if (!kids.has(k)) return null; const ob = await readObject(ctx, kids.get(k)), d = describe(ob, k); d.h5 = {ctx, obj: ob}; return d.dt && d.dt.kind === 'num' && d.count ? bytesToF64(await loadBytes(null, d), d.dt, d.count) : new Float64Array(0); };
+        const jc = await get('jc'), ir = await get('ir'), data = await get('data'); const nc = jc ? jc.length - 1 : 0;
+        if (nr * nc > 2e7) return {k: 'skip', name};
+        const re = new Float64Array(nr * nc); if (jc && ir && data) for (let j = 0; j < nc; j++) for (let p = jc[j]; p < jc[j + 1]; p++) re[ir[p] + j * nr] = data[p];
+        return {k: 'num', name, cls: mclass === 'logical' ? 'l' : 'd', dims: [nr, nc], re, sparse: true};
+      }
+      const kids = await listGroup(ctx, o, null), f = [], q = {}, sub = [];
+      for (const [k, a] of kids) { if (k === '#refs#' || k === '#subsystem#') continue; f.push(k); sub.push([k, a]); }
+      // yapı dizisi: tüm alanlar başvuru dizisi (her eleman için bir başvuru)
+      const kidObjs = []; for (const [k, a] of sub) { try { kidObjs.push([k, await readObject(ctx, a)]); } catch (e) {} }
+      const refField = ([, ob]) => { const d = describe(ob, ''); return d.dt && d.dt.kind === 'other' && d.dt.cls === 7 && !attrStr(attrs(ob).MATLAB_class); };
+      if (kidObjs.length && kidObjs.every(refField)) {
+        const d0 = describe(kidObjs[0][1], ''), n = d0.count, v = Array.from({length: n}, () => ({}));
+        for (const [k, ob] of kidObjs) { const d = describe(ob, k); d.h5 = {ctx, obj: ob}; const raw = await loadBytes(null, d), rdv = dvOf(raw); for (let i = 0; i < n && i < d.count; i++) { const ad = Number(rdv.getBigUint64(i * 8, true)); v[i][k] = ad ? await nodeTree(ctx, await readObject(ctx, ad), '', depth + 1) : {k: 'num', cls: 'd', dims: [0, 0], re: new Float64Array(0)}; } }
+        return {k: 'struct', name, dims: d0.dims, f: kidObjs.map(x => x[0]), v};
+      }
+      for (const [k, ob] of kidObjs) q[k] = await nodeTree(ctx, ob, k, depth + 1);
+      return {k: 'struct', name, dims: [1, 1], f: kidObjs.map(x => x[0]), v: [q]};
+    }
+    const d = describe(o, name); d.h5 = {ctx, obj: o};
+    if (A.MATLAB_empty) { const dims = d.count && d.dt && d.dt.kind === 'num' ? Array.from(bytesToF64(await loadBytes(null, d), d.dt, d.count)) : [0, 0]; return {k: mclass === 'cell' ? 'cell' : 'num', name, cls: NUMK[mclass] || 'd', dims, re: new Float64Array(0), v: []}; }
+    if (mclass === 'cell' || (d.dt && d.dt.kind === 'other' && d.dt.cls === 7)) {
+      if (d.count > 100000) return {k: 'skip', name};
+      const raw = await loadBytes(null, d), rdv = dvOf(raw), v = [];
+      for (let i = 0; i < d.count; i++) { const ad = Number(rdv.getBigUint64(i * 8, true)); v.push(ad ? await nodeTree(ctx, await readObject(ctx, ad), '', depth + 1) : {k: 'num', cls: 'd', dims: [0, 0], re: new Float64Array(0)}); }
+      return {k: 'cell', name, dims: d.dims, v};
+    }
+    if (!d.dt || d.dt.kind !== 'num' || d.dt.be) return {k: 'skip', name, cls: mclass};
+    const re = bytesToF64(await loadBytes(null, d), d.dt, d.count);
+    return {k: 'num', name, cls: NUMK[mclass] || 'd', dims: d.dims.length === 1 ? [d.dims[0], 1] : d.dims, re};
+  }
+  async function readTrees(m) {
+    const out = [];
+    for (const v of m.vars) { if (/[.{(]/.test(v.name) || !v.h5) continue; try { const t = await nodeTree(v.h5.ctx, v.h5.obj, v.name, 0); t.name = v.name; out.push(t); } catch (e) { out.push({k: 'skip', name: v.name}); } }
+    return out;
+  }
+  return {open, load, SIG, readTrees};
 })();
 
 /* Kurulumsuz minimal XLSX okuyucu: zip + DecompressionStream; sayfalar -> {name, rows:[[...]]} */
@@ -903,7 +960,7 @@ const XLSX = (() => {
     }
     return sheets;
   }
-  // Basit .xlsx yazıcı (şablon indirme): sheets=[{name, rows:[[...]]}], zip "stored" (sıkıştırmasız)
+  // Basit .xlsx yazıcı: sheets=[{name, rows:[[...]]}] → Promise<Blob> (deflate sıkıştırmalı zip)
   function crc32(u8) { let c, crc = 0xFFFFFFFF; if (!crc32.t) { crc32.t = new Uint32Array(256); for (let n = 0; n < 256; n++) { c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; crc32.t[n] = c >>> 0; } } for (let i = 0; i < u8.length; i++) crc = crc32.t[(crc ^ u8[i]) & 255] ^ (crc >>> 8); return (crc ^ 0xFFFFFFFF) >>> 0; }
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const colName = i => { let s = ''; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s; return s; };
@@ -920,16 +977,21 @@ const XLSX = (() => {
     });
     return zipBlob(files, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   }
-  // [ad, metin|Uint8Array] listesinden 'stored' (sıkıştırmasız) zip; .xlsx/.docx/.zip için
-  function zipBlob(files, type) {
+  // [ad, metin|Uint8Array] listesinden zip (.xlsx/.docx/.zip): CompressionStream('deflate-raw') varsa sıkıştırılmış (yöntem 8),
+  // yoksa ya da sıkıştırma kazandırmıyorsa 'stored'. Sonuç Promise<Blob>.
+  async function deflateRaw(u8) {
+    if (typeof CompressionStream === 'undefined' || u8.length < 64) return null;
+    try { const cs = new CompressionStream('deflate-raw'), out = new Response(new Blob([u8]).stream().pipeThrough(cs)); const r = new Uint8Array(await out.arrayBuffer()); return r.length < u8.length ? r : null; } catch (_) { return null; }
+  }
+  async function zipBlob(files, type) {
     const enc = new TextEncoder();
     const parts = [], cen = []; let off = 0;
     for (const [name, txt] of files) {
-      const nb = enc.encode(name), data = typeof txt === 'string' ? enc.encode(txt) : txt, crc = crc32(data);
-      const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, nb.length, true);
-      parts.push(new Uint8Array(lh.buffer), nb, data);
-      const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
-      cen.push(new Uint8Array(ch.buffer), nb); off += 30 + nb.length + data.length;
+      const nb = enc.encode(name), data = typeof txt === 'string' ? enc.encode(txt) : txt, crc = crc32(data), z = await deflateRaw(data), body = z || data, meth = z ? 8 : 0;
+      const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, meth, true); lh.setUint32(14, crc, true); lh.setUint32(18, body.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, nb.length, true);
+      parts.push(new Uint8Array(lh.buffer), nb, body);
+      const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, meth, true); ch.setUint32(16, crc, true); ch.setUint32(20, body.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
+      cen.push(new Uint8Array(ch.buffer), nb); off += 30 + nb.length + body.length;
     }
     let cs = 0; for (const c of cen) cs += c.length;
     const ed = new DataView(new ArrayBuffer(22)); ed.setUint32(0, 0x06054b50, true); ed.setUint16(8, files.length, true); ed.setUint16(10, files.length, true); ed.setUint32(12, cs, true); ed.setUint32(16, off, true);
@@ -1747,7 +1809,7 @@ const TDMS = (() => {
 
 /* ASAM MDF4 (.mf4 / .mdf) okuyucu — kurulumsuz. Desteklenen: DT / DZ (deflate, transpoze dahil) / DL / HL veri blokları,
    sıralı ve sırasız (kayıt kimlikli) veri grupları, tam sayı / kayan nokta kanalları (bit düzeyi dahil), ana (zaman) kanal ve sanal ana kanal,
-   dönüşümler: özdeş, doğrusal, rasyonel, tablo (ara değerli / en yakın). Desteklenmeyen: MDF3, VLSD / metin kanalları, bileşik (dizi / yapı) kanallar,
+   dönüşümler: özdeş, doğrusal, rasyonel, tablo (ara değerli / en yakın). MDF 3.x (temel: sayısal kanallar, doğrusal/tablo/polinom/rasyonel dönüşümler) da okunur. Desteklenmeyen: VLSD / metin kanalları, bileşik (dizi / yapı) kanallar,
    cebirsel / metin dönüşümleri (ham değer okunur ve uyarı verilir), geçersizlik bitleri. */
 const MDF = (() => {
   const TD = new TextDecoder('utf-8');
@@ -1839,7 +1901,7 @@ const MDF = (() => {
     const rd = new Rd(buf), u8 = rd.u8; if (u8.length < 168) throw new Error('MDF: dosya çok kısa');
     const ident = String.fromCharCode(...u8.subarray(0, 8)); if (!/^MDF/.test(ident)) throw new Error('MDF imzası bulunamadı');
     const ver = String.fromCharCode(...u8.subarray(8, 16)).trim(), vnum = rd.dv.getUint16(28, true);
-    if (vnum < 400) throw new Error('MDF ' + (ver || vnum) + ' (sürüm 3.x) desteklenmiyor; yalnızca MDF 4.x okunur');
+    if (vnum < 400) return open3(rd, ver, vnum);
     const warn = [], unfin = rd.dv.getUint16(60, true); if (unfin) warn.push('Dosya kapatılmamış (unfinalized); son kayıtlar eksik olabilir');
     const hd = rd.block(64); if (!hd || hd.id !== '##HD') throw new Error('MDF: HD bloğu bulunamadı');
     const startNs = u64(rd.dv, hd.data), groups = [];
@@ -1873,6 +1935,77 @@ const MDF = (() => {
       return applyConv(cn.cc, x, warn, cn.name);
     }
     return {version: ver, startNs, groups, warn, rd, load: (ch) => loadCn(ch.g, ch.cn), time: async g => g.master ? loadCn(g, g.master) : null, count: async g => { const bytes = await dgBytes(rd, g.dg); return recordIndex(rd, g.dg, g.cg, bytes).n; }};
+  }
+
+  // ---- MDF 3.x (2.x/3.x) temel okuyucu: HD → DG → CG → CN (+CC), sıralı / sırasız kayıtlar, LE/BE tamsayı ve kayan nokta,
+  // dönüşümler: doğrusal, tablo (ara değerli / ara değersiz), polinom, rasyonel, üstel/log yerine ham değer + uyarı ----
+  function open3(rd, ver, vnum) {
+    const dv = rd.dv, u8 = rd.u8, warn = [], le0 = dv.getUint16(24, true) === 0, groups = [];
+    const blk = (off, id) => { if (!off || off + 4 > u8.length) return null; const b = String.fromCharCode(u8[off], u8[off + 1]); if (id && b !== id) return null; return {id: b, off, size: dv.getUint16(off + 2, true)}; };
+    const txt3 = off => { const b = blk(off, 'TX'); if (!b) return ''; let s = u8.subarray(off + 4, off + b.size); const z = s.indexOf(0); if (z >= 0) s = s.subarray(0, z); return new TextDecoder('latin1').decode(s).trim(); };
+    const cstr = (o, n) => { let s = u8.subarray(o, o + n); const z = s.indexOf(0); if (z >= 0) s = s.subarray(0, z); return new TextDecoder('latin1').decode(s).trim(); };
+    const hd = blk(64, 'HD'); if (!hd) throw new Error('MDF3: HD bloğu bulunamadı');
+    const date = cstr(64 + 18, 10), time = cstr(64 + 28, 8);
+    function conv3(off) {
+      const b = blk(off, 'CC'); if (!b) return null; const o = off, type = dv.getUint16(o + 42, true), n = dv.getUint16(o + 44, true), unit = cstr(o + 22, 20), p = [];
+      if (type === 0) p.push(dv.getFloat64(o + 46, true), dv.getFloat64(o + 54, true));
+      else if (type === 1 || type === 2) for (let i = 0; i < n * 2 && o + 46 + 8 * i + 8 <= u8.length; i++) p.push(dv.getFloat64(o + 46 + 8 * i, true));
+      else if (type === 6 || type === 7 || type === 8 || type === 9) for (let i = 0; i < Math.min(n || 6, 7); i++) p.push(dv.getFloat64(o + 46 + 8 * i, true));
+      return {type, p, unit};
+    }
+    function apply3(cc, x, nm) {
+      if (!cc || cc.type === 65535) return x; const P = cc.p, n = x.length, y = new Float64Array(n);
+      if (cc.type === 0) { const a = P[0], b = P[1]; if (a === 0 && b === 1) return x; for (let i = 0; i < n; i++) y[i] = x[i] * b + a; return y; }
+      if (cc.type === 1 || cc.type === 2) { const m = P.length >> 1; if (m < 1) return x; const xs = [], ys = []; for (let i = 0; i < m; i++) { xs.push(P[2 * i]); ys.push(P[2 * i + 1]); }
+        for (let i = 0; i < n; i++) { const t = x[i]; if (t <= xs[0]) { y[i] = ys[0]; continue; } if (t >= xs[m - 1]) { y[i] = ys[m - 1]; continue; } let lo = 0, hi = m - 1; while (hi - lo > 1) { const k = (lo + hi) >> 1; if (xs[k] <= t) lo = k; else hi = k; } y[i] = cc.type === 1 ? ys[lo] + (ys[hi] - ys[lo]) * (t - xs[lo]) / (xs[hi] - xs[lo]) : (t - xs[lo] < xs[hi] - t ? ys[lo] : ys[hi]); } return y; }
+      if (cc.type === 6) { const [p1, p2, p3, p4, p5, p6] = P; for (let i = 0; i < n; i++) { const t = x[i] - p5 - p6; y[i] = (p2 - p4 * t) / (p3 * t - p1); } return y; }
+      if (cc.type === 9) { const [p1, p2, p3, p4, p5, p6] = P; for (let i = 0; i < n; i++) { const t = x[i]; y[i] = (p1 * t * t + p2 * t + p3) / (p4 * t * t + p5 * t + p6); } return y; }
+      const m = 'MDF3 dönüşüm türü desteklenmiyor (' + cc.type + '): ' + nm + ' ham değerle bırakıldı'; if (!warn.includes(m)) warn.push(m); return x;
+    }
+    let dgi = 0;
+    for (let dgo = dv.getUint32(68, true), guard = 0; dgo && guard < 100000; dgo = dv.getUint32(dgo + 4, true), guard++) {
+      if (!blk(dgo, 'DG')) break; dgi++;
+      const nIds = dv.getUint16(dgo + 22, true), dataOff = dv.getUint32(dgo + 16, true), dg = {off: dgo, nIds, dataOff, cgs: []};
+      for (let cgo = dv.getUint32(dgo + 8, true), g2 = 0; cgo && g2 < 10000; cgo = dv.getUint32(cgo + 4, true), g2++) {
+        if (!blk(cgo, 'CG')) break;
+        const cg = {recId: dv.getUint16(cgo + 16, true), recSize: dv.getUint16(cgo + 20, true), nRec: dv.getUint32(cgo + 22, true), name: txt3(dv.getUint32(cgo + 12, true)), cns: []};
+        for (let cno = dv.getUint32(cgo + 8, true), g3 = 0; cno && g3 < 100000; cno = dv.getUint32(cno + 4, true), g3++) {
+          const b = blk(cno, 'CN'); if (!b) break; const o = cno;
+          let name = cstr(o + 26, 32); if (b.size >= 222) { const ln = txt3(dv.getUint32(o + 218, true)); if (ln) name = ln; }
+          const add = b.size >= 228 ? dv.getUint16(o + 226, true) : 0, start = dv.getUint16(o + 186, true) + add * 8, dt = dv.getUint16(o + 190, true);
+          const cc = conv3(dv.getUint32(o + 8, true));
+          cg.cns.push({type: dv.getUint16(o + 24, true), name, desc: cstr(o + 58, 128), byteOff: start >> 3, bitOff: start & 7, bits: dv.getUint16(o + 188, true), dt, cc, unit: cc ? cc.unit : ''});
+        }
+        dg.cgs.push(cg);
+      }
+      dg.multi = dg.cgs.length > 1; if (dg.multi && !nIds) { warn.push('MDF3: çoklu kanal grubu ama kayıt kimliği yok; grup atlandı'); continue; }
+      for (const cg of dg.cgs) {
+        const master = cg.cns.find(c => c.type === 1), g = {name: cg.name || ('Grup ' + dgi + (dg.multi ? '.' + (dg.cgs.indexOf(cg) + 1) : '')), dg, cg, master, channels: [], n: 0};
+        for (const cn of cg.cns) { if (cn === master || cn.type !== 0) continue; if (cn.dt === 7 || cn.dt === 8 || cn.dt > 16) { warn.push('MDF3: metin / bayt dizisi kanal atlandı: ' + cn.name); continue; } g.channels.push({name: cn.name || ('Kanal ' + (g.channels.length + 1)), unit: cn.unit, cn, g}); }
+        groups.push(g);
+      }
+    }
+    // kayıt konumları
+    function index3(g) {
+      const dg = g.dg, cg = g.cg, idb = dg.nIds ? 1 : 0, tail = dg.nIds === 2 ? 1 : 0;
+      if (!dg.multi) { const stride = idb + cg.recSize + tail, avail = Math.floor((u8.length - dg.dataOff) / stride), n = Math.min(cg.nRec || avail, avail); return {n, start: i => dg.dataOff + i * stride + idb}; }
+      if (!dg.scan) { dg.scan = new Map(); for (const c of dg.cgs) dg.scan.set(c.recId, []); let p = dg.dataOff; const tot = dg.cgs.reduce((a, c) => a + c.nRec, 0); let k = 0;
+        while (p < u8.length && k < tot) { const id = u8[p], c = dg.cgs.find(x => x.recId === id); if (!c) break; dg.scan.get(id).push(p + 1); p += 1 + c.recSize + tail; k++; } }
+      const arr = dg.scan.get(cg.recId) || []; return {n: arr.length, start: i => arr[i]};
+    }
+    function extract3(idx, cn) {
+      const n = idx.n, out = new Float64Array(n), d = cn.dt, bits = cn.bits, o0 = cn.byteOff, bo = cn.bitOff;
+      const le = d >= 13 ? true : d >= 9 ? false : le0, flt = d === 2 || d === 3 || d === 11 || d === 12 || d === 15 || d === 16, sgn = d === 1 || d === 10 || d === 14;
+      if (flt) { if (bits === 64) for (let i = 0; i < n; i++) out[i] = dv.getFloat64(idx.start(i) + o0, le); else for (let i = 0; i < n; i++) out[i] = dv.getFloat32(idx.start(i) + o0, le); return out; }
+      if (bo === 0 && (bits === 8 || bits === 16 || bits === 32 || bits === 64)) { for (let i = 0; i < n; i++) { const o = idx.start(i) + o0; out[i] = bits === 8 ? (sgn ? dv.getInt8(o) : dv.getUint8(o)) : bits === 16 ? (sgn ? dv.getInt16(o, le) : dv.getUint16(o, le)) : bits === 32 ? (sgn ? dv.getInt32(o, le) : dv.getUint32(o, le)) : Number(sgn ? dv.getBigInt64(o, le) : dv.getBigUint64(o, le)); } return out; }
+      if (!le) throw new Error('MDF3: bit düzeyinde big-endian tamsayı desteklenmiyor'); if (bits > 48) throw new Error('MDF3: bit sayısı çok büyük');
+      const nb = Math.ceil((bo + bits) / 8), div = Math.pow(2, bo), mod = Math.pow(2, bits);
+      for (let i = 0; i < n; i++) { const o = idx.start(i) + o0; let v = 0; for (let k = nb - 1; k >= 0; k--) v = v * 256 + u8[o + k]; v = Math.floor(v / div) % mod; if (sgn && v >= mod / 2) v -= mod; out[i] = v; }
+      return out;
+    }
+    const names = new Map(); for (const g of groups) { const k = names.get(g.name) || 0; names.set(g.name, k + 1); if (k) g.name += ' (' + (k + 1) + ')'; }
+    const loadCn = async (g, cn) => { const idx = index3(g); g.n = idx.n; return apply3(cn.cc, extract3(idx, cn), cn.name); };
+    return {version: ver || String(vnum), mdf3: true, date, time, startNs: 0, groups, warn, rd, load: ch => loadCn(ch.g, ch.cn), time: async g => g.master ? loadCn(g, g.master) : null, count: async g => index3(g).n};
   }
   return {open};
 })();
@@ -3848,6 +3981,7 @@ function modal(title, body, buttons) {
   $('#mclose').onclick = close; $('#modal').classList.remove('hidden');
 }
 async function saveBlob(blob, name) {
+  blob = await blob;   // zip yazıcıları Promise<Blob> döndürür
   try {
     if (window.showSaveFilePicker) { const hd = await showSaveFilePicker({suggestedName: name}); const w = await hd.createWritable(); await w.write(blob); await w.close(); return true; }
   } catch (e) { if (e && e.name === 'AbortError') return false; }
@@ -4424,7 +4558,7 @@ function addDerived(name, data, src, i0, full) {
   if (!S.derived) S.derived = {id: 'derived', name: 'Türetilmiş kanallar', derived: true, channels: [], mcache: new Map()};
   const c = new Channel({name, rest: name, base: name, comp: '', dev: 'türetilmiş', kind: src ? src.kind : 'calc', n: data.length, file: S.derived, label: name, derived: true, data, varIdx: -1});
   if (src && full && src.n === data.length) c.copyTiming(src); else if (src) { c.g = null; c.dtS = 1 / src.fs; c.t0 = src.t(i0 || 0); } else c.dtS = 1;
-  S.derived.channels.push(c); logOp('derived', {name, src: src ? src.name : '', desc: S.opDesc || ''}); S.opDesc = ''; renderChips(); renderTree(); return c;
+  c.desc = S.opDesc || ''; c.srcName = src ? src.name : ''; S.derived.channels.push(c); logOp('derived', {name, src: src ? src.name : '', desc: S.opDesc || ''}); S.opDesc = ''; renderChips(); renderTree(); return c;
 }
 async function addDerivedToPlot(c, ax) { const tr = makeTrace(c); (ax || activeAxes() || S.plot.addAxes()).traces.push(tr); const a = ax || activeAxes(); if (!S.plot.active) S.plot.active = a; switchView('time'); refreshAll(); }
 // Süzgeç: Butterworth / Chebyshev I / Bessel (IIR, bilineer) ve pencereli sinc FIR; canlı Bode (genlik / faz) önizlemesi
@@ -4656,7 +4790,7 @@ function buildOutput() {
     fr('Silinenler', selIn('exDel', [['remove', 'Noktayı çıkar'], ['nan', 'NaN yap (uzunluk korunur)']], 'remove')),
     fr('Seyreltme (her N)', numIn('exDec', 1, {min: 1, step: 1})),
     h('div', {class: 'btns'}, btn('CSV kaydet', () => exportData('csv')), btn('MAT (v5) kaydet', () => exportData('mat'), 'primary'))));
-  r.append(card('Oturum', h('div', {class: 'note'}, 'Grafik düzeni ve silinen noktaları kaydeder; aynı dosyalar açıkken geri yükler.'), h('div', {class: 'btns'}, btn('Oturumu kaydet', saveSession), btn('Oturumu yükle…', () => $('#sessIn').click()), h('input', {type: 'file', id: 'sessIn', accept: '.json', hidden: true, onchange: e => { if (e.target.files[0]) loadSession(e.target.files[0]); e.target.value = ''; }}))));
+  r.append(card('Oturum', h('div', {class: 'note'}, 'Grafik düzeni (çift Y dahil), silinen noktalar, türetilmiş kanallar (veri + formül), test fazları, şartname profilleri, kontrol/cevap rolleri ve rapor öğeleri oturum.json dosyasına kaydedilir; aynı dosyalar açıkken geri yüklenir.'), h('div', {class: 'btns'}, btn('Oturumu kaydet', saveSession), btn('Oturumu yükle…', () => $('#sessIn').click()), h('input', {type: 'file', id: 'sessIn', accept: '.json', hidden: true, onchange: e => { if (e.target.files[0]) loadSession(e.target.files[0]); e.target.value = ''; }}))));
   return r;
 }
 // Çıktı alırken: grafikte titreşim izi varsa ve Grms lejantı kapalıysa sorar
@@ -4729,24 +4863,60 @@ function matWrite(vars) {
   return new Blob(parts, {type: 'application/octet-stream'});
 }
 function rle(del) { const out = []; let s = -1; for (let i = 0; i < del.length; i++) { if (del[i]) { if (s < 0) s = i; } else if (s >= 0) { out.push([s, i]); s = -1; } } if (s >= 0) out.push([s, del.length]); return out; }
+// Oturum (oturum.json, v2): grafik düzeni (çift Y dahil), silmeler, zaman ayarları, notlar + türetilmiş kanallar (veri ve formül/işlem
+// açıklamasıyla), test fazları, şartname profilleri, kontrol/cevap rolleri, rapor öğeleri ve rapor bilgileri.
+const b64enc = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+const b64dec = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+function chByName(nm) { for (const f of allFiles()) for (const c of f.channels) if (c.name === nm) return c; return null; }
 async function saveSession() {
-  const o = {app: 'MATView', v: 1, notes: S.notes, linkX: S.plot.linkX, files: S.files.map(f => f.name), axes: S.plot.axes.map(ax => ({title: ax.title, ylabel: ax.ylabel, xlim: ax.xlim, ylim: ax.ylim, yAuto: ax.yAuto, ylog: ax.ylog, traces: ax.traces.map(t => ({name: t.ch.name, color: t.color, width: t.width, visible: t.visible}))})), deletions: {}, timing: S.files.map(f => ({name: f.name, Tpkt: f.Tpkt, baseFs: f.baseFs}))};
+  const o = {app: 'MATView', v: 2, notes: S.notes, linkX: S.plot.linkX, files: S.files.map(f => f.name),
+    axes: S.plot.axes.map(ax => ({title: ax.title, ylabel: ax.ylabel, ylabel2: ax.ylabel2 || '', xlim: ax.xlim, ylim: ax.ylim, yAuto: ax.yAuto, ylim2: ax.ylim2, yAuto2: ax.yAuto2 !== false, ylog: ax.ylog, hw: ax.hw,
+      traces: ax.traces.filter(t => t.ch).map(t => ({name: t.ch.name, color: t.color, width: t.width, visible: t.visible, yr: !!t.yr}))})),
+    deletions: {}, timing: S.files.map(f => ({name: f.name, Tpkt: f.Tpkt, baseFs: f.baseFs}))};
   for (const f of allFiles()) for (const c of f.channels) if (c.delCount) o.deletions[c.name] = rle(c.del);
+  // türetilmiş kanallar
+  o.derived = [];
+  for (const c of (S.derived ? S.derived.channels : [])) {
+    if (!c.data) continue; const d = c.data instanceof Float64Array ? c.data : Float64Array.from(c.data), big = d.length > 4e6 && c.formula;
+    const e = {name: c.name, kind: c.kind, unit: c.unit || '', desc: c.desc || '', formula: c.formula || '', src: c.srcName || '', n: d.length};
+    if (c.g && c.srcName && chByName(c.srcName) && chByName(c.srcName).n === d.length) e.timing = 'src'; else e.timing = {t0: c.t(0), dt: d.length > 1 ? (c.t(d.length - 1) - c.t(0)) / (d.length - 1) : (c.dtS || 1)};
+    if (!big) e.data = b64enc(new Uint8Array(d.buffer, d.byteOffset, d.byteLength));
+    o.derived.push(e);
+  }
+  if (S.levels && S.levels.ch) { const L = S.levels; o.phases = {ch: L.ch.name, a: L.a, ref: L.ref, prof: L.prof ? L.prof.id || L.prof.name : null, segs: L.segs.map(s => ({level: s.level, t0: s.t0, t1: s.t1, i0: s.i0, i1: s.i1, grms: s.grms, db: s.db}))}; }
+  o.profiles = S.profiles || [];
+  o.roles = {ctl: (S.roles.ctl || []).map(chByUid).filter(Boolean).map(c => c.name), resp: (S.roles.resp || []).map(chByUid).filter(Boolean).map(c => c.name)};
+  if (typeof REP !== 'undefined') { o.report = {items: REP.items, meta: REP.meta}; }
   await saveBlob(new Blob([JSON.stringify(o)], {type: 'application/json'}), 'oturum.json');
 }
 async function loadSession(file) {
-  const o = JSON.parse(await file.text()); let miss = 0;
+  const o = JSON.parse(await file.text()); let miss = 0, nd = 0;
   await busy('Oturum yükleniyor…', async () => {
     for (const t of o.timing || []) { const f = S.files.find(x => x.name === t.name); if (f) { f.Tpkt = t.Tpkt; f.baseFs = t.baseFs; applyTiming(f); } }
-    clearPlot(); S.plot.linkX = o.linkX !== false; if (o.notes) { S.notes = o.notes; if (typeof noteSave === 'function') noteSave(); S.plot.notes = S.notes; }
-    for (const a of o.axes) {
-      const ax = S.plot.addAxes({title: a.title, ylabel: a.ylabel, ylim: a.ylim, yAuto: a.yAuto, ylog: a.ylog, xlim: a.xlim});
-      for (const t of a.traces) { let c = null; for (const f of allFiles()) for (const cc of f.channels) if (cc.name === t.name) c = cc; if (!c) { miss++; continue; } await ensureLoaded(c); ax.traces.push({kind: 'ts', ch: c, label: c.name, color: t.color, width: t.width, visible: t.visible}); }
+    // türetilmiş kanallar (önce: grafik izleri bunlara başvurabilir)
+    for (const e of o.derived || []) {
+      if (chByName(e.name)) continue; let data = null; const src = e.src ? chByName(e.src) : null;
+      if (e.data) { const u = b64dec(e.data); data = new Float64Array(u.buffer, 0, u.length / 8); }
+      else if (e.formula && typeof evalFormula === 'function') { try { const r = await evalFormula(e.formula, {}); data = r && r.v ? Float64Array.from(r.v) : null; } catch (_) { data = null; } }
+      if (!data) { miss++; continue; }
+      if (src) await ensureLoaded(src);
+      S.opDesc = e.desc || ''; const c = addDerived(e.name, data, e.timing === 'src' ? src : null, 0, e.timing === 'src' && !!src);
+      if (e.timing !== 'src' || !src) { c.g = null; c.dtS = e.timing && e.timing.dt || 1; c.t0 = e.timing && e.timing.t0 || 0; }
+      c.kind = e.kind || c.kind; c.unit = e.unit || ''; c.formula = e.formula || ''; c.srcName = e.src || ''; c.desc = e.desc || ''; nd++;
     }
-    for (const nm in o.deletions) { let c = null; for (const f of allFiles()) for (const cc of f.channels) if (cc.name === nm) c = cc; if (!c) { miss++; continue; } await ensureLoaded(c); const idx = []; for (const [s, e] of o.deletions[nm]) for (let i = s; i < e; i++) idx.push(i); c.applyDelete(Uint32Array.from(idx)); }
-    S.plot.active = S.plot.axes[0] || null; refreshAll(); refreshCleanInfo();
+    clearPlot(); S.plot.linkX = o.linkX !== false; if (o.notes) { S.notes = o.notes; if (typeof noteSave === 'function') noteSave(); S.plot.notes = S.notes; }
+    for (const a of o.axes || []) {
+      const ax = S.plot.addAxes({title: a.title, ylabel: a.ylabel, ylabel2: a.ylabel2 || '', ylim: a.ylim, yAuto: a.yAuto, ylim2: a.ylim2 || [0, 1], yAuto2: a.yAuto2 !== false, ylog: a.ylog, xlim: a.xlim}); if (a.hw) ax.hw = a.hw;
+      for (const t of a.traces) { const c = chByName(t.name); if (!c) { miss++; continue; } await ensureLoaded(c); ax.traces.push({kind: 'ts', ch: c, label: c.name, color: t.color, width: t.width, visible: t.visible, yr: !!t.yr}); }
+    }
+    for (const nm in o.deletions || {}) { const c = chByName(nm); if (!c) { miss++; continue; } await ensureLoaded(c); const idx = []; for (const [s, e] of o.deletions[nm]) for (let i = s; i < e; i++) idx.push(i); c.applyDelete(Uint32Array.from(idx)); }
+    if (Array.isArray(o.profiles) && o.profiles.length) { const have = new Set((S.profiles || []).map(p => p.id || p.name)); for (const p of o.profiles) if (!have.has(p.id || p.name)) S.profiles.push(p); if (typeof saveProfiles === 'function') saveProfiles(); if (typeof refreshUnvPanel === 'function') try { refreshUnvPanel(); } catch (_) {} }
+    if (o.roles) { S.roles = {ctl: o.roles.ctl.map(chByName).filter(Boolean).map(c => c.uid), resp: o.roles.resp.map(chByName).filter(Boolean).map(c => c.uid)}; if (typeof roleRender === 'function') roleRender(); }
+    if (o.phases) { const ch = chByName(o.phases.ch); if (ch) { await ensureLoaded(ch); const prof = o.phases.prof != null ? (S.profiles || []).find(p => (p.id || p.name) === o.phases.prof) || null : null; S.levels = {ch, a: o.phases.a, ref: o.phases.ref, prof, segs: o.phases.segs.map(s => Object.assign({}, s))}; if (typeof phBands === 'function') phBands(); if (typeof phaseTable === 'function') try { phaseTable(); } catch (_) {} } else miss++; }
+    if (o.report && typeof REP !== 'undefined') { REP.items = o.report.items || []; if (o.report.meta) REP.meta = o.report.meta; if (typeof repRefreshList === 'function') repRefreshList(); }
+    S.plot.active = S.plot.axes[0] || null; renderTree(); refreshAll(); refreshCleanInfo();
   });
-  toast(miss ? `Oturum yüklendi, ${miss} kanal bulunamadı (ilgili dosyaları açın)` : 'Oturum yüklendi');
+  toast((miss ? `Oturum yüklendi, ${miss} öğe bulunamadı (ilgili dosyaları açın)` : 'Oturum yüklendi') + (nd ? ` · ${nd} türetilmiş kanal` : ''));
 }
 
 /* ---------- Ayarlar / yardım ---------- */
@@ -5553,7 +5723,7 @@ async function runExpr() {
       const pre = {}; if ($('#exprIn').dataset.pre === 'A') { const tr = activeTrace(); if (tr && tr.ch) pre.A = tr.ch; }
       const res = await evalFormula(src, pre);
       if (typeof res === 'number') { msg.textContent = 'Sonuç (skaler): ' + res; return; }
-      const name = sanitizeName(sv('exprName') || 'formul'); addResult(res, name, {dest: 'new'}); msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
+      const name = sanitizeName(sv('exprName') || 'formul'); S.opDesc = 'Formül: ' + src; const c = addResult(res, name, {dest: 'new'}); c.formula = src; msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
     } catch (e) { msg.textContent = 'Hata: ' + e.message; }
   });
 }
@@ -6072,14 +6242,24 @@ function repRefreshList() {
   if (!REP.items.length) box.append(h('div', {class: 'note'}, 'Rapor boş. Görünümü, tabloları veya notları ekleyin.'));
   REP.items.forEach((it, i) => {
     const kind = {fig: 'Şekil', table: 'Tablo', text: 'Metin'}[it.type];
-    box.append(h('div', {class: 'repItem'}, h('span', {class: 'muted'}, (i + 1) + '. ' + kind),
+    const row = h('div', {class: 'repItem', draggable: 'true', title: 'Sürükleyip bırakarak sıralayın'}, h('span', {class: 'repGrip', 'aria-hidden': 'true'}, '⠿'), h('span', {class: 'muted'}, (i + 1) + '. ' + kind),
       h('input', {type: 'text', value: it.title || '', placeholder: 'Başlık', oninput: e => it.title = e.target.value}),
       h('button', {title: 'Yukarı', onclick: () => { if (i) { [REP.items[i - 1], REP.items[i]] = [REP.items[i], REP.items[i - 1]]; repRefreshList(); } }}, '↑'),
       h('button', {title: 'Aşağı', onclick: () => { if (i < REP.items.length - 1) { [REP.items[i + 1], REP.items[i]] = [REP.items[i], REP.items[i + 1]]; repRefreshList(); } }}, '↓'),
-      h('button', {title: 'Sil', onclick: () => { REP.items.splice(i, 1); repRefreshList(); }}, '×')));
-    if (it.type === 'fig') box.append(h('input', {type: 'text', class: 'repNote', value: it.note || '', placeholder: 'Şekil altı açıklaması (isteğe bağlı)', oninput: e => it.note = e.target.value}));
+      h('button', {title: 'Sil', onclick: () => { REP.items.splice(i, 1); repRefreshList(); }}, '×'));
+    row.ondragstart = e => { e.dataTransfer.setData('text/matview-rep', String(i)); e.dataTransfer.effectAllowed = 'move'; row.classList.add('drag'); };
+    row.ondragend = () => row.classList.remove('drag');
+    row.ondragover = e => { if ([...e.dataTransfer.types].includes('text/matview-rep')) { e.preventDefault(); const r = row.getBoundingClientRect(); row.classList.toggle('dropB', e.clientY > r.top + r.height / 2); row.classList.toggle('dropA', e.clientY <= r.top + r.height / 2); } };
+    row.ondragleave = () => row.classList.remove('dropA', 'dropB');
+    row.ondrop = e => { e.preventDefault(); const from = +e.dataTransfer.getData('text/matview-rep'), after = row.classList.contains('dropB'); row.classList.remove('dropA', 'dropB'); repMove(from, i + (after ? 1 : 0)); };
+    box.append(row);
+    if (it.type === 'fig') box.append(h('div', {class: 'repSub'}, h('input', {type: 'text', class: 'repNote', value: it.note || '', placeholder: 'Şekil altı açıklaması (isteğe bağlı)', oninput: e => it.note = e.target.value}),
+      h('label', {class: 'repHalf', title: 'Art arda iki “yan yana” şekil raporda tek satırda iki sütun olarak dizilir'}, h('input', {type: 'checkbox', checked: !!it.half, onchange: e => { it.half = e.target.checked; }}), 'Yan yana')));
+    else if (it.type === 'table') box.append(h('input', {type: 'text', class: 'repNote', value: it.note || '', placeholder: 'Tablo altı açıklaması (isteğe bağlı)', oninput: e => it.note = e.target.value}));
+    else if (it.type === 'text') box.append(h('textarea', {class: 'repNote', rows: 2, placeholder: 'Metin', oninput: e => it.body = e.target.value}, it.body || ''));
   });
 }
+function repMove(from, to) { if (!(from >= 0) || from === to || from + 1 === to) return; const [x] = REP.items.splice(from, 1); REP.items.splice(to > from ? to - 1 : to, 0, x); repRefreshList(); }
 function buildReportCard() {
   return card('Rapor',
     h('div', {class: 'note'}, 'Grafikleri, tabloları ve notları ekleyip kapaklı, üst/alt bilgili A4 rapor üretir. PDF için açılan önizlemede “Yazdır → PDF olarak kaydet” seçilir.'),
@@ -6115,7 +6295,14 @@ function repPaginate(m) {
   const flush = () => { if (cur.html.length) { pages.push(cur.html.join('')); cur.html = []; cur.h = 0; } };
   const place = (h, html) => { if (cur.h + h > RP.bodyH && cur.html.length) flush(); cur.html.push(html); cur.h += h; };
   const pageNo = () => pages.length + 3;   // kapak=1, içindekiler=2, içerik 3'ten
-  for (const it of REP.items) {
+  for (let ii = 0; ii < REP.items.length; ii++) {
+    const it = REP.items[ii], nx = REP.items[ii + 1];
+    if (it.type === 'fig' && it.half && nx && nx.type === 'fig' && nx.half) {   // iki şekil yan yana (2 sütun)
+      const w = RP.bodyW / 2 - 3, one = q => { figN++; const hh = Math.min(w * q.ar, 110), ww = hh / q.ar; toc.push([`Şekil ${figN} – ${q.title || ''}`, 0]); return {hh, html: `<figure style="flex:1;margin:0"><img src="${q.url}" style="width:${ww.toFixed(1)}mm;height:${hh.toFixed(1)}mm"><figcaption><b>Şekil ${figN}</b> – ${repEsc(q.title)}${q.note ? '<div class="nt">' + repEsc(q.note) + '</div>' : ''}</figcaption></figure>`, nl: q.note ? Math.ceil(q.note.length / 50) : 0}; };
+      const a = one(it), b = one(nx), tot = Math.max(a.hh + a.nl * 5, b.hh + b.nl * 5) + 18;
+      if (cur.h + tot > RP.bodyH && cur.html.length) flush(); const pn = pageNo(); toc[toc.length - 1][1] = pn; toc[toc.length - 2][1] = pn;
+      place(tot, `<div style="display:flex;gap:6mm;align-items:flex-start;margin:0 0 6mm">${a.html}${b.html}</div>`); ii++; continue;
+    }
     if (it.type === 'fig') {
       figN++; const w = RP.bodyW, hh = Math.min(w * it.ar, 150), ww = hh / it.ar, noteLines = it.note ? Math.ceil(it.note.length / 100) : 0, tot = hh + 18 + noteLines * 5;
       if (cur.h + tot > RP.bodyH && cur.html.length) flush(); toc.push([`Şekil ${figN} – ${it.title || ''}`, pageNo()]);
@@ -6363,7 +6550,13 @@ async function repDocx(m) {
   // --- içerik ---
   let figN = 0, tabN = 0, ti = 0; const tocRows = [];
   const bmark = (inner, name) => { const id = ++bm; return `<w:bookmarkStart w:id="${id}" w:name="${name}"/>${inner}<w:bookmarkEnd w:id="${id}"/>`; };
-  for (const it of items) {
+  for (let ii = 0; ii < items.length; ii++) {
+    const it = items[ii], nx = items[ii + 1];
+    if (it.type === 'fig' && it.half && nx && nx.type === 'fig' && nx.half) {
+      const cell = q => { figN++; const nm = '_Ref_f' + figN, a = addImg(q.url), w = 85, hh = Math.min(w * q.ar, 110), ww = hh / q.ar; tocRows.push([`Şekil ${figN} – ${q.title || ''}`, nm, toc[ti++]?.[1] ?? '']);
+        return dxCell(dxP(dxDrawing(a.id, did++, DX.mm(ww), DX.mm(hh), 'sekil' + figN), {jc: 'center', keep: 1, after: 40}) + dxP(bmark(dxRun('Şekil ' + figN, {b: 1, sz: 18}) + dxRun(' – ' + (q.title || ''), {sz: 18}), nm), {jc: 'center', after: q.note ? 20 : 120}) + (q.note ? dxP(dxRun(q.note, {sz: 16, color: '333333'}), {after: 120}) : ''), W / 2, {noB: true, va: 'top'}); };
+      parts.push(`<w:tbl><w:tblPr><w:tblW w:w="${W}" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="${W / 2}"/><w:gridCol w:w="${W / 2}"/></w:tblGrid><w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(it)}${cell(nx)}</w:tr></w:tbl>`); parts.push(dxP('', {after: 120})); ii++; continue;
+    }
     if (it.type === 'fig') {
       figN++; const nm = '_Ref_f' + figN, a = addImg(it.url), w = 180, hh = Math.min(w * it.ar, 150), ww = hh / it.ar; tocRows.push([`Şekil ${figN} – ${it.title || ''}`, nm, toc[ti++]?.[1] ?? '']);
       parts.push(dxP(dxDrawing(a.id, did++, DX.mm(ww), DX.mm(hh), 'sekil' + figN), {jc: 'center', keep: 1, after: 40}));
@@ -8937,6 +9130,9 @@ const MLAB = (() => {
     const Sx = Object.create(null); Sx.normr = num(Math.sqrt(rr)); Sx.df = num(Math.max(0, x.length - (n + 1))); Sx.R = empty();
     const out = [p, {sa: true, r: 1, c: 1, v: [Sx]}]; if (no >= 3) out.push(colv(mu)); return out;
   };
+  // seyrek matrisler tam matris olarak tutulur: full / sparse kimlik, nnz sıfır olmayan sayısı, issparse false
+  B.full = a => a[0]; B.sparse = a => { if (a.length >= 3) { const i = mat(a[0]).re, j = mat(a[1]).re, v = mat(a[2]), m = a[3] ? sc1(a[3]) : Math.max(...i), n = a[4] ? sc1(a[4]) : Math.max(...j), o = zeros(m, n); for (let k = 0; k < i.length; k++) o.re[(i[k] - 1) + (j[k] - 1) * m] += v.re.length === 1 ? v.re[0] : v.re[k]; return o; } if (a.length === 2) return zeros(sc1(a[0]), sc1(a[1])); return a[0]; };
+  B.issparse = () => bool(false); B.nnz = a => { let n = 0; for (const v of mat(a[0]).re) if (v !== 0) n++; return num(n); };
   B.polyval = a => { const p = mat(a[0]).re, x = mat(a[1]); return like(x, Float64Array.from(x.re, v => { let r = 0; for (const c of p) r = r * v + c; return r; })); };
   B.roots = a => { const p = Array.from(mat(a[0]).re); while (p.length && p[0] === 0) p.shift(); const n = p.length - 1; if (n < 1) return empty(); const C = zeros(n, n); for (let j = 0; j < n; j++) C.re[j * n] = -p[j + 1] / p[0]; for (let i = 1; i < n; i++) C.re[i + (i - 1) * n] = 1; return eigvals(C); };
   function eigvals(A) { // QR yinelemesi (Hessenberg'siz basit) — küçük n için
@@ -10075,6 +10271,7 @@ async function codeSavedMat(sv) {
 CODE.matFiles = new Map();   // ad → ağaç listesi (load('ad') için)
 async function matTrees(m, fname) {
   if (!m.h5) return MAT.readAll(m);
+  try { return await MAT.readAll(m); } catch (_) { /* eski yol: yalnız sayısal */ }
   const out = []; for (const v of m.vars) { if (!v.numeric || /[.{(]/.test(v.name) || !v.dims) continue; try { const d = await MAT.load(m, v); const dims = v.dims.slice(); out.push({k: 'num', name: v.name, cls: 'd', dims, re: Float64Array.from(d)}); } catch (_) {} } return out;
 }
 async function codeLoadMatFiles(files) {

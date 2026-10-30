@@ -54,7 +54,13 @@ async function repDocx(m) {
   // --- içerik ---
   let figN = 0, tabN = 0, ti = 0; const tocRows = [];
   const bmark = (inner, name) => { const id = ++bm; return `<w:bookmarkStart w:id="${id}" w:name="${name}"/>${inner}<w:bookmarkEnd w:id="${id}"/>`; };
-  for (const it of items) {
+  for (let ii = 0; ii < items.length; ii++) {
+    const it = items[ii], nx = items[ii + 1];
+    if (it.type === 'fig' && it.half && nx && nx.type === 'fig' && nx.half) {
+      const cell = q => { figN++; const nm = '_Ref_f' + figN, a = addImg(q.url), w = 85, hh = Math.min(w * q.ar, 110), ww = hh / q.ar; tocRows.push([`Şekil ${figN} – ${q.title || ''}`, nm, toc[ti++]?.[1] ?? '']);
+        return dxCell(dxP(dxDrawing(a.id, did++, DX.mm(ww), DX.mm(hh), 'sekil' + figN), {jc: 'center', keep: 1, after: 40}) + dxP(bmark(dxRun('Şekil ' + figN, {b: 1, sz: 18}) + dxRun(' – ' + (q.title || ''), {sz: 18}), nm), {jc: 'center', after: q.note ? 20 : 120}) + (q.note ? dxP(dxRun(q.note, {sz: 16, color: '333333'}), {after: 120}) : ''), W / 2, {noB: true, va: 'top'}); };
+      parts.push(`<w:tbl><w:tblPr><w:tblW w:w="${W}" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="${W / 2}"/><w:gridCol w:w="${W / 2}"/></w:tblGrid><w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(it)}${cell(nx)}</w:tr></w:tbl>`); parts.push(dxP('', {after: 120})); ii++; continue;
+    }
     if (it.type === 'fig') {
       figN++; const nm = '_Ref_f' + figN, a = addImg(it.url), w = 180, hh = Math.min(w * it.ar, 150), ww = hh / it.ar; tocRows.push([`Şekil ${figN} – ${it.title || ''}`, nm, toc[ti++]?.[1] ?? '']);
       parts.push(dxP(dxDrawing(a.id, did++, DX.mm(ww), DX.mm(hh), 'sekil' + figN), {jc: 'center', keep: 1, after: 40}));

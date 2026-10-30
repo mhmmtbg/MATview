@@ -255,7 +255,7 @@ function addDerived(name, data, src, i0, full) {
   if (!S.derived) S.derived = {id: 'derived', name: 'Türetilmiş kanallar', derived: true, channels: [], mcache: new Map()};
   const c = new Channel({name, rest: name, base: name, comp: '', dev: 'türetilmiş', kind: src ? src.kind : 'calc', n: data.length, file: S.derived, label: name, derived: true, data, varIdx: -1});
   if (src && full && src.n === data.length) c.copyTiming(src); else if (src) { c.g = null; c.dtS = 1 / src.fs; c.t0 = src.t(i0 || 0); } else c.dtS = 1;
-  S.derived.channels.push(c); logOp('derived', {name, src: src ? src.name : '', desc: S.opDesc || ''}); S.opDesc = ''; renderChips(); renderTree(); return c;
+  c.desc = S.opDesc || ''; c.srcName = src ? src.name : ''; S.derived.channels.push(c); logOp('derived', {name, src: src ? src.name : '', desc: S.opDesc || ''}); S.opDesc = ''; renderChips(); renderTree(); return c;
 }
 async function addDerivedToPlot(c, ax) { const tr = makeTrace(c); (ax || activeAxes() || S.plot.addAxes()).traces.push(tr); const a = ax || activeAxes(); if (!S.plot.active) S.plot.active = a; switchView('time'); refreshAll(); }
 // Süzgeç: Butterworth / Chebyshev I / Bessel (IIR, bilineer) ve pencereli sinc FIR; canlı Bode (genlik / faz) önizlemesi
@@ -487,7 +487,7 @@ function buildOutput() {
     fr('Silinenler', selIn('exDel', [['remove', 'Noktayı çıkar'], ['nan', 'NaN yap (uzunluk korunur)']], 'remove')),
     fr('Seyreltme (her N)', numIn('exDec', 1, {min: 1, step: 1})),
     h('div', {class: 'btns'}, btn('CSV kaydet', () => exportData('csv')), btn('MAT (v5) kaydet', () => exportData('mat'), 'primary'))));
-  r.append(card('Oturum', h('div', {class: 'note'}, 'Grafik düzeni ve silinen noktaları kaydeder; aynı dosyalar açıkken geri yükler.'), h('div', {class: 'btns'}, btn('Oturumu kaydet', saveSession), btn('Oturumu yükle…', () => $('#sessIn').click()), h('input', {type: 'file', id: 'sessIn', accept: '.json', hidden: true, onchange: e => { if (e.target.files[0]) loadSession(e.target.files[0]); e.target.value = ''; }}))));
+  r.append(card('Oturum', h('div', {class: 'note'}, 'Grafik düzeni (çift Y dahil), silinen noktalar, türetilmiş kanallar (veri + formül), test fazları, şartname profilleri, kontrol/cevap rolleri ve rapor öğeleri oturum.json dosyasına kaydedilir; aynı dosyalar açıkken geri yüklenir.'), h('div', {class: 'btns'}, btn('Oturumu kaydet', saveSession), btn('Oturumu yükle…', () => $('#sessIn').click()), h('input', {type: 'file', id: 'sessIn', accept: '.json', hidden: true, onchange: e => { if (e.target.files[0]) loadSession(e.target.files[0]); e.target.value = ''; }}))));
   return r;
 }
 // Çıktı alırken: grafikte titreşim izi varsa ve Grms lejantı kapalıysa sorar
@@ -560,24 +560,60 @@ function matWrite(vars) {
   return new Blob(parts, {type: 'application/octet-stream'});
 }
 function rle(del) { const out = []; let s = -1; for (let i = 0; i < del.length; i++) { if (del[i]) { if (s < 0) s = i; } else if (s >= 0) { out.push([s, i]); s = -1; } } if (s >= 0) out.push([s, del.length]); return out; }
+// Oturum (oturum.json, v2): grafik düzeni (çift Y dahil), silmeler, zaman ayarları, notlar + türetilmiş kanallar (veri ve formül/işlem
+// açıklamasıyla), test fazları, şartname profilleri, kontrol/cevap rolleri, rapor öğeleri ve rapor bilgileri.
+const b64enc = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+const b64dec = s => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+function chByName(nm) { for (const f of allFiles()) for (const c of f.channels) if (c.name === nm) return c; return null; }
 async function saveSession() {
-  const o = {app: 'MATView', v: 1, notes: S.notes, linkX: S.plot.linkX, files: S.files.map(f => f.name), axes: S.plot.axes.map(ax => ({title: ax.title, ylabel: ax.ylabel, xlim: ax.xlim, ylim: ax.ylim, yAuto: ax.yAuto, ylog: ax.ylog, traces: ax.traces.map(t => ({name: t.ch.name, color: t.color, width: t.width, visible: t.visible}))})), deletions: {}, timing: S.files.map(f => ({name: f.name, Tpkt: f.Tpkt, baseFs: f.baseFs}))};
+  const o = {app: 'MATView', v: 2, notes: S.notes, linkX: S.plot.linkX, files: S.files.map(f => f.name),
+    axes: S.plot.axes.map(ax => ({title: ax.title, ylabel: ax.ylabel, ylabel2: ax.ylabel2 || '', xlim: ax.xlim, ylim: ax.ylim, yAuto: ax.yAuto, ylim2: ax.ylim2, yAuto2: ax.yAuto2 !== false, ylog: ax.ylog, hw: ax.hw,
+      traces: ax.traces.filter(t => t.ch).map(t => ({name: t.ch.name, color: t.color, width: t.width, visible: t.visible, yr: !!t.yr}))})),
+    deletions: {}, timing: S.files.map(f => ({name: f.name, Tpkt: f.Tpkt, baseFs: f.baseFs}))};
   for (const f of allFiles()) for (const c of f.channels) if (c.delCount) o.deletions[c.name] = rle(c.del);
+  // türetilmiş kanallar
+  o.derived = [];
+  for (const c of (S.derived ? S.derived.channels : [])) {
+    if (!c.data) continue; const d = c.data instanceof Float64Array ? c.data : Float64Array.from(c.data), big = d.length > 4e6 && c.formula;
+    const e = {name: c.name, kind: c.kind, unit: c.unit || '', desc: c.desc || '', formula: c.formula || '', src: c.srcName || '', n: d.length};
+    if (c.g && c.srcName && chByName(c.srcName) && chByName(c.srcName).n === d.length) e.timing = 'src'; else e.timing = {t0: c.t(0), dt: d.length > 1 ? (c.t(d.length - 1) - c.t(0)) / (d.length - 1) : (c.dtS || 1)};
+    if (!big) e.data = b64enc(new Uint8Array(d.buffer, d.byteOffset, d.byteLength));
+    o.derived.push(e);
+  }
+  if (S.levels && S.levels.ch) { const L = S.levels; o.phases = {ch: L.ch.name, a: L.a, ref: L.ref, prof: L.prof ? L.prof.id || L.prof.name : null, segs: L.segs.map(s => ({level: s.level, t0: s.t0, t1: s.t1, i0: s.i0, i1: s.i1, grms: s.grms, db: s.db}))}; }
+  o.profiles = S.profiles || [];
+  o.roles = {ctl: (S.roles.ctl || []).map(chByUid).filter(Boolean).map(c => c.name), resp: (S.roles.resp || []).map(chByUid).filter(Boolean).map(c => c.name)};
+  if (typeof REP !== 'undefined') { o.report = {items: REP.items, meta: REP.meta}; }
   await saveBlob(new Blob([JSON.stringify(o)], {type: 'application/json'}), 'oturum.json');
 }
 async function loadSession(file) {
-  const o = JSON.parse(await file.text()); let miss = 0;
+  const o = JSON.parse(await file.text()); let miss = 0, nd = 0;
   await busy('Oturum yükleniyor…', async () => {
     for (const t of o.timing || []) { const f = S.files.find(x => x.name === t.name); if (f) { f.Tpkt = t.Tpkt; f.baseFs = t.baseFs; applyTiming(f); } }
-    clearPlot(); S.plot.linkX = o.linkX !== false; if (o.notes) { S.notes = o.notes; if (typeof noteSave === 'function') noteSave(); S.plot.notes = S.notes; }
-    for (const a of o.axes) {
-      const ax = S.plot.addAxes({title: a.title, ylabel: a.ylabel, ylim: a.ylim, yAuto: a.yAuto, ylog: a.ylog, xlim: a.xlim});
-      for (const t of a.traces) { let c = null; for (const f of allFiles()) for (const cc of f.channels) if (cc.name === t.name) c = cc; if (!c) { miss++; continue; } await ensureLoaded(c); ax.traces.push({kind: 'ts', ch: c, label: c.name, color: t.color, width: t.width, visible: t.visible}); }
+    // türetilmiş kanallar (önce: grafik izleri bunlara başvurabilir)
+    for (const e of o.derived || []) {
+      if (chByName(e.name)) continue; let data = null; const src = e.src ? chByName(e.src) : null;
+      if (e.data) { const u = b64dec(e.data); data = new Float64Array(u.buffer, 0, u.length / 8); }
+      else if (e.formula && typeof evalFormula === 'function') { try { const r = await evalFormula(e.formula, {}); data = r && r.v ? Float64Array.from(r.v) : null; } catch (_) { data = null; } }
+      if (!data) { miss++; continue; }
+      if (src) await ensureLoaded(src);
+      S.opDesc = e.desc || ''; const c = addDerived(e.name, data, e.timing === 'src' ? src : null, 0, e.timing === 'src' && !!src);
+      if (e.timing !== 'src' || !src) { c.g = null; c.dtS = e.timing && e.timing.dt || 1; c.t0 = e.timing && e.timing.t0 || 0; }
+      c.kind = e.kind || c.kind; c.unit = e.unit || ''; c.formula = e.formula || ''; c.srcName = e.src || ''; c.desc = e.desc || ''; nd++;
     }
-    for (const nm in o.deletions) { let c = null; for (const f of allFiles()) for (const cc of f.channels) if (cc.name === nm) c = cc; if (!c) { miss++; continue; } await ensureLoaded(c); const idx = []; for (const [s, e] of o.deletions[nm]) for (let i = s; i < e; i++) idx.push(i); c.applyDelete(Uint32Array.from(idx)); }
-    S.plot.active = S.plot.axes[0] || null; refreshAll(); refreshCleanInfo();
+    clearPlot(); S.plot.linkX = o.linkX !== false; if (o.notes) { S.notes = o.notes; if (typeof noteSave === 'function') noteSave(); S.plot.notes = S.notes; }
+    for (const a of o.axes || []) {
+      const ax = S.plot.addAxes({title: a.title, ylabel: a.ylabel, ylabel2: a.ylabel2 || '', ylim: a.ylim, yAuto: a.yAuto, ylim2: a.ylim2 || [0, 1], yAuto2: a.yAuto2 !== false, ylog: a.ylog, xlim: a.xlim}); if (a.hw) ax.hw = a.hw;
+      for (const t of a.traces) { const c = chByName(t.name); if (!c) { miss++; continue; } await ensureLoaded(c); ax.traces.push({kind: 'ts', ch: c, label: c.name, color: t.color, width: t.width, visible: t.visible, yr: !!t.yr}); }
+    }
+    for (const nm in o.deletions || {}) { const c = chByName(nm); if (!c) { miss++; continue; } await ensureLoaded(c); const idx = []; for (const [s, e] of o.deletions[nm]) for (let i = s; i < e; i++) idx.push(i); c.applyDelete(Uint32Array.from(idx)); }
+    if (Array.isArray(o.profiles) && o.profiles.length) { const have = new Set((S.profiles || []).map(p => p.id || p.name)); for (const p of o.profiles) if (!have.has(p.id || p.name)) S.profiles.push(p); if (typeof saveProfiles === 'function') saveProfiles(); if (typeof refreshUnvPanel === 'function') try { refreshUnvPanel(); } catch (_) {} }
+    if (o.roles) { S.roles = {ctl: o.roles.ctl.map(chByName).filter(Boolean).map(c => c.uid), resp: o.roles.resp.map(chByName).filter(Boolean).map(c => c.uid)}; if (typeof roleRender === 'function') roleRender(); }
+    if (o.phases) { const ch = chByName(o.phases.ch); if (ch) { await ensureLoaded(ch); const prof = o.phases.prof != null ? (S.profiles || []).find(p => (p.id || p.name) === o.phases.prof) || null : null; S.levels = {ch, a: o.phases.a, ref: o.phases.ref, prof, segs: o.phases.segs.map(s => Object.assign({}, s))}; if (typeof phBands === 'function') phBands(); if (typeof phaseTable === 'function') try { phaseTable(); } catch (_) {} } else miss++; }
+    if (o.report && typeof REP !== 'undefined') { REP.items = o.report.items || []; if (o.report.meta) REP.meta = o.report.meta; if (typeof repRefreshList === 'function') repRefreshList(); }
+    S.plot.active = S.plot.axes[0] || null; renderTree(); refreshAll(); refreshCleanInfo();
   });
-  toast(miss ? `Oturum yüklendi, ${miss} kanal bulunamadı (ilgili dosyaları açın)` : 'Oturum yüklendi');
+  toast((miss ? `Oturum yüklendi, ${miss} öğe bulunamadı (ilgili dosyaları açın)` : 'Oturum yüklendi') + (nd ? ` · ${nd} türetilmiş kanal` : ''));
 }
 
 /* ---------- Ayarlar / yardım ---------- */

@@ -459,6 +459,9 @@
     const Sx = Object.create(null); Sx.normr = num(Math.sqrt(rr)); Sx.df = num(Math.max(0, x.length - (n + 1))); Sx.R = empty();
     const out = [p, {sa: true, r: 1, c: 1, v: [Sx]}]; if (no >= 3) out.push(colv(mu)); return out;
   };
+  // seyrek matrisler tam matris olarak tutulur: full / sparse kimlik, nnz sıfır olmayan sayısı, issparse false
+  B.full = a => a[0]; B.sparse = a => { if (a.length >= 3) { const i = mat(a[0]).re, j = mat(a[1]).re, v = mat(a[2]), m = a[3] ? sc1(a[3]) : Math.max(...i), n = a[4] ? sc1(a[4]) : Math.max(...j), o = zeros(m, n); for (let k = 0; k < i.length; k++) o.re[(i[k] - 1) + (j[k] - 1) * m] += v.re.length === 1 ? v.re[0] : v.re[k]; return o; } if (a.length === 2) return zeros(sc1(a[0]), sc1(a[1])); return a[0]; };
+  B.issparse = () => bool(false); B.nnz = a => { let n = 0; for (const v of mat(a[0]).re) if (v !== 0) n++; return num(n); };
   B.polyval = a => { const p = mat(a[0]).re, x = mat(a[1]); return like(x, Float64Array.from(x.re, v => { let r = 0; for (const c of p) r = r * v + c; return r; })); };
   B.roots = a => { const p = Array.from(mat(a[0]).re); while (p.length && p[0] === 0) p.shift(); const n = p.length - 1; if (n < 1) return empty(); const C = zeros(n, n); for (let j = 0; j < n; j++) C.re[j * n] = -p[j + 1] / p[0]; for (let i = 1; i < n; i++) C.re[i + (i - 1) * n] = 1; return eigvals(C); };
   function eigvals(A) { // QR yinelemesi (Hessenberg'siz basit) — küçük n için

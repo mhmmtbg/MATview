@@ -40,7 +40,7 @@ async def main():
           const buf=new Uint8Array(await blob.arrayBuffer()); let s=''; for(let i=0;i<buf.length;i+=8192) s+=String.fromCharCode(...buf.subarray(i,i+8192)); return btoa(s);}''')
         import base64; open('/tmp/bin_out.mat', 'wb').write(base64.b64decode(res))
         # XLSX yazıcı gidiş-dönüş
-        rt = await pg.evaluate('''async()=>{const d=JSON.parse(JSON.stringify(S.files[0].bin.def)); const bl=XLSX.write(BIN.defToSheets(d)); const sh=await XLSX.read(new File([bl],'a.xlsx')); const d2=BIN.defFromSheets(sh);
+        rt = await pg.evaluate('''async()=>{const d=JSON.parse(JSON.stringify(S.files[0].bin.def)); const bl=await XLSX.write(BIN.defToSheets(d)); const sh=await XLSX.read(new File([bl],'a.xlsx')); const d2=BIN.defFromSheets(sh);
           return {same: JSON.stringify(d2.grid)===JSON.stringify(d.grid), f: d2.fields.length, sync:d2.sync, fps:d2.fps, order:d2.order}}''')
         print('xlsx roundtrip', rt)
         print('ERRS', errs[:10])

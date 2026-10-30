@@ -40,14 +40,24 @@ function repRefreshList() {
   if (!REP.items.length) box.append(h('div', {class: 'note'}, 'Rapor boş. Görünümü, tabloları veya notları ekleyin.'));
   REP.items.forEach((it, i) => {
     const kind = {fig: 'Şekil', table: 'Tablo', text: 'Metin'}[it.type];
-    box.append(h('div', {class: 'repItem'}, h('span', {class: 'muted'}, (i + 1) + '. ' + kind),
+    const row = h('div', {class: 'repItem', draggable: 'true', title: 'Sürükleyip bırakarak sıralayın'}, h('span', {class: 'repGrip', 'aria-hidden': 'true'}, '⠿'), h('span', {class: 'muted'}, (i + 1) + '. ' + kind),
       h('input', {type: 'text', value: it.title || '', placeholder: 'Başlık', oninput: e => it.title = e.target.value}),
       h('button', {title: 'Yukarı', onclick: () => { if (i) { [REP.items[i - 1], REP.items[i]] = [REP.items[i], REP.items[i - 1]]; repRefreshList(); } }}, '↑'),
       h('button', {title: 'Aşağı', onclick: () => { if (i < REP.items.length - 1) { [REP.items[i + 1], REP.items[i]] = [REP.items[i], REP.items[i + 1]]; repRefreshList(); } }}, '↓'),
-      h('button', {title: 'Sil', onclick: () => { REP.items.splice(i, 1); repRefreshList(); }}, '×')));
-    if (it.type === 'fig') box.append(h('input', {type: 'text', class: 'repNote', value: it.note || '', placeholder: 'Şekil altı açıklaması (isteğe bağlı)', oninput: e => it.note = e.target.value}));
+      h('button', {title: 'Sil', onclick: () => { REP.items.splice(i, 1); repRefreshList(); }}, '×'));
+    row.ondragstart = e => { e.dataTransfer.setData('text/matview-rep', String(i)); e.dataTransfer.effectAllowed = 'move'; row.classList.add('drag'); };
+    row.ondragend = () => row.classList.remove('drag');
+    row.ondragover = e => { if ([...e.dataTransfer.types].includes('text/matview-rep')) { e.preventDefault(); const r = row.getBoundingClientRect(); row.classList.toggle('dropB', e.clientY > r.top + r.height / 2); row.classList.toggle('dropA', e.clientY <= r.top + r.height / 2); } };
+    row.ondragleave = () => row.classList.remove('dropA', 'dropB');
+    row.ondrop = e => { e.preventDefault(); const from = +e.dataTransfer.getData('text/matview-rep'), after = row.classList.contains('dropB'); row.classList.remove('dropA', 'dropB'); repMove(from, i + (after ? 1 : 0)); };
+    box.append(row);
+    if (it.type === 'fig') box.append(h('div', {class: 'repSub'}, h('input', {type: 'text', class: 'repNote', value: it.note || '', placeholder: 'Şekil altı açıklaması (isteğe bağlı)', oninput: e => it.note = e.target.value}),
+      h('label', {class: 'repHalf', title: 'Art arda iki “yan yana” şekil raporda tek satırda iki sütun olarak dizilir'}, h('input', {type: 'checkbox', checked: !!it.half, onchange: e => { it.half = e.target.checked; }}), 'Yan yana')));
+    else if (it.type === 'table') box.append(h('input', {type: 'text', class: 'repNote', value: it.note || '', placeholder: 'Tablo altı açıklaması (isteğe bağlı)', oninput: e => it.note = e.target.value}));
+    else if (it.type === 'text') box.append(h('textarea', {class: 'repNote', rows: 2, placeholder: 'Metin', oninput: e => it.body = e.target.value}, it.body || ''));
   });
 }
+function repMove(from, to) { if (!(from >= 0) || from === to || from + 1 === to) return; const [x] = REP.items.splice(from, 1); REP.items.splice(to > from ? to - 1 : to, 0, x); repRefreshList(); }
 function buildReportCard() {
   return card('Rapor',
     h('div', {class: 'note'}, 'Grafikleri, tabloları ve notları ekleyip kapaklı, üst/alt bilgili A4 rapor üretir. PDF için açılan önizlemede “Yazdır → PDF olarak kaydet” seçilir.'),
@@ -83,7 +93,14 @@ function repPaginate(m) {
   const flush = () => { if (cur.html.length) { pages.push(cur.html.join('')); cur.html = []; cur.h = 0; } };
   const place = (h, html) => { if (cur.h + h > RP.bodyH && cur.html.length) flush(); cur.html.push(html); cur.h += h; };
   const pageNo = () => pages.length + 3;   // kapak=1, içindekiler=2, içerik 3'ten
-  for (const it of REP.items) {
+  for (let ii = 0; ii < REP.items.length; ii++) {
+    const it = REP.items[ii], nx = REP.items[ii + 1];
+    if (it.type === 'fig' && it.half && nx && nx.type === 'fig' && nx.half) {   // iki şekil yan yana (2 sütun)
+      const w = RP.bodyW / 2 - 3, one = q => { figN++; const hh = Math.min(w * q.ar, 110), ww = hh / q.ar; toc.push([`Şekil ${figN} – ${q.title || ''}`, 0]); return {hh, html: `<figure style="flex:1;margin:0"><img src="${q.url}" style="width:${ww.toFixed(1)}mm;height:${hh.toFixed(1)}mm"><figcaption><b>Şekil ${figN}</b> – ${repEsc(q.title)}${q.note ? '<div class="nt">' + repEsc(q.note) + '</div>' : ''}</figcaption></figure>`, nl: q.note ? Math.ceil(q.note.length / 50) : 0}; };
+      const a = one(it), b = one(nx), tot = Math.max(a.hh + a.nl * 5, b.hh + b.nl * 5) + 18;
+      if (cur.h + tot > RP.bodyH && cur.html.length) flush(); const pn = pageNo(); toc[toc.length - 1][1] = pn; toc[toc.length - 2][1] = pn;
+      place(tot, `<div style="display:flex;gap:6mm;align-items:flex-start;margin:0 0 6mm">${a.html}${b.html}</div>`); ii++; continue;
+    }
     if (it.type === 'fig') {
       figN++; const w = RP.bodyW, hh = Math.min(w * it.ar, 150), ww = hh / it.ar, noteLines = it.note ? Math.ceil(it.note.length / 100) : 0, tot = hh + 18 + noteLines * 5;
       if (cur.h + tot > RP.bodyH && cur.html.length) flush(); toc.push([`Şekil ${figN} – ${it.title || ''}`, pageNo()]);
