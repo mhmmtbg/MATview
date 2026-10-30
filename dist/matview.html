@@ -299,7 +299,7 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 .guifig .gtb td.gsel{background:#cfe3f7;outline:1px solid #6aa3d8;outline-offset:-1px}
 
 .lrow .yr{font-size:9px;font-weight:700;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:0 2px;margin-left:3px}
-.curpanel{position:absolute;right:14px;bottom:46px;z-index:6;min-width:210px;max-width:300px;max-height:60%;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.18);font-size:11px}
+.curpanel{position:absolute;right:14px;bottom:46px;z-index:6;min-width:210px;max-width:300px;max-height:60%;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:6px;font-size:11px}
 .curpanel.hidden{display:none}.curpanel .cph{display:flex;gap:6px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel)}
 .curpanel .cph b{flex:1}.curpanel select{font-size:11px;padding:1px 2px}.curpanel .cpb{padding:4px 6px}
 .curpanel .cpt{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.curpanel .cpt th{text-align:left;color:var(--muted);font-weight:500}.curpanel .cpt td{padding:1px 4px 1px 0}
@@ -332,7 +332,7 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .codefind button{padding:1px 7px;font-size:12px}.codefind .cftg{min-width:26px;font-family:ui-monospace,Consolas,monospace}.codefind .cftg.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
 .codefind .cfcount{min-width:70px;color:var(--muted);text-align:center}.codefind .cfx{margin-left:auto}
 .codefind[data-mode=find] .cf-r,.codefind[data-mode=find] .cf-l,.codefind[data-mode=replace] .cf-l,.codefind[data-mode=line] .cf-f,.codefind[data-mode=line] .cf-r{display:none}
-.codeac{position:absolute;z-index:30;margin:0;padding:2px 0;list-style:none;min-width:220px;max-width:420px;max-height:180px;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:5px;box-shadow:0 6px 18px rgba(0,0,0,.2);font:12px ui-monospace,Consolas,monospace}
+.codeac{position:absolute;z-index:30;margin:0;padding:2px 0;list-style:none;min-width:220px;max-width:420px;max-height:180px;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:5px;font:12px ui-monospace,Consolas,monospace}
 .codeac.hidden{display:none}.codeac li{display:flex;gap:10px;justify-content:space-between;padding:2px 8px;cursor:pointer;white-space:nowrap}.codeac li.on{background:var(--accent);color:var(--accent-fg)}.codeac .ack{opacity:.6;font-family:system-ui,sans-serif;font-size:11px}
 .repItem.drag{opacity:.45}.repItem.dropA{box-shadow:0 -2px 0 var(--accent)}.repItem.dropB{box-shadow:0 2px 0 var(--accent)}.repGrip{cursor:grab;color:var(--muted);padding:0 2px;user-select:none}
 .repSub{display:flex;gap:6px;align-items:center}.repSub .repNote{flex:1}.repHalf{display:flex;gap:3px;align-items:center;font-size:12px;white-space:nowrap;color:var(--muted)}textarea.repNote{width:100%;font:inherit;resize:vertical}
@@ -344,6 +344,15 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 #hoverinfo{flex:0 1 auto;min-width:0;max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;font-size:12px}
 @container (max-width:760px){#viewbar>button{font-size:0;padding-left:7px;padding-right:7px}#viewbar>button svg{margin:0}#viewbar{gap:6px}}
 @container (max-width:420px){#hoverinfo{max-width:40%}}
+
+/* çok alt grafik: görünüm dikey kaydırılır; köşe tutamağı; katlanabilir lejant */
+.view.scrolly{overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
+.pov{bottom:auto}
+.axcorner{width:12px;height:12px;cursor:nwse-resize;opacity:.35;background:linear-gradient(135deg,transparent 0 45%,var(--muted) 45% 55%,transparent 55% 70%,var(--muted) 70% 80%,transparent 80%)}
+.axcorner:hover{opacity:1}body.dragging2,body.dragging2 *{cursor:nwse-resize!important;user-select:none!important}
+.lgd{overflow-y:auto;overflow-x:hidden}.lgd .lhead{display:flex;align-items:center;gap:2px;position:sticky;top:0;background:var(--panel);z-index:1}
+.lgd .lhead .lgrip{flex:1}.lgd .lfold{border:none;background:none;padding:0 4px;font-size:11px;line-height:14px;color:var(--muted);cursor:pointer;white-space:nowrap}.lgd .lfold:hover{color:var(--fg)}
+.lgd.min .lrow{display:none}.lgd.min{padding:1px 2px}
 </style>
 </head>
 <body>
@@ -3030,22 +3039,39 @@ class Plot {
   viewFwd() { const f = this.hist.fwd; if (!f.length) return false; this.hist.back.push(this.viewState()); this._applyView(f.pop()); return true; }
   removeAxes(ax) { const i = this.axes.indexOf(ax); if (i >= 0) this.axes.splice(i, 1); this.cursors = []; this.sel = null; if (this.active === ax) this.active = null; this.invalidate(); }
   invalidate() { if (this.dirty && this._raf) return; this.dirty = true; if (!this._raf) this._raf = requestAnimationFrame(() => { this._raf = null; this.draw(); }); }
+  // Alt grafik sayısı maxVisible'ı aşınca ya da yükseklikler elle büyütülünce tuval görünür alandan uzun olur ve üst öğe kaydırılır.
   resize() {
-    const p = this.cv.parentElement, w = p.clientWidth, h = p.clientHeight;
-    if (!w || !h) return;
-    this.dpr = window.devicePixelRatio || 1; this.W = w; this.H = h;
-    this.cv.width = Math.round(w * this.dpr); this.cv.height = Math.round(h * this.dpr);
+    const p = this.cv.parentElement, w = p.clientWidth, hv = p.clientHeight;
+    if (!w || !hv) return;
+    this.Hv = hv; const h = Math.max(hv, Math.ceil(this.contentH(hv)));
+    let dpr = window.devicePixelRatio || 1; while (dpr > 1 && w * h * dpr * dpr > 6e7) dpr = Math.max(1, dpr / 1.5);   // çok uzun tuvalde bellek sınırı
+    if (this.W === w && this.H === h && this.dpr === dpr && this.cv.width === Math.round(w * dpr)) { this.invalidate(); return; }
+    this.dpr = dpr; this.W = w; this.H = h;
+    this.cv.width = Math.round(w * dpr); this.cv.height = Math.round(h * dpr);
     this.cv.style.width = w + 'px'; this.cv.style.height = h + 'px';
+    if (p.classList) p.classList.toggle('scrolly', h > hv + 1);
     this.invalidate();
   }
+  // yerleşim ölçüleri: kenar boşlukları ve alt grafik yükseklikleri (hv: görünür yükseklik)
+  margins() { const t = this.axes.some(a => a.title); return {L: 74, R: this.axes.some(a => this.hasRight(a)) ? 72 : 18, T: t ? 26 : 10, B: 40, gap: t ? 40 : 26}; }
+  heights(hv) {
+    const n = this.axes.length; if (!n) return [];
+    const {T, B, gap} = this.margins(), mv = this.maxVisible || 5, fixed = this.axes.reduce((s, a) => s + (a.hpx ? a.hpx : 0), 0), nf = this.axes.filter(a => !a.hpx).length;
+    let tw = 0; for (const a of this.axes) if (!a.hpx) tw += a.hw || 1;
+    // görünür alan en çok mv alt grafiği sığdırır; fazlası kaydırılır
+    const slots = Math.min(n, mv), availV = Math.max(60, hv - T - B - gap * (slots - 1)), unit = availV / slots;
+    const flex = n <= mv ? Math.max(60 * nf, availV + gap * 0 - fixed - 0) : unit * tw;
+    return this.axes.map(a => a.hpx ? Math.max(50, a.hpx) : Math.max(50, n <= mv ? flex * (a.hw || 1) / (tw || 1) : unit * (a.hw || 1)));
+  }
+  contentH(hv) { if (!this.axes.length) return hv; const {T, B, gap} = this.margins(), hs = this.heights(hv); return T + B + gap * (hs.length - 1) + hs.reduce((a, b) => a + b, 0); }
+  // içerik yüksekliği değiştiyse tuvali yeniden boyutlandır (alt grafik eklendi / kaldırıldı / elle boyutlandı)
+  fitContent() { const p = this.cv.parentElement; if (!p || !this.Hv) return false; const need = Math.max(p.clientHeight, Math.ceil(this.contentH(p.clientHeight))); if (need !== this.H || p.clientWidth !== this.W) { this.resize(); return true; } return false; }
   // ---------- yerleşim ----------
   layout(W, H) {
     const n = this.axes.length; if (!n) return;
-    const L = 74, R = this.axes.some(a => this.hasRight(a)) ? 72 : 18, T = this.axes.some(a => a.title) ? 26 : 10, B = 40, gap = this.axes.some(a => a.title) ? 40 : 26;
-    const avail = Math.max(60 * n, H - T - B - gap * (n - 1));
-    let tw = 0; for (const a of this.axes) tw += a.hw || 1;
+    const {L, R, T, gap} = this.margins(), hs = this.heights(this.Hv && H === this.H ? this.Hv : H), full = Math.max(50, W - L - R);
     let y = T;
-    this.axes.forEach(ax => { const h = Math.max(50, avail * (ax.hw || 1) / tw); ax.rect = {x: L, y, w: Math.max(50, W - L - R), h}; y += h + gap; });
+    this.axes.forEach((ax, i) => { const h = hs[i]; ax.rect = {x: L, y, w: Math.max(50, full * Math.min(1, Math.max(0.2, ax.wfrac || 1))), h}; y += h + gap; });
   }
   bounds() {
     let lo = Infinity, hi = -Infinity;
@@ -3112,7 +3138,7 @@ class Plot {
   pxY(ax, py) { const r = ax.rect, f = 1 - (py - r.y) / r.h; if (ax.ylog) { const l0 = Math.log10(ax.ylim[0]), l1 = Math.log10(ax.ylim[1]); return Math.pow(10, l0 + f * (l1 - l0)); } return ax.ylim[0] + f * (ax.ylim[1] - ax.ylim[0]); }
 
   // ---------- çizim ----------
-  draw() { this.dirty = false; const ctx = this.cv.getContext('2d'); ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.render(ctx, this.W, this.H, curTheme(), false); this.onDraw(); }
+  draw() { if (this.fitContent && this.Hv && this.fitContent()) { /* boyut değişti, aynı karede çiz */ } this.dirty = false; const ctx = this.cv.getContext('2d'); ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); this.render(ctx, this.W, this.H, curTheme(), false); this.onDraw(); }
   render(ctx, W, H, T, forExport) {
     ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
     if (!this.axes.length) { ctx.fillStyle = T.muted; ctx.font = '14px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.fillText(this.opts.emptyText || 'Soldaki listeden bir kanalı çift tıklayın veya buraya sürükleyin', W / 2, H / 2); return; }
@@ -3190,7 +3216,7 @@ class Plot {
     if (ax === this.axes[this.axes.length - 1] || forExport) ctx.fillText(xl, r.x + r.w / 2, r.y + r.h + 21);
     if (ax.ylabel) { ctx.save(); ctx.translate(13, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ax.ylabel, 0, 0); ctx.restore(); }
     // gösterge
-    if (this.legend && (forExport || !this.domLegend)) {
+    if (this.legend && !ax.lgMin && (forExport || !this.domLegend)) {
       const vis = ax.traces.filter(t => t.visible && !t.noLegend); if (vis.length) {
         ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const lbl = new Map(vis.map(t => [t, t.label + (t.yr ? ' (sağ Y)' : '') + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
@@ -3332,6 +3358,7 @@ class Plot {
   zoomX(ax, f, cx) { let [a, b] = ax.xlim; if (ax.xlog) { const l0 = Math.log10(a), l1 = Math.log10(b), c = Math.log10(cx); this.setXlim(ax, Math.pow(10, c - (c - l0) * f), Math.pow(10, c + (l1 - c) * f)); } else this.setXlim(ax, cx - (cx - a) * f, cx + (b - cx) * f); }
   zoomY(ax, f, cy) { let [a, b] = ax.ylim; if (ax.ylog) { const l0 = Math.log10(a), l1 = Math.log10(b), c = Math.log10(cy); this.setYlim(ax, Math.pow(10, c - (c - l0) * f), Math.pow(10, c + (l1 - c) * f)); } else this.setYlim(ax, cy - (cy - a) * f, cy + (b - cy) * f); }
   _wheel(e) {
+    if (this.H > (this.Hv || this.H) + 1 && !e.ctrlKey && !e.shiftKey && !e.altKey) return;   // kaydırmalı düzen: tarayıcı kaydırır
     const h = this.hit(e); if (!h) return; e.preventDefault();
     const now = performance.now(); if (now - this._lastWheel > 600) this.pushView(); this._lastWheel = now;
     const f = Math.pow(1.0018, e.deltaY * (e.deltaMode === 1 ? 33 : 1)), {ax} = h;
@@ -3339,7 +3366,7 @@ class Plot {
     const right = this.hasRight(ax), cy2 = right ? this._r(ax, () => this.pxY(ax, pyc)) : 0;
     if (h.zone === 'y2') this.zoomY2(ax, f, cy2);
     else if (h.zone === 'y' || (h.zone === 'plot' && e.shiftKey)) { this.zoomY(ax, f, cy); if (right && h.zone === 'plot') this.zoomY2(ax, f, cy2); }
-    else if (h.zone === 'x' || !e.ctrlKey) this.zoomX(ax, f, cx);
+    else if (h.zone === 'x' || !e.ctrlKey || this.H > (this.Hv || this.H) + 1) this.zoomX(ax, f, cx);
     else { this.zoomX(ax, f, cx); this.zoomY(ax, f, cy); if (right) this.zoomY2(ax, f, cy2); }
     this.invalidate(); this.onChange('view');
   }
@@ -4280,6 +4307,7 @@ const ICON = {
   back: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
   fwd: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
   xhair: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v14" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.5"/><rect x="9.5" y="3" width="5" height="4" rx="1" fill="none" stroke="currentColor"/><circle cx="8" cy="10" r="1.6" fill="currentColor"/></svg>',
+  legend: '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M4 6h3M4 9h3M9 6h3M9 9h3" stroke="currentColor" stroke-width="1.2"/></svg>',
   del: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4h10M6 4V2h4v2M5 4l.5 10h5L11 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>'
 };
 const TOOLS = [['pan', 'Gez', 'Sürükleyerek kaydır. Tekerlek: X yakınlaştır, Shift+tekerlek: Y, Ctrl+tekerlek: ikisi (P)'], ['zoom', 'Yakınlaştır', 'Kutu çiz = yakınlaştır, tıkla = 2×, Shift+tıkla = uzaklaştır (Z)'], ['cursor', 'İmleç', 'Tıkla: en yakın örnek. Shift+tıkla: yeni imleç ekle (çoklu); imlece yakın tık: taşı. Ölçüm paneli ΔX/ΔY, eğim, alan, RMS (C) · Esc: temizle'], ['box', 'Kutu seç', 'Silinecek noktaları kutuyla seç (B)'], ['lasso', 'Kement', 'Silinecek noktaları serbest çizimle seç (L)']];
@@ -4290,6 +4318,7 @@ function buildToolbar() {
   tb.append(h('span', {class: 'sep'}), ib('tb-zin', 'zin', 'Yaklaş', 'Görünümü 2× yakınlaştır (+)', () => curPlot().zoomIn()), ib('tb-zout', 'zout', 'Uzaklaş', 'Görünümü 2× uzaklaştır (−)', () => curPlot().zoomOut()),
     ib('tb-fit', 'fit', 'Sığdır', 'Tümünü sığdır: tüm veriyi göster (Home / çift tık)', () => curPlot().fitAll()),
     ib('tb-back', 'back', 'Geri', 'Önceki görünüm (Alt+←)', () => viewHist(-1)), ib('tb-fwd', 'fwd', 'İleri', 'Sonraki görünüm (Alt+→)', () => viewHist(1)),
+    ib('tb-legend', 'legend', 'Lejant', 'Tüm lejantları katla / aç (alt grafikte: lejant başlığındaki ▾ ya da üst çubuktaki düğme)', () => toggleAllLegends()),
     ib('tb-xhair', 'xhair', 'İzleme', 'Senkron dikey izleme: tüm alt grafiklerde imleç altındaki değerler (X)', () => toggleCrosshair()),
     h('span', {class: 'sep'}), ib('tb-undo', 'undo', 'Geri al', 'Ctrl+Z', undo), ib('tb-redo', 'redo', 'Yinele', 'Ctrl+Y', redo),
     h('span', {class: 'sep'}), ib('tb-del', 'del', 'Sil', 'Seçili noktaları sil (Delete)', deleteSelection));
@@ -4879,7 +4908,7 @@ function chByName(nm) { for (const f of allFiles()) for (const c of f.channels) 
 async function saveSession() {
   const o = {app: 'MATView', v: 2, notes: S.notes, linkX: S.plot.linkX, files: S.files.map(f => f.name),
     axes: S.plot.axes.map(ax => ({title: ax.title, ylabel: ax.ylabel, ylabel2: ax.ylabel2 || '', xlim: ax.xlim, ylim: ax.ylim, yAuto: ax.yAuto, ylim2: ax.ylim2, yAuto2: ax.yAuto2 !== false, ylog: ax.ylog, hw: ax.hw,
-      traces: ax.traces.filter(t => t.ch).map(t => ({name: t.ch.name, color: t.color, width: t.width, visible: t.visible, yr: !!t.yr}))})),
+      lgMin: !!ax.lgMin, hpx: ax.hpx || null, wfrac: ax.wfrac || null, traces: ax.traces.filter(t => t.ch).map(t => ({name: t.ch.name, color: t.color, width: t.width, visible: t.visible, yr: !!t.yr}))})),
     deletions: {}, timing: S.files.map(f => ({name: f.name, Tpkt: f.Tpkt, baseFs: f.baseFs}))};
   for (const f of allFiles()) for (const c of f.channels) if (c.delCount) o.deletions[c.name] = rle(c.del);
   // türetilmiş kanallar
@@ -4914,7 +4943,7 @@ async function loadSession(file) {
     }
     clearPlot(); S.plot.linkX = o.linkX !== false; if (o.notes) { S.notes = o.notes; if (typeof noteSave === 'function') noteSave(); S.plot.notes = S.notes; }
     for (const a of o.axes || []) {
-      const ax = S.plot.addAxes({title: a.title, ylabel: a.ylabel, ylabel2: a.ylabel2 || '', ylim: a.ylim, yAuto: a.yAuto, ylim2: a.ylim2 || [0, 1], yAuto2: a.yAuto2 !== false, ylog: a.ylog, xlim: a.xlim}); if (a.hw) ax.hw = a.hw;
+      const ax = S.plot.addAxes({title: a.title, ylabel: a.ylabel, ylabel2: a.ylabel2 || '', ylim: a.ylim, yAuto: a.yAuto, ylim2: a.ylim2 || [0, 1], yAuto2: a.yAuto2 !== false, ylog: a.ylog, xlim: a.xlim}); if (a.hw) ax.hw = a.hw; if (a.hpx) ax.hpx = a.hpx; if (a.wfrac) ax.wfrac = a.wfrac; if (a.lgMin) ax.lgMin = true;
       for (const t of a.traces) { const c = chByName(t.name); if (!c) { miss++; continue; } await ensureLoaded(c); ax.traces.push({kind: 'ts', ch: c, label: c.name, color: t.color, width: t.width, visible: t.visible, yr: !!t.yr}); }
     }
     for (const nm in o.deletions || {}) { const c = chByName(nm); if (!c) { miss++; continue; } await ensureLoaded(c); const idx = []; for (const [s, e] of o.deletions[nm]) for (let i = s; i < e; i++) idx.push(i); c.applyDelete(Uint32Array.from(idx)); }
@@ -5444,9 +5473,9 @@ function decorate(root) {
 }
 
 /* ---------- yapısal işlemler + geri al ---------- */
-function snapAxes(P) { return {axes: P.axes.slice(), active: P.active, st: P.axes.map(a => ({a, traces: a.traces.slice(), yr: a.traces.map(t => !!t.yr), hw: a.hw, ylabel: a.ylabel, ylabel2: a.ylabel2, act: a.active}))}; }
+function snapAxes(P) { return {axes: P.axes.slice(), active: P.active, st: P.axes.map(a => ({a, traces: a.traces.slice(), yr: a.traces.map(t => !!t.yr), hw: a.hw, hpx: a.hpx, wfrac: a.wfrac, ylabel: a.ylabel, ylabel2: a.ylabel2, act: a.active}))}; }
 function restoreAxes(P, sn) {
-  P.axes.length = 0; for (const e of sn.st) { e.a.traces = e.traces.slice(); e.a.traces.forEach((t, i) => { t.yr = e.yr ? e.yr[i] : t.yr; }); e.a.hw = e.hw; e.a.ylabel = e.ylabel; e.a.ylabel2 = e.ylabel2; e.a.active = e.act; P.axes.push(e.a); }
+  P.axes.length = 0; for (const e of sn.st) { e.a.traces = e.traces.slice(); e.a.traces.forEach((t, i) => { t.yr = e.yr ? e.yr[i] : t.yr; }); e.a.hw = e.hw; e.a.hpx = e.hpx; e.a.wfrac = e.wfrac; e.a.ylabel = e.ylabel; e.a.ylabel2 = e.ylabel2; e.a.active = e.act; P.axes.push(e.a); }
   P.active = sn.active; P.cursors = []; P.sel = null; afterStruct(P);
 }
 function afterStruct(P) { if (P === S.plot) refreshAll(); else P.invalidate(); }
@@ -5504,10 +5533,14 @@ function ensureOv(P) {
 function syncOverlay(P) {
   const ov = ensureOv(P);
   if (!P.axes.length || !P.axes[0].rect || !P.W) { if (ov.firstChild) { ov.replaceChildren(); ov._parts = []; ov._sig = ''; } return; }
-  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
+  ov.style.height = P.H + 'px';
+  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
   if (sig !== ov._sig) { ov._sig = sig; buildOv(P, ov); }
-  for (const p of ov._parts) p.upd();
+  for (const p of ov._parts) { p.upd(); if (p.cor && p.ax.rect) { const r = p.ax.rect; p.cor.style.left = r.x + r.w - 12 + 'px'; p.cor.style.top = r.y + r.h - 12 + 'px'; } }
 }
+// lejant katla / aç (tek alt grafik) ve tümünü (L değil: L kement; Ctrl+L değil: adres çubuğu) — araç çubuğundaki Lejant düğmesi
+function toggleLegend(P, ax) { ax.lgMin = !ax.lgMin; if (P._ov) P._ov._sig = ''; P.invalidate(); }
+function toggleAllLegends(P) { P = P || curPlot(); const any = P.axes.some(a => !a.lgMin); for (const a of P.axes) a.lgMin = any; if (P._ov) P._ov._sig = ''; P.invalidate(); toast(any ? 'Lejantlar katlandı' : 'Lejantlar açıldı', 1500); }
 function buildOv(P, ov) {
   ov.replaceChildren(); ov._parts = []; const n = P.axes.length, main = P === S.plot;
   const mk = (ico, title, fn) => { const b = h('button', {class: 'ib', title, 'aria-label': title, onclick: e => { e.stopPropagation(); fn(); }}); b.innerHTML = ic(ico, 14); return b; };
@@ -5517,11 +5550,23 @@ function buildOv(P, ov) {
     if (ax.traces.length) bar.append(mk('clean', 'Alt grafiği boşalt: tüm izleri temizle (grafik kalır)', () => clearAxesUndo(P, ax)));
     if (main && ax.traces.some(t => t.ch)) bar.append(mk('unv', 'Bu alt grafiğin spektrumunu hesapla (PSD/FFT)', () => graphSpectrum(ax)), mk('sgram', 'Bu alt grafiğin spektrogramını hesapla', () => graphSpectrogram(ax)));
     if (n > 1) bar.append(mk('up', 'Yukarı taşı', () => moveAxes(P, ax, -1)), mk('down', 'Aşağı taşı', () => moveAxes(P, ax, 1)), mk('expand', 'Yüksekliği büyüt / normale döndür', () => { ax.hw = (ax.hw || 1) > 1.5 ? 1 : 2.5; P.invalidate(); }));
+    if (P.legend && ax.traces.length) bar.append(mk('layers', ax.lgMin ? 'Lejantı aç' : 'Lejantı katla', () => toggleLegend(P, ax)));
     if (i > 0 && main) bar.append(mk('merge', 'Bir üstteki alt grafikle birleştir (aynı eksen)', () => mergeUp(P, ax)));
-    ov.append(bar); const part = {ax, bar, upd() { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; }}; ov._parts.push(part);
+    const cor = h('div', {class: 'axcorner', title: 'Köşeden sürükle: bu alt grafiğin yüksekliği ve genişliği · çift tık: varsayılan boyut', role: 'separator', 'aria-label': 'Alt grafiği boyutlandır'});
+    cor.onpointerdown = e => {
+      e.preventDefault(); e.stopPropagation(); cor.setPointerCapture(e.pointerId); const r0 = Object.assign({}, ax.rect), x0 = e.clientX, y0 = e.clientY, full = Math.max(50, P.W - r0.x - (P.margins ? P.margins().R : 18));
+      document.body.classList.add('dragging2');
+      cor.onpointermove = ev => { ax.hpx = Math.max(60, Math.round(r0.h + ev.clientY - y0)); ax.wfrac = Math.min(1, Math.max(0.2, (r0.w + ev.clientX - x0) / full)); if (ax.wfrac > 0.985) ax.wfrac = null; P.invalidate(); };
+      cor.onpointerup = () => { cor.onpointermove = cor.onpointerup = null; document.body.classList.remove('dragging2'); P.onChange('view'); };
+    };
+    cor.ondblclick = e => { e.stopPropagation(); ax.hpx = null; ax.wfrac = null; P.invalidate(); };
+    ov.append(cor);
+    ov.append(bar); const part = {ax, bar, cor, upd() { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; }}; ov._parts.push(part);
     if (P.legend && ax.traces.length) {
-      const lg = h('div', {class: 'lgd', 'aria-label': 'Lejant'}), rows = [], grip = h('div', {class: 'lgrip', title: 'Tutup sürükleyerek taşı · çift tık: varsayılan yer'}, '⋯');
-      lg.append(grip);
+      const nv = ax.traces.filter(t => !t.noLegend).length;
+      const lg = h('div', {class: 'lgd' + (ax.lgMin ? ' min' : ''), 'aria-label': 'Lejant'}), rows = [], grip = h('div', {class: 'lgrip', title: 'Tutup sürükleyerek taşı · çift tık: varsayılan yer'}, '⋯');
+      const fold = h('button', {class: 'lfold noic', title: ax.lgMin ? 'Lejantı aç' : 'Lejantı katla', 'aria-expanded': String(!ax.lgMin), onclick: e => { e.stopPropagation(); toggleLegend(P, ax); }}, ax.lgMin ? '▸ ' + nv + ' iz' : '▾');
+      lg.append(h('div', {class: 'lhead'}, fold, grip));
       grip.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); grip.setPointerCapture(e.pointerId); const lp = ax.lgPos || {dx: 0, dy: 0}, x0 = e.clientX - lp.dx, y0 = e.clientY - lp.dy; grip.onpointermove = ev => { ax.lgPos = {dx: ev.clientX - x0, dy: ev.clientY - y0}; part.upd(); P.invalidate(); }; grip.onpointerup = () => { grip.onpointermove = grip.onpointerup = null; }; };
       grip.ondblclick = () => { ax.lgPos = null; part.upd(); P.invalidate(); };
       ax.traces.forEach((tr, k) => {
@@ -5536,17 +5581,17 @@ function buildOv(P, ov) {
         lg.append(row); rows.push({tr, ex});
       });
       ov.append(lg); part.lg = lg; part.rows = rows;
-      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; const lp = ax.lgPos || {dx: 0, dy: 0}, lw = lg.offsetWidth || 120, lh = lg.offsetHeight || 40, right = Math.max(P.W - r.x - r.w - 0, Math.min(P.W - r.x - lw, P.W - r.x - r.w + 8 - lp.dx)), top = Math.max(r.y, Math.min(r.y + r.h - lh, r.y + 6 + lp.dy)); lg.style.right = right + 'px'; lg.style.top = top + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px';
+      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; const lp = ax.lgPos || {dx: 0, dy: 0}, lw = lg.offsetWidth || 120, lh = lg.offsetHeight || 40, right = Math.max(P.W - r.x - r.w - 0, Math.min(P.W - r.x - lw, P.W - r.x - r.w + 8 - lp.dx)), top = Math.max(r.y, Math.min(r.y + r.h - lh, r.y + 6 + lp.dy)); lg.style.right = right + 'px'; lg.style.top = top + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px'; lg.style.maxHeight = Math.max(40, r.h - 4) + 'px';
         for (const q of rows) { const t = q.tr.visible ? P.legendExtra(q.tr, ax) : ''; if (q.ex._t !== t) { q.ex._t = t; q.ex.textContent = t; } } };
     }
     if (i < n - 1) {
       const sep = h('div', {class: 'hsep', title: 'Sürükleyerek alt grafik yüksekliklerini ayarla'}); ov.append(sep);
       sep.onpointerdown = e => {
         e.preventDefault(); sep.setPointerCapture(e.pointerId); const a = ax, b = P.axes[i + 1], unit = a.rect.h / (a.hw || 1), ha = a.rect.h, hb = b.rect.h, y0 = e.clientY;
-        sep.onpointermove = ev => { const na = Math.min(ha + hb - 50, Math.max(50, ha + ev.clientY - y0)); a.hw = na / unit; b.hw = (ha + hb - na) / unit; P.invalidate(); };
+        sep.onpointermove = ev => { const na = Math.min(ha + hb - 50, Math.max(50, ha + ev.clientY - y0)); if (a.hpx || b.hpx || P.H > (P.Hv || P.H) + 1) { a.hpx = na; b.hpx = ha + hb - na; } else { a.hw = na / unit; b.hw = (ha + hb - na) / unit; } P.invalidate(); };
         sep.onpointerup = () => { sep.onpointermove = sep.onpointerup = null; };
       };
-      sep.ondblclick = () => { for (const a of P.axes) a.hw = 1; P.invalidate(); };
+      sep.ondblclick = () => { for (const a of P.axes) { a.hw = 1; a.hpx = null; a.wfrac = null; } P.invalidate(); };
       ov._parts.push({ax, bar: h('i'), upd() { const r = ax.rect; sep.style.left = r.x + 'px'; sep.style.width = r.w + 'px'; sep.style.top = r.y + r.h + 18 + 'px'; }});
     }
   });
@@ -5554,7 +5599,7 @@ function buildOv(P, ov) {
 
 /* ---------- bırakma bölgeleri ---------- */
 function showDZ() {
-  hideDZ(); if (S.view !== 'time') return; const st = $('#stage'), P = S.plot, box = h('div', {id: 'dz'});
+  hideDZ(); if (S.view !== 'time') return; const st = S.plot.cv.parentElement, P = S.plot, box = h('div', {id: 'dz'});
   const zone = (css, text, fn) => { const z = h('div', {class: 'dz', style: css}, text); z.ondragover = e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; z.classList.add('over'); }; z.ondragleave = () => z.classList.remove('over');
     z.ondrop = e => { e.preventDefault(); e.stopPropagation(); hideDZ(); fn(e); }; box.append(z); };
   const hdl = (ax, e) => {
@@ -5580,7 +5625,7 @@ function shortcutsDialog() {
     ['Esc', 'Seçimi kaldır / menüyü kapat'], ['Çift tık (ağaç)', 'Kanalı yeni alt grafiğe ekle (Ayarlar’dan değişir)'], ['Shift + çift tık', 'Tercihin tersi: aktif grafiğe ekle'], ['Shift + tık (ağaç)', 'Aralık seç'], ['Ctrl + tık (ağaç)', 'Çoklu seç'],
     ['Lejanta tık', 'İzi göster / gizle'], ['Lejanta sağ tık', 'Renk, kalınlık, taşı, kaldır'], ['Lejantı sürükle', 'İzi başka alt grafiğe taşı'], ['Alt grafik ayırıcısı', 'Sürükle: yükseklik · çift tık: eşitle'], ['↑ ↓ Enter (ağaç)', 'Klavyeyle gezin / ekle'], ['* (ağaç)', 'Kanalı sık kullanılanlara ekle / çıkar'],
     ['Alt+← / Alt+→', 'Önceki / sonraki görünüm (yakınlaştırma geçmişi)'], ['X', 'Senkron dikey izleme (tüm alt grafiklerde değerler)'], ['Shift + tık (İmleç)', 'Yeni imleç ekle (çoklu imleç, ölçüm paneli)'], ['Esc', 'İmleçleri temizle'],
-    ['Ctrl+B / Ctrl+Shift+B', 'Sol / sağ paneli gizle-göster'], ['Panel kenarı', 'Sürükle: genişlik · çift tık: varsayılan'], ['F11', 'Tam ekran'], ['?', 'Bu pencere']];
+    ['Ctrl+B / Ctrl+Shift+B', 'Sol / sağ paneli gizle-göster'], ['Alt grafik köşesi (sağ alt)', 'Sürükle: o grafiğin yüksekliği / genişliği · çift tık: varsayılan'], ['5+ alt grafik', 'Görünüm dikey kaydırılır: tekerlek kaydırır, Ctrl+tekerlek X yakınlaştırır, Shift+tekerlek Y'], ['Lejant ▾ / araç çubuğu Lejant', 'Lejantı katla / tüm lejantları katla'], ['Panel kenarı', 'Sürükle: genişlik · çift tık: varsayılan'], ['F11', 'Tam ekran'], ['?', 'Bu pencere']];
   modal('Klavye kısayolları ve fare', h('table', {class: 'kv'}, rows.map(r => h('tr', null, h('td', null, h('kbd', null, r[0])), h('td', null, r[1])))), [{t: 'Kapat', primary: true}]);
 }
 function updDblBtn() { const b = $('#btnDbl'); if (!b) return; const s = b.querySelector('.lbltxt') || (() => { const t = h('span', {class: 'lbltxt'}); b.append(t); b.childNodes.forEach(c => { if (c.nodeType === 3) c.remove(); }); return t; })(); s.textContent = 'Çift tık: ' + (S.pref.dbl === 'same' ? 'aktif grafiğe ekle' : 'yeni alt grafik'); }
@@ -11597,7 +11642,7 @@ function toggleCrosshair(on) {
 const SNAP_MODES = [['off', 'Yakalama yok'], ['peak', 'Tepe'], ['valley', 'Çukur'], ['auto', 'Tepe/çukur (otomatik)']];
 function setSnap(m) { for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) P.cursorOpt.snap = m; try { localStorage.setItem('mv.snap', m); } catch (_) {} }
 function renderCursorPanel(P) {
-  P = P || S.plot; const host = P.cv.parentElement; let pn = P._cpanel;
+  P = P || S.plot; const host = (P.cv.parentElement.closest && P.cv.parentElement.closest('#stage')) || P.cv.parentElement; let pn = P._cpanel;
   const show = P.cursors.length > 0 || (P.mode === 'cursor' && P.axes.length);
   if (!show) { if (pn) pn.classList.add('hidden'); return; }
   if (!pn) {
@@ -11735,6 +11780,11 @@ async function computeSliding() {
     await addToNewAxes(out, true); toast(out.length + ' kanal eklendi (' + r.kurt.length + ' pencere)');
   });
 }
+// imleç paneli #stage'e bağlı (kaydırmada sabit kalır); yalnız kendi görünümü açıkken görünür
+(function () {
+  const sv0 = typeof switchView === 'function' ? switchView : null; if (!sv0) return;
+  switchView = function (v) { sv0(v); for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P && P._cpanel) P._cpanel.style.display = P.cv.parentElement.classList.contains('hidden') ? 'none' : ''; };
+})();
 
 </script>
 </body>

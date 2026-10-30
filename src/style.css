@@ -292,7 +292,7 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 .guifig .gtb td.gsel{background:#cfe3f7;outline:1px solid #6aa3d8;outline-offset:-1px}
 
 .lrow .yr{font-size:9px;font-weight:700;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:0 2px;margin-left:3px}
-.curpanel{position:absolute;right:14px;bottom:46px;z-index:6;min-width:210px;max-width:300px;max-height:60%;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.18);font-size:11px}
+.curpanel{position:absolute;right:14px;bottom:46px;z-index:6;min-width:210px;max-width:300px;max-height:60%;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:6px;font-size:11px}
 .curpanel.hidden{display:none}.curpanel .cph{display:flex;gap:6px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel)}
 .curpanel .cph b{flex:1}.curpanel select{font-size:11px;padding:1px 2px}.curpanel .cpb{padding:4px 6px}
 .curpanel .cpt{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.curpanel .cpt th{text-align:left;color:var(--muted);font-weight:500}.curpanel .cpt td{padding:1px 4px 1px 0}
@@ -325,7 +325,7 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .codefind button{padding:1px 7px;font-size:12px}.codefind .cftg{min-width:26px;font-family:ui-monospace,Consolas,monospace}.codefind .cftg.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
 .codefind .cfcount{min-width:70px;color:var(--muted);text-align:center}.codefind .cfx{margin-left:auto}
 .codefind[data-mode=find] .cf-r,.codefind[data-mode=find] .cf-l,.codefind[data-mode=replace] .cf-l,.codefind[data-mode=line] .cf-f,.codefind[data-mode=line] .cf-r{display:none}
-.codeac{position:absolute;z-index:30;margin:0;padding:2px 0;list-style:none;min-width:220px;max-width:420px;max-height:180px;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:5px;box-shadow:0 6px 18px rgba(0,0,0,.2);font:12px ui-monospace,Consolas,monospace}
+.codeac{position:absolute;z-index:30;margin:0;padding:2px 0;list-style:none;min-width:220px;max-width:420px;max-height:180px;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:5px;font:12px ui-monospace,Consolas,monospace}
 .codeac.hidden{display:none}.codeac li{display:flex;gap:10px;justify-content:space-between;padding:2px 8px;cursor:pointer;white-space:nowrap}.codeac li.on{background:var(--accent);color:var(--accent-fg)}.codeac .ack{opacity:.6;font-family:system-ui,sans-serif;font-size:11px}
 .repItem.drag{opacity:.45}.repItem.dropA{box-shadow:0 -2px 0 var(--accent)}.repItem.dropB{box-shadow:0 2px 0 var(--accent)}.repGrip{cursor:grab;color:var(--muted);padding:0 2px;user-select:none}
 .repSub{display:flex;gap:6px;align-items:center}.repSub .repNote{flex:1}.repHalf{display:flex;gap:3px;align-items:center;font-size:12px;white-space:nowrap;color:var(--muted)}textarea.repNote{width:100%;font:inherit;resize:vertical}
@@ -337,3 +337,12 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 #hoverinfo{flex:0 1 auto;min-width:0;max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;font-size:12px}
 @container (max-width:760px){#viewbar>button{font-size:0;padding-left:7px;padding-right:7px}#viewbar>button svg{margin:0}#viewbar{gap:6px}}
 @container (max-width:420px){#hoverinfo{max-width:40%}}
+
+/* çok alt grafik: görünüm dikey kaydırılır; köşe tutamağı; katlanabilir lejant */
+.view.scrolly{overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
+.pov{bottom:auto}
+.axcorner{width:12px;height:12px;cursor:nwse-resize;opacity:.35;background:linear-gradient(135deg,transparent 0 45%,var(--muted) 45% 55%,transparent 55% 70%,var(--muted) 70% 80%,transparent 80%)}
+.axcorner:hover{opacity:1}body.dragging2,body.dragging2 *{cursor:nwse-resize!important;user-select:none!important}
+.lgd{overflow-y:auto;overflow-x:hidden}.lgd .lhead{display:flex;align-items:center;gap:2px;position:sticky;top:0;background:var(--panel);z-index:1}
+.lgd .lhead .lgrip{flex:1}.lgd .lfold{border:none;background:none;padding:0 4px;font-size:11px;line-height:14px;color:var(--muted);cursor:pointer;white-space:nowrap}.lgd .lfold:hover{color:var(--fg)}
+.lgd.min .lrow{display:none}.lgd.min{padding:1px 2px}

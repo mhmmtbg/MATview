@@ -51,9 +51,9 @@ function decorate(root) {
 }
 
 /* ---------- yapısal işlemler + geri al ---------- */
-function snapAxes(P) { return {axes: P.axes.slice(), active: P.active, st: P.axes.map(a => ({a, traces: a.traces.slice(), yr: a.traces.map(t => !!t.yr), hw: a.hw, ylabel: a.ylabel, ylabel2: a.ylabel2, act: a.active}))}; }
+function snapAxes(P) { return {axes: P.axes.slice(), active: P.active, st: P.axes.map(a => ({a, traces: a.traces.slice(), yr: a.traces.map(t => !!t.yr), hw: a.hw, hpx: a.hpx, wfrac: a.wfrac, ylabel: a.ylabel, ylabel2: a.ylabel2, act: a.active}))}; }
 function restoreAxes(P, sn) {
-  P.axes.length = 0; for (const e of sn.st) { e.a.traces = e.traces.slice(); e.a.traces.forEach((t, i) => { t.yr = e.yr ? e.yr[i] : t.yr; }); e.a.hw = e.hw; e.a.ylabel = e.ylabel; e.a.ylabel2 = e.ylabel2; e.a.active = e.act; P.axes.push(e.a); }
+  P.axes.length = 0; for (const e of sn.st) { e.a.traces = e.traces.slice(); e.a.traces.forEach((t, i) => { t.yr = e.yr ? e.yr[i] : t.yr; }); e.a.hw = e.hw; e.a.hpx = e.hpx; e.a.wfrac = e.wfrac; e.a.ylabel = e.ylabel; e.a.ylabel2 = e.ylabel2; e.a.active = e.act; P.axes.push(e.a); }
   P.active = sn.active; P.cursors = []; P.sel = null; afterStruct(P);
 }
 function afterStruct(P) { if (P === S.plot) refreshAll(); else P.invalidate(); }
@@ -111,10 +111,14 @@ function ensureOv(P) {
 function syncOverlay(P) {
   const ov = ensureOv(P);
   if (!P.axes.length || !P.axes[0].rect || !P.W) { if (ov.firstChild) { ov.replaceChildren(); ov._parts = []; ov._sig = ''; } return; }
-  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
+  ov.style.height = P.H + 'px';
+  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
   if (sig !== ov._sig) { ov._sig = sig; buildOv(P, ov); }
-  for (const p of ov._parts) p.upd();
+  for (const p of ov._parts) { p.upd(); if (p.cor && p.ax.rect) { const r = p.ax.rect; p.cor.style.left = r.x + r.w - 12 + 'px'; p.cor.style.top = r.y + r.h - 12 + 'px'; } }
 }
+// lejant katla / aç (tek alt grafik) ve tümünü (L değil: L kement; Ctrl+L değil: adres çubuğu) — araç çubuğundaki Lejant düğmesi
+function toggleLegend(P, ax) { ax.lgMin = !ax.lgMin; if (P._ov) P._ov._sig = ''; P.invalidate(); }
+function toggleAllLegends(P) { P = P || curPlot(); const any = P.axes.some(a => !a.lgMin); for (const a of P.axes) a.lgMin = any; if (P._ov) P._ov._sig = ''; P.invalidate(); toast(any ? 'Lejantlar katlandı' : 'Lejantlar açıldı', 1500); }
 function buildOv(P, ov) {
   ov.replaceChildren(); ov._parts = []; const n = P.axes.length, main = P === S.plot;
   const mk = (ico, title, fn) => { const b = h('button', {class: 'ib', title, 'aria-label': title, onclick: e => { e.stopPropagation(); fn(); }}); b.innerHTML = ic(ico, 14); return b; };
@@ -124,11 +128,23 @@ function buildOv(P, ov) {
     if (ax.traces.length) bar.append(mk('clean', 'Alt grafiği boşalt: tüm izleri temizle (grafik kalır)', () => clearAxesUndo(P, ax)));
     if (main && ax.traces.some(t => t.ch)) bar.append(mk('unv', 'Bu alt grafiğin spektrumunu hesapla (PSD/FFT)', () => graphSpectrum(ax)), mk('sgram', 'Bu alt grafiğin spektrogramını hesapla', () => graphSpectrogram(ax)));
     if (n > 1) bar.append(mk('up', 'Yukarı taşı', () => moveAxes(P, ax, -1)), mk('down', 'Aşağı taşı', () => moveAxes(P, ax, 1)), mk('expand', 'Yüksekliği büyüt / normale döndür', () => { ax.hw = (ax.hw || 1) > 1.5 ? 1 : 2.5; P.invalidate(); }));
+    if (P.legend && ax.traces.length) bar.append(mk('layers', ax.lgMin ? 'Lejantı aç' : 'Lejantı katla', () => toggleLegend(P, ax)));
     if (i > 0 && main) bar.append(mk('merge', 'Bir üstteki alt grafikle birleştir (aynı eksen)', () => mergeUp(P, ax)));
-    ov.append(bar); const part = {ax, bar, upd() { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; }}; ov._parts.push(part);
+    const cor = h('div', {class: 'axcorner', title: 'Köşeden sürükle: bu alt grafiğin yüksekliği ve genişliği · çift tık: varsayılan boyut', role: 'separator', 'aria-label': 'Alt grafiği boyutlandır'});
+    cor.onpointerdown = e => {
+      e.preventDefault(); e.stopPropagation(); cor.setPointerCapture(e.pointerId); const r0 = Object.assign({}, ax.rect), x0 = e.clientX, y0 = e.clientY, full = Math.max(50, P.W - r0.x - (P.margins ? P.margins().R : 18));
+      document.body.classList.add('dragging2');
+      cor.onpointermove = ev => { ax.hpx = Math.max(60, Math.round(r0.h + ev.clientY - y0)); ax.wfrac = Math.min(1, Math.max(0.2, (r0.w + ev.clientX - x0) / full)); if (ax.wfrac > 0.985) ax.wfrac = null; P.invalidate(); };
+      cor.onpointerup = () => { cor.onpointermove = cor.onpointerup = null; document.body.classList.remove('dragging2'); P.onChange('view'); };
+    };
+    cor.ondblclick = e => { e.stopPropagation(); ax.hpx = null; ax.wfrac = null; P.invalidate(); };
+    ov.append(cor);
+    ov.append(bar); const part = {ax, bar, cor, upd() { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; }}; ov._parts.push(part);
     if (P.legend && ax.traces.length) {
-      const lg = h('div', {class: 'lgd', 'aria-label': 'Lejant'}), rows = [], grip = h('div', {class: 'lgrip', title: 'Tutup sürükleyerek taşı · çift tık: varsayılan yer'}, '⋯');
-      lg.append(grip);
+      const nv = ax.traces.filter(t => !t.noLegend).length;
+      const lg = h('div', {class: 'lgd' + (ax.lgMin ? ' min' : ''), 'aria-label': 'Lejant'}), rows = [], grip = h('div', {class: 'lgrip', title: 'Tutup sürükleyerek taşı · çift tık: varsayılan yer'}, '⋯');
+      const fold = h('button', {class: 'lfold noic', title: ax.lgMin ? 'Lejantı aç' : 'Lejantı katla', 'aria-expanded': String(!ax.lgMin), onclick: e => { e.stopPropagation(); toggleLegend(P, ax); }}, ax.lgMin ? '▸ ' + nv + ' iz' : '▾');
+      lg.append(h('div', {class: 'lhead'}, fold, grip));
       grip.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); grip.setPointerCapture(e.pointerId); const lp = ax.lgPos || {dx: 0, dy: 0}, x0 = e.clientX - lp.dx, y0 = e.clientY - lp.dy; grip.onpointermove = ev => { ax.lgPos = {dx: ev.clientX - x0, dy: ev.clientY - y0}; part.upd(); P.invalidate(); }; grip.onpointerup = () => { grip.onpointermove = grip.onpointerup = null; }; };
       grip.ondblclick = () => { ax.lgPos = null; part.upd(); P.invalidate(); };
       ax.traces.forEach((tr, k) => {
@@ -143,17 +159,17 @@ function buildOv(P, ov) {
         lg.append(row); rows.push({tr, ex});
       });
       ov.append(lg); part.lg = lg; part.rows = rows;
-      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; const lp = ax.lgPos || {dx: 0, dy: 0}, lw = lg.offsetWidth || 120, lh = lg.offsetHeight || 40, right = Math.max(P.W - r.x - r.w - 0, Math.min(P.W - r.x - lw, P.W - r.x - r.w + 8 - lp.dx)), top = Math.max(r.y, Math.min(r.y + r.h - lh, r.y + 6 + lp.dy)); lg.style.right = right + 'px'; lg.style.top = top + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px';
+      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; const lp = ax.lgPos || {dx: 0, dy: 0}, lw = lg.offsetWidth || 120, lh = lg.offsetHeight || 40, right = Math.max(P.W - r.x - r.w - 0, Math.min(P.W - r.x - lw, P.W - r.x - r.w + 8 - lp.dx)), top = Math.max(r.y, Math.min(r.y + r.h - lh, r.y + 6 + lp.dy)); lg.style.right = right + 'px'; lg.style.top = top + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px'; lg.style.maxHeight = Math.max(40, r.h - 4) + 'px';
         for (const q of rows) { const t = q.tr.visible ? P.legendExtra(q.tr, ax) : ''; if (q.ex._t !== t) { q.ex._t = t; q.ex.textContent = t; } } };
     }
     if (i < n - 1) {
       const sep = h('div', {class: 'hsep', title: 'Sürükleyerek alt grafik yüksekliklerini ayarla'}); ov.append(sep);
       sep.onpointerdown = e => {
         e.preventDefault(); sep.setPointerCapture(e.pointerId); const a = ax, b = P.axes[i + 1], unit = a.rect.h / (a.hw || 1), ha = a.rect.h, hb = b.rect.h, y0 = e.clientY;
-        sep.onpointermove = ev => { const na = Math.min(ha + hb - 50, Math.max(50, ha + ev.clientY - y0)); a.hw = na / unit; b.hw = (ha + hb - na) / unit; P.invalidate(); };
+        sep.onpointermove = ev => { const na = Math.min(ha + hb - 50, Math.max(50, ha + ev.clientY - y0)); if (a.hpx || b.hpx || P.H > (P.Hv || P.H) + 1) { a.hpx = na; b.hpx = ha + hb - na; } else { a.hw = na / unit; b.hw = (ha + hb - na) / unit; } P.invalidate(); };
         sep.onpointerup = () => { sep.onpointermove = sep.onpointerup = null; };
       };
-      sep.ondblclick = () => { for (const a of P.axes) a.hw = 1; P.invalidate(); };
+      sep.ondblclick = () => { for (const a of P.axes) { a.hw = 1; a.hpx = null; a.wfrac = null; } P.invalidate(); };
       ov._parts.push({ax, bar: h('i'), upd() { const r = ax.rect; sep.style.left = r.x + 'px'; sep.style.width = r.w + 'px'; sep.style.top = r.y + r.h + 18 + 'px'; }});
     }
   });
@@ -161,7 +177,7 @@ function buildOv(P, ov) {
 
 /* ---------- bırakma bölgeleri ---------- */
 function showDZ() {
-  hideDZ(); if (S.view !== 'time') return; const st = $('#stage'), P = S.plot, box = h('div', {id: 'dz'});
+  hideDZ(); if (S.view !== 'time') return; const st = S.plot.cv.parentElement, P = S.plot, box = h('div', {id: 'dz'});
   const zone = (css, text, fn) => { const z = h('div', {class: 'dz', style: css}, text); z.ondragover = e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; z.classList.add('over'); }; z.ondragleave = () => z.classList.remove('over');
     z.ondrop = e => { e.preventDefault(); e.stopPropagation(); hideDZ(); fn(e); }; box.append(z); };
   const hdl = (ax, e) => {
@@ -187,7 +203,7 @@ function shortcutsDialog() {
     ['Esc', 'Seçimi kaldır / menüyü kapat'], ['Çift tık (ağaç)', 'Kanalı yeni alt grafiğe ekle (Ayarlar’dan değişir)'], ['Shift + çift tık', 'Tercihin tersi: aktif grafiğe ekle'], ['Shift + tık (ağaç)', 'Aralık seç'], ['Ctrl + tık (ağaç)', 'Çoklu seç'],
     ['Lejanta tık', 'İzi göster / gizle'], ['Lejanta sağ tık', 'Renk, kalınlık, taşı, kaldır'], ['Lejantı sürükle', 'İzi başka alt grafiğe taşı'], ['Alt grafik ayırıcısı', 'Sürükle: yükseklik · çift tık: eşitle'], ['↑ ↓ Enter (ağaç)', 'Klavyeyle gezin / ekle'], ['* (ağaç)', 'Kanalı sık kullanılanlara ekle / çıkar'],
     ['Alt+← / Alt+→', 'Önceki / sonraki görünüm (yakınlaştırma geçmişi)'], ['X', 'Senkron dikey izleme (tüm alt grafiklerde değerler)'], ['Shift + tık (İmleç)', 'Yeni imleç ekle (çoklu imleç, ölçüm paneli)'], ['Esc', 'İmleçleri temizle'],
-    ['Ctrl+B / Ctrl+Shift+B', 'Sol / sağ paneli gizle-göster'], ['Panel kenarı', 'Sürükle: genişlik · çift tık: varsayılan'], ['F11', 'Tam ekran'], ['?', 'Bu pencere']];
+    ['Ctrl+B / Ctrl+Shift+B', 'Sol / sağ paneli gizle-göster'], ['Alt grafik köşesi (sağ alt)', 'Sürükle: o grafiğin yüksekliği / genişliği · çift tık: varsayılan'], ['5+ alt grafik', 'Görünüm dikey kaydırılır: tekerlek kaydırır, Ctrl+tekerlek X yakınlaştırır, Shift+tekerlek Y'], ['Lejant ▾ / araç çubuğu Lejant', 'Lejantı katla / tüm lejantları katla'], ['Panel kenarı', 'Sürükle: genişlik · çift tık: varsayılan'], ['F11', 'Tam ekran'], ['?', 'Bu pencere']];
   modal('Klavye kısayolları ve fare', h('table', {class: 'kv'}, rows.map(r => h('tr', null, h('td', null, h('kbd', null, r[0])), h('td', null, r[1])))), [{t: 'Kapat', primary: true}]);
 }
 function updDblBtn() { const b = $('#btnDbl'); if (!b) return; const s = b.querySelector('.lbltxt') || (() => { const t = h('span', {class: 'lbltxt'}); b.append(t); b.childNodes.forEach(c => { if (c.nodeType === 3) c.remove(); }); return t; })(); s.textContent = 'Çift tık: ' + (S.pref.dbl === 'same' ? 'aktif grafiğe ekle' : 'yeni alt grafik'); }

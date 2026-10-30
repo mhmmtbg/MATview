@@ -16,7 +16,7 @@ function toggleCrosshair(on) {
 const SNAP_MODES = [['off', 'Yakalama yok'], ['peak', 'Tepe'], ['valley', 'Çukur'], ['auto', 'Tepe/çukur (otomatik)']];
 function setSnap(m) { for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) P.cursorOpt.snap = m; try { localStorage.setItem('mv.snap', m); } catch (_) {} }
 function renderCursorPanel(P) {
-  P = P || S.plot; const host = P.cv.parentElement; let pn = P._cpanel;
+  P = P || S.plot; const host = (P.cv.parentElement.closest && P.cv.parentElement.closest('#stage')) || P.cv.parentElement; let pn = P._cpanel;
   const show = P.cursors.length > 0 || (P.mode === 'cursor' && P.axes.length);
   if (!show) { if (pn) pn.classList.add('hidden'); return; }
   if (!pn) {
@@ -154,3 +154,8 @@ async function computeSliding() {
     await addToNewAxes(out, true); toast(out.length + ' kanal eklendi (' + r.kurt.length + ' pencere)');
   });
 }
+// imleç paneli #stage'e bağlı (kaydırmada sabit kalır); yalnız kendi görünümü açıkken görünür
+(function () {
+  const sv0 = typeof switchView === 'function' ? switchView : null; if (!sv0) return;
+  switchView = function (v) { sv0(v); for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P && P._cpanel) P._cpanel.style.display = P.cv.parentElement.classList.contains('hidden') ? 'none' : ''; };
+})();
