@@ -368,8 +368,8 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 /* lejant boyutları */
 .lgd.lg-s{font-size:10px}.lgd.lg-s .sw{width:12px}.lgd.lg-m{font-size:12px}.lgd.lg-l{font-size:14px}.lgd.lg-l .sw{width:22px;height:3px}
 
-.actr{display:flex;align-items:center;gap:4px;margin:6px 0;flex-wrap:wrap}.actr button{padding:2px 8px;min-width:32px}.actr select{width:auto}.actr input[type=range]{flex:1;min-width:120px}.actr #acPos{font-variant-numeric:tabular-nums;font-size:12px;white-space:nowrap}
-.acbar{position:absolute;height:28px;display:flex;align-items:center;gap:4px;padding:0 6px;box-sizing:border-box;background:var(--panel);border:1px solid var(--border);border-radius:4px;z-index:6;color:var(--fg);pointer-events:auto;font-size:12px}.acbar button{height:22px;min-width:26px;padding:0 6px;font-size:12px;line-height:1}.acbar .acb-seek{flex:1;min-width:60px}.acbar .acb-pos{font-variant-numeric:tabular-nums;white-space:nowrap}.acbar .acb-nm{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:22%}
+.actr{display:flex;align-items:center;gap:4px;margin:6px 0;flex-wrap:wrap}.actr button{padding:2px 0;width:36px;flex:none}.actr select{width:auto}.actr input[type=range]{flex:1;min-width:120px}.actr #acPos{font-variant-numeric:tabular-nums;font-size:12px;white-space:pre;display:inline-block;flex:none}
+.acbar{position:absolute;height:28px;display:flex;align-items:center;gap:4px;padding:0 6px;box-sizing:border-box;background:var(--panel);border:1px solid var(--border);border-radius:4px;z-index:6;color:var(--fg);pointer-events:auto;font-size:12px}.acbar button{height:22px;width:30px;flex:none;padding:0;font-size:12px;line-height:1}.acbar .acb-seek{flex:1;min-width:60px}.acbar .acb-pos{font-variant-numeric:tabular-nums;white-space:pre;display:inline-block;flex:none;text-align:left;overflow:hidden}.acbar .acb-nm{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:22%;flex:none}
 </style>
 </head>
 <body>
@@ -4887,11 +4887,13 @@ function acTogglePause() {
 function acTrUI(el) {
   const A = S.audio, on = !!(A && A.buf && !A.stopped); for (const id of ['acBack', 'acPP', 'acFwd', 'acSeek']) { const e = $('#' + id); if (e) e.disabled = !on; }
   if (el == null) el = on ? acPos() : 0;
-  const t = on ? `${fmtNum(el, 4)} / ${fmtNum(A.dur, 4)} s` + (A.paused ? ' · duraklatıldı' : '') : '–', v = on ? Math.round(el / A.dur * 1000) : 0, pp = on && A.paused ? '▶' : '❚❚';
+  // sabit basamak (2 ondalık) + sabit genişlikli kutu: süre akarken çubuk uzayıp kısalmaz
+  const dg = on ? A.dur.toFixed(2).length : 0, t = on ? `${el.toFixed(2).padStart(dg, '\u2007')} / ${A.dur.toFixed(2)} s` + (A.paused ? ' · duraklatıldı' : '') : '–', v = on ? Math.round(el / A.dur * 1000) : 0, pp = on && A.paused ? '▶' : '❚❚';
+  const wch = on ? (2 * dg + 6 + 17) + 'ch' : '';
   const set = (e, k, x) => { if (e && e[k] !== x) e[k] = x; };
-  set($('#acPP'), 'textContent', pp); set($('#acPos'), 'textContent', t); { const sk = $('#acSeek'); if (sk && on && document.activeElement !== sk) sk.value = v; }
+  set($('#acPP'), 'textContent', pp); set($('#acPos'), 'textContent', t); { const ps = $('#acPos'); if (ps && ps.style.width !== wch) ps.style.width = wch; } { const sk = $('#acSeek'); if (sk && on && document.activeElement !== sk) sk.value = v; }
   const bar = S.plot && S.plot._acBar; if (bar && bar.isConnected) {
-    set(bar.querySelector('.acb-pp'), 'textContent', pp); set(bar.querySelector('.acb-pos'), 'textContent', t);
+    set(bar.querySelector('.acb-pp'), 'textContent', pp); set(bar.querySelector('.acb-pos'), 'textContent', t); { const ps = bar.querySelector('.acb-pos'); if (ps.style.width !== wch) ps.style.width = wch; }
     set(bar.querySelector('.acb-nm'), 'textContent', on ? (A.clean ? 'temizlenmiş' : 'orijinal') + (A.speed !== 1 ? ' · ×' + fmtNum(A.speed, 3) : '') : '');
     const sk = bar.querySelector('.acb-seek'); if (sk && on && document.activeElement !== sk) sk.value = v;
   }
