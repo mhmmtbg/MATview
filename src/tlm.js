@@ -120,6 +120,7 @@ window.MATViewTLM = {
   dropFiles(list) { openFiles(list); },
   // canlı grafik: telemetri sinyalleri MATView Zaman sekmesinde canlı kanal olarak çizilir
   liveChart(list, where) { tlmLiveChart(list, where); },
+  writeXlsx(sheets) { return XLSX.write(sheets); },
   liveAxes() { return S.plot.axes.map(a => a.traces.map(t => t.label).slice(0, 3).join(', ') + (a.traces.length > 3 ? ' …' : '') || 'boş'); }
 };
 
@@ -134,12 +135,12 @@ function tlvFile() {
   S.files.push(f); S.fopen.add(f.id); TLV.file = f; TLV.chans.clear(); return f;
 }
 function tlvChannel(sig) {
-  let c = TLV.chans.get(sig.key); if (c && TLV.file && TLV.file.channels.includes(c)) return c;
+  let c = TLV.chans.get(sig.key); if (c && TLV.file && TLV.file.channels.includes(c)) { tlvSubSet(c, true); return c; }
   const L = TLM.win.TPLive, info = L.liveSub(sig), f = tlvFile();
   const nm = (info.name || sig.key).replace(/\s*\/\s*/, '/');
   c = new Channel({name: nm, rest: nm.split('/').slice(1).join('/') || nm, base: nm, comp: '', dev: info.ft || 'canlı', kind: kindOf(nm, nm), n: 0, file: f, label: nm, varIdx: -1, tbl: true, unit: ''});
   c.data = new Float64Array(0); c.g = new Float64Array(0); c.spp = 1; c.Tpkt = 1e-3; c.tlvDt = 0; c.t0 = 0; c.tlvKey = sig.key; c.tlvBuf = {v: new Float64Array(1024), g: new Float64Array(1024), n: 0, last: null};
-  f.channels.push(c); TLV.chans.set(sig.key, c); return c;
+  c.tlvSub = true; c.tlvSig = sig; f.channels.push(c); TLV.chans.set(sig.key, c); return c;
 }
 function tlvAppend(c, t, v, t0) {
   const B = c.tlvBuf, n = t.length; if (!n) return false;
@@ -152,13 +153,23 @@ function tlvAppend(c, t, v, t0) {
   c.data = B.v.subarray(0, B.n); c.g = B.g.subarray(0, B.n); c.n = B.n; c.pyr = null; c._mm = null; return true;
 }
 function tlvReset() { for (const c of TLV.chans.values()) { const B = c.tlvBuf; B.n = 0; B.last = null; c.tlvDt = 0; c.Tpkt = 1e-3; c.data = B.v.subarray(0, 0); c.g = B.g.subarray(0, 0); c.n = 0; c.pyr = null; } }
+// abonelik = kanal bir alt grafikte çiziliyor mu: grafik temizlenince / iz kaldırılınca telemetri tablosundaki işaret de söner
+function tlvSubSet(c, on) {
+  if (!!c.tlvSub === on) return; c.tlvSub = on;
+  try { if (on) TLM.win.TPLive.liveSub(c.tlvSig); else TLM.win.TPLive.liveUnsub(c.tlvKey); } catch (_) {}
+}
+function tlvSyncSubs() {
+  const on = new Set(); for (const ax of S.plot.axes) for (const t of ax.traces) if (t.ch && t.ch.tlvKey) on.add(t.ch);
+  for (const c of TLV.chans.values()) tlvSubSet(c, on.has(c));
+}
 function tlvPoll() {
   if (!TLM.ready || !TLV.chans.size) return;
+  tlvSyncSubs();
   const L = TLM.win.TPLive; let st; try { st = L.liveState(); } catch (_) { return; }
   if (TLV.gen !== st.t0) { if (TLV.gen != null) tlvReset(); TLV.gen = st.t0; }
   let any = false, tmax = -Infinity;
   for (const c of TLV.chans.values()) {
-    if (!TLV.file || !TLV.file.channels.includes(c)) continue;
+    if (!TLV.file || !TLV.file.channels.includes(c) || !c.tlvSub) continue;
     let r; try { r = L.liveData(c.tlvKey, c.tlvBuf.last); } catch (_) { continue; }
     if (tlvAppend(c, r.t, r.v, st.t0)) any = true;
     if (c.n) tmax = Math.max(tmax, c.t(c.n - 1));
@@ -194,7 +205,7 @@ function tlmLiveChart(list, where) {
 })();
 // canlı kanal dosyası kapatılınca abonelikler bırakılır
 const _tlvClose = closeFile;
-closeFile = function (f) { if (f && f.tlmLive) { for (const c of TLV.chans.values()) { try { TLM.win.TPLive.liveUnsub(c.tlvKey); } catch (_) {} } TLV.chans.clear(); TLV.file = null; clearInterval(TLV.timer); TLV.timer = 0; } return _tlvClose(f); };
+closeFile = function (f) { if (f && f.tlmLive) { for (const c of TLV.chans.values()) { if (c.tlvSub) { try { TLM.win.TPLive.liveUnsub(c.tlvKey); } catch (_) {} } } TLV.chans.clear(); TLV.file = null; clearInterval(TLV.timer); TLV.timer = 0; } return _tlvClose(f); };
 
 // tema eşitleme
 new MutationObserver(() => { if (TLM.ready) { try { TLM.win.TPHost.setTheme(document.documentElement.dataset.theme || ''); } catch (_) {} } }).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
@@ -204,3 +215,5 @@ new MutationObserver(() => { if (TLM.ready) { try { TLM.win.TPHost.setTheme(docu
   const p = document.getElementById('btnTlmPlay'); if (p) p.onclick = () => { tlmShow('live'); };
   const w = document.getElementById('wTlm'); if (w) w.onclick = () => tlmShow('file');
 })();
+// "Grafiği temizle" sonrası telemetri tablosundaki grafik işaretleri hemen söner
+if (typeof clearPlot === 'function') { const _tlvClearPlot = clearPlot; clearPlot = function () { const r = _tlvClearPlot.apply(this, arguments); try { if (TLV.chans.size) tlvSyncSubs(); } catch (_) {} return r; }; }

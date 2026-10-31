@@ -64,6 +64,43 @@ async def main():
         mt = await f.evaluate("document.querySelector('.ctxmenu:not(.hidden)') ? document.querySelector('.ctxmenu:not(.hidden)').textContent : ''"); print('menü', mt[:120]); ok('MATView' in mt and '1. alt grafik' in mt, 'gruba ekle menüsü MATView alt grafiklerini göstermiyor')
         await f.evaluate("(() => { const m = document.querySelector('.ctxmenu:not(.hidden)'); [...m.querySelectorAll('button')].find(x => /1\\. alt grafik/.test(x.textContent)).click(); })()"); await pg.wait_for_timeout(700)
         ok(await pg.evaluate("S.plot.axes.length === 1 && S.plot.axes[0].traces.length === 2"), 'mevcut alt grafiğe eklenmedi')
+        # grafikteki parametreler üste sabitlenir
+        await pg.click('#viewtabs button[data-v=tlm]'); await pg.wait_for_timeout(300)
+        await f.click('#tlPinBtn'); await pg.wait_for_timeout(300)
+        pn = await f.evaluate("[document.querySelector('#tlPinBtn').getAttribute('aria-pressed'), [...document.querySelectorAll('#lvWrap tbody tr[data-id]')].slice(0, 2).map(t => t.classList.contains('pinrow')), !!document.querySelector('#lvWrap tr.pinsep')]"); print('üstte', pn)
+        ok(pn[0] == 'true' and pn[1] == [True, True] and pn[2], 'grafikteki parametreler üste sabitlenmedi')
+        # Zaman sekmesinde grafiği temizle → tablodaki grafik işaretleri söner
+        await pg.click('#viewtabs button[data-v=time]'); await pg.evaluate("clearPlot(); refreshAll()"); await pg.wait_for_timeout(600)
+        on = await f.evaluate("document.querySelectorAll('#lvWrap td.act button[data-act=chart].on').length"); print('işaretli', on); ok(on == 0, 'grafik temizlenince işaretler kalmadı değil')
+        pn2 = await f.evaluate("document.querySelectorAll('#lvWrap tr.pinrow').length"); ok(pn2 == 0, 'temizlenince üstteki sabitler kalktı değil')
+        # etiket süzgeci açılır menü
+        await pg.click('#viewtabs button[data-v=tlm]'); await pg.wait_for_timeout(200)
+        await f.click('#tlPinBtn')
+        await f.click('#tlUfBtn'); await pg.wait_for_timeout(150)
+        nl = await f.evaluate("document.querySelectorAll('#tlUf label').length"); print('etiket sayısı', nl); ok(nl >= 5, 'filtre menüsü etiketleri listelemedi')
+        await f.fill('#tlUf [data-uq]', 'psu'); await pg.wait_for_timeout(100)
+        await f.click('#tlUf [data-ua=vis]'); await pg.wait_for_timeout(250)
+        us = await f.evaluate("[document.querySelector('#tlUfBtn').textContent, [...new Set([...document.querySelectorAll('#lvWrap tr[data-id]')].map(t => t.querySelector('input[data-c=\"0\"]').value))]]"); print('süzgeç', us)
+        ok('PSU' in us[0] and us[1] == ['PSU'], 'filtre uygulanmadı')
+        await f.click('#tlUf [data-ua=all]'); await pg.keyboard.press('Escape')
+        ok(await f.evaluate("!document.querySelector('#tlUf') && /Tüm etiketler/.test(document.querySelector('#tlUfBtn').textContent)"), 'filtre temizlenmedi / menü kapanmadı')
+        # duraklatınca çerçeve göstergesi
+        await f.evaluate("(() => { const b = document.querySelector('#lvPause'); if (!b.disabled && !/Devam/.test(b.textContent)) b.click(); })()"); await pg.wait_for_timeout(300)
+        fb = await f.evaluate("[document.querySelector('#tlFrameBadge').textContent, document.querySelector('#tlFrameBadge').className]"); print('çerçeve', fb)
+        ok('❚❚' in fb[0] and 'Çerçeve' in fb[0] and 'paused' in fb[1], 'duraklatınca çerçeve gösterilmiyor')
+        # seçilen çerçevenin verileri Excel'e
+        await pg.evaluate("window.__sv = []; MATViewTLM.saveFile = async (n, b) => { window.__sv.push([n, b.size]); window.__xb = b; return true; }; 0")
+        await f.click('#tlFrameXls'); await f.fill('#tlXlsN', '120'); await f.click('#modalFoot .btn.primary')
+        for _ in range(40):
+            await pg.wait_for_timeout(200)
+            if await pg.evaluate("window.__sv.length"): break
+        xs = await pg.evaluate("window.__sv")
+        if not xs: print('LOG', (await f.evaluate("document.querySelector('#logView').textContent"))[-600:])
+        print('excel', xs); ok(xs and xs[-1][0].endswith('_cerceve120.xlsx') and xs[-1][1] > 2000, 'çerçeve Excel dosyası yazılmadı')
+        rows = await pg.evaluate("(async () => { const sh = await XLSX.read(new File([window.__xb], 'a.xlsx')); return sh.map(s => [s.name, s.rows.length, s.rows[1], s.rows[5]]); })()"); print('sayfalar', rows)
+        ok(rows and rows[0][2][1] == '120 / 1197' and rows[0][3][6] == 'Sonuç' and rows[0][1] > 20, 'Excel içeriği beklenen gibi değil')
+        ok(await f.evaluate("+document.querySelector('#lvFrNum').value") == 120, 'çerçeveye gidilmedi')
+        await f.evaluate("(() => { const b = document.querySelector('#lvPause'); if (!b.disabled && /Devam/.test(b.textContent)) b.click(); })()"); await pg.wait_for_timeout(300)
         # kamera açılır penceresi: ekran alıntısı ve MP4 düğmeleri
         await pg.click('#viewtabs button[data-v=tlm]'); await pg.wait_for_timeout(300)
         await f.fill('#lvFilter', 'goruntu'); await pg.wait_for_timeout(300)
