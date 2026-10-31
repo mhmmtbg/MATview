@@ -45,6 +45,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.12', d: 'Kaba kuantalı akustik kanallar', items: [
+    'Akustik otomatik temizleme: az sayıda ayrık seviyeden oluşan (ADC çözünürlüğü sınırındaki) kanallar tanınır ve uyarılır; kuantalama adımı "Kuantalama adımı" alanına yazılır, gürültü tabanı en az adım²/12 alınır (dijital sessiz bölümden sıfır gürültü profili çıkmaz), 1 adımlık geçişler tık ya da kırpılma sayılmaz, yavaş kayma yüksek geçirenle alınır.',
+    'Silinen / NaN örnekler ortalama yerine komşular arasında doğrusal doldurulur (eğilimli kayıtlarda basamak ve tık oluşmaz).',
+    'Akustik oynatma çubuğu: süre etiketi ve düğmeler sabit genişlikte; süre akarken çubuk titremez.']},
   {v: '2.11', d: 'Akustik temizlemede tonal parazit ve dip gürültü, grafikte oynatma çubuğu', items: [
     'Akustik otomatik temizleme: yalnız 50/60 Hz değil, arka planda sürekli duran herhangi bir tonal parazit (ör. 22 Hz ve harmonikleri) ince çözünürlüklü spektrumla bulunur ve harmonikleriyle birlikte notch ile çıkarılır; şebeke harmoniklerinin yanlış eşleşmesi giderildi.',
     'Akustik: sessiz bölüm kısa olaylı kayıtlarda da doğru ölçülür (dinamik fark en yüksek pencerelere göre), gürültü profili tek pencere yerine en uzun sessiz bölümden alınır, azaltma 25 dB\'e kadar; spektral azaltma karar yönlendirmeli Wiener kazancıyla çalışır — arka planda kalan dip gürültü ve müzikal kalıntı belirgin biçimde azalır.',

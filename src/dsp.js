@@ -49,7 +49,14 @@ const DSP = (() => {
     let sum = 0, cnt = 0;
     for (let i = 0; i < n; i++) { const v = x[i0 + i]; if ((del && del[i0 + i]) || !isFinite(v)) { out[i] = NaN; } else { out[i] = v; sum += v; cnt++; } }
     const m = cnt ? sum / cnt : 0;
-    for (let i = 0; i < n; i++) if (isNaN(out[i])) out[i] = m;
+    // boşluklar (silinen / NaN) komşu geçerli örnekler arasında doğrusal doldurulur (ortalama ile doldurmak
+    // eğilimli kayıtlarda basamak ve tık üretir); uçlarda en yakın geçerli değer
+    for (let i = 0; i < n; i++) if (isNaN(out[i])) {
+      let e = i; while (e < n && isNaN(out[e])) e++;
+      const a = i > 0 ? out[i - 1] : (e < n ? out[e] : m), b = e < n ? out[e] : a;
+      for (let j = i; j < e; j++) out[j] = a + (b - a) * (j - i + 1) / (e - i + 1);
+      i = e;
+    }
     return out;
   }
 
@@ -282,6 +289,7 @@ const DSP = (() => {
       if (!cnt) throw new Error('Gürültü aralığı en az ' + N + ' örnek olmalı.');
       for (let k = 0; k < nb; k++) Pn[k] /= cnt;
     }
+    if (opt.minVar > 0) { let sw = 0; for (let i = 0; i < N; i++) sw += w[i] * w[i]; const pf = opt.minVar * sw; for (let k = 0; k < nb; k++) if (Pn[k] < pf) Pn[k] = pf; }   // ör. kuantalama gürültüsü q²/12
     const alpha = opt.alpha ?? 2, floor = Math.pow(10, -(opt.reduceDb ?? 15) / 20);
     const n = x.length, out = new Float64Array(n + N), norm = new Float64Array(n + N);
     const pad = new Float64Array(n + 2 * N); pad.set(x, N);
@@ -347,6 +355,14 @@ const DSP = (() => {
     for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, y[i])) * 32767, true);
     return new Blob([buf], {type: 'audio/wav'});
   }
+  // Kaba kuantalama tespiti: ayrık değer sayısı ≤ 256 ise adım = ardışık ayrık değer farklarının en küçüğü (yuvarlama hatasına dayanıklı)
+  function quantStep(x) {
+    const set = new Set(); const st = Math.max(1, Math.floor(x.length / 400000));
+    for (let i = 0; i < x.length; i += st) { const v = x[i]; if (isFinite(v)) { set.add(v); if (set.size > 256) return null; } }
+    if (set.size < 2) return null; const u = Array.from(set).sort((a, b) => a - b); let q = Infinity, span = u[u.length - 1] - u[0];
+    for (let i = 1; i < u.length; i++) { const d = u[i] - u[i - 1]; if (d > span * 1e-9 && d < q) q = d; }
+    return isFinite(q) ? {q, levels: u.length} : null;
+  }
   // Arka plandaki tonal aile: en sessiz pencerelerin ince çözünürlüklü PSD'sinde belirgin tepeler bulunur, en güçlü
   // tepelerden temel frekans adayları (f, f/2, f/3) denenir; harmonik dizisi en güçlü olan seçilir. {f0, nh, hits, prom, mains} | null
   function tonalFamily(x, fs) {
@@ -396,8 +412,17 @@ const DSP = (() => {
     if (sr < 0.9 * sd) { plan.dc = 'lin'; log.push(`Eğilim: doğrusal kayma bulundu (σ ${sd.toPrecision(3)} → ${sr.toPrecision(3)}), çıkarılacak`); } else log.push('DC: ortalama çıkarılacak');
     // kırpılma bilgisi
     let mx = 0; for (let i = 0; i < n; i++) { const a = Math.abs(x[i]); if (a > mx) mx = a; }
+    const qz = quantStep(x), coarse = !!(qz && mx / qz.q < 64);   // birkaç seviyelik sinyalde "en büyük genlik" kırpılma değildir
+    if (coarse) mx = Infinity;
     let clip = 0; for (let i = 0; i < n; i++) if (Math.abs(x[i]) >= mx * 0.999) clip++;
     if (clip / n > 0.001) log.push(`UYARI: örneklerin %${(100 * clip / n).toFixed(2)}'i en büyük genlikte (doygunluk/kırpılma); bu bozulma filtreyle düzeltilemez.`);
+    // kaba kuantalama (ADC çözünürlüğü sınırında sinyal): seviye sayısı az, gürültü 1 adım civarında
+    plan.q = 0;
+    if (qz) {
+      plan.q = qz.q; const sdq = sd / qz.q;
+      log.push(`UYARI: sinyal yalnız ${qz.levels} ayrık seviyeden oluşuyor (adım ${qz.q.toPrecision(4)}, σ ≈ ${sdq.toFixed(1)} adım): ses bilgisi ölçüm çözünürlüğünün sınırında. ` + (sdq < 4 ? 'Temizleme gerçek sesi geri getiremez; yalnızca kuantalama cızırtısını ve seviye atlamalarını bastırır. Sensör kazancı/ölçüm aralığı kontrol edilmeli.' : 'Kuantalama gürültüsü gürültü tabanına eklenecek.'));
+      if (!plan.hp) { plan.hp = Math.min(20, fs / 40); log.push(`Kuantalı sinyalde yavaş kayma/basamaklar → yüksek geçiren ${plan.hp} Hz`); }
+    }
     // PSD
     const nfft = Math.min(8192, nextPow2(n) >> (n < 16384 ? 1 : 0)); if (nfft < 256) return res;
     const P = welch(plan.dc === 'lin' ? dl : x, fs, {nfft, win: 'hann', overlap: 0.5, scale: 'psd', maxSeg: 600}), f = P.f, y = P.y, df = P.df, nyq = fs / 2;
@@ -419,7 +444,8 @@ const DSP = (() => {
     if (plan.hp) z = filtfilt(design('hp', {order: 4, f1: plan.hp}, fs), z);
     if (plan.notch) z = filtfilt(design('notch', {f1: plan.notch, Q: plan.nq, harmonics: plan.nh}, fs), z);
     // tık / pop
-    for (const sg of [8, 12]) {
+    if (coarse) log.push('Tık/pop: kuantalı sinyalde 1 adımlık geçişler tık sayılmaz; atlandı');
+    else for (const sg of [8, 12]) {
       const fl = hampelFlags(z, 5, sg, null, clickMin(z)), frac = fl.length / n;
       if (frac < 0.005) { if (fl.length) { plan.click = true; plan.cs = sg; log.push(`Tık/pop: ${fl.length} olay (σ>${sg}) → temizlenecek`); } else log.push('Tık/pop bulunmadı'); break; }
       if (sg === 12) log.push(`Tık/pop: aykırı örnek oranı yüksek (%${(100 * frac).toFixed(2)}), sinyalin doğal yapısı olabilir; otomatik temizleme atlandı`);
@@ -437,7 +463,7 @@ const DSP = (() => {
       const rms = [], clipW = []; for (let w = 0; w < nw; w++) { let s = 0, c = 0; for (let i = w * W; i < (w + 1) * W; i++) { s += z[i] * z[i]; if (Math.abs(x[i]) >= mx * 0.999) c++; } rms.push(Math.sqrt(s / W)); clipW.push(c > 0); }
       const ok = rms.map((r, i) => i).filter(i => !clipW[i]); const sorted = ok.map(i => rms[i]).sort((a, b) => a - b);
       if (sorted.length >= 4) {
-        const q = sorted[0], top = sorted[Math.max(0, sorted.length - 1 - Math.floor(sorted.length * 0.02))], range = 20 * Math.log10(top / (q + 1e-300));
+        const q = Math.max(sorted[0], plan.q ? plan.q / Math.sqrt(12) : 0), top = Math.max(q, sorted[sorted.length - 1]), range = 20 * Math.log10(top / (q + 1e-300));
         if (range >= 3 && q > 0) {
           // en sessiz pencereyi içeren ve ondan en çok 3 dB yüksek pencerelerden oluşan en uzun kesintisiz bölüm (en çok 30 s):
           // tek kısa pencere gürültüyü olduğundan düşük gösterip arka planda kalıntı bırakır
@@ -448,6 +474,7 @@ const DSP = (() => {
         else minStat(`Belirgin sessiz bölüm yok (dinamik fark ${range.toFixed(1)} dB)`, range);
       } else minStat('Sessiz bölüm analizi için yeterli temiz pencere yok', 0);
     } else minStat('Kayıt kısa', 0);
+    if (coarse && plan.dn && plan.dnDb < 25) { plan.dnDb = 25; log.push('Kuantalı sinyal: tek adımlık geçişler gürültü tabanında; azaltma 25 dB'); }
     return res;
   }
 
@@ -796,6 +823,6 @@ const DSP = (() => {
     fft(ar, ai, true);
     for (let k = 0; k < n; k++) { const r = ar[k] / M, i = ai[k] / M; re[k] = r * B.wr[k] - i * B.wi[k]; im[k] = r * B.wi[k] + i * B.wr[k]; }
   }
-  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC, iirDesign, firwin, firApply, filterDesign, filterApply, freqResp, rainflow, rainflowSummary, turningPoints, slidingStats, fftAny, polyRoots};
+  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, quantStep, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC, iirDesign, firwin, firApply, filterDesign, filterApply, freqResp, rainflow, rainflowSummary, turningPoints, slidingStats, fftAny, polyRoots};
 })();
 if (typeof module !== 'undefined') module.exports = DSP;
