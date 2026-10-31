@@ -43,3 +43,17 @@ console.log('seviye OK');
   console.log('tonal: arka plan', bg.toFixed(1), 'dB, olay', ev.toFixed(1), 'dB'); assert.ok(bg < -18 && ev > -1.5, 'tonal temizleme');
 }
 console.log('t_auto tonal OK');
+// kaba kuantalı (3 seviyeli) kayıt: adım bulunur, uyarı verilir, 1 adımlık geçişler tık sayılmaz, gürültü tabanı adım²/12 ile sınırlanır
+{
+  const F = 8000, N = F * 30, q = 0.0025, w = new Float64Array(N);
+  for (let i = 0; i < N; i++) { const t = i / F, a = t < 3 ? 1.2 : 0.35; w[i] = q * Math.round(a * gauss() * (t < 3 ? 1 : 0.6)); w[i] = Math.max(-q, Math.min(q, w[i])); }
+  const z = DSP.quantStep(w); assert.ok(z && Math.abs(z.q - q) < 1e-12 && z.levels === 3, 'adım');
+  const r = DSP.autoClean(w, F), p = r.plan; console.log(r.log.join('\n'));
+  assert.ok(p.q === z.q && !p.click && p.dn && p.dnDb >= 25 && /ayrık seviye/.test(r.log.join(' ')) && !/kırpılma/.test(r.log.join(' ')), 'kuantalı plan');
+  const y = DSP.spectralDenoise(w, r.noise ? w.slice(r.noise[0], r.noise[1]) : null, {nfft: 2048, reduceDb: p.dnDb, alpha: 2, minVar: q * q / 12, noisePower: r.noise ? null : DSP.noiseFloorMinStat(w, 2048, 0.1)});
+  let a = 0, b = 0; for (let i = 10 * F; i < N; i++) { a += w[i] * w[i]; b += y[i] * y[i]; } const red = 10 * Math.log10(b / a); console.log('kuantalı arka plan', red.toFixed(1), 'dB'); assert.ok(red < -15, 'kuantalı arka plan bastırılmalı');
+  // boşluk doldurma: doğrusal
+  const g = DSP.segment(Float64Array.from([0, 1, NaN, NaN, 4, 5]), null, 0, 6); assert.deepStrictEqual(Array.from(g), [0, 1, 2, 3, 4, 5]);
+  const e = DSP.segment(Float64Array.from([NaN, 2, 3, NaN]), null, 0, 4); assert.deepStrictEqual(Array.from(e), [2, 2, 3, 3]);
+}
+console.log('t_auto kuantalı OK');

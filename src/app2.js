@@ -354,6 +354,7 @@ function buildAcoustic() {
     h('div', {class: 'fr chk'}, h('label', {for: 'acDnOn'}, 'Spektral gürültü azaltma'), h('input', {type: 'checkbox', id: 'acDnOn'})),
     fr('  Azaltma (dB)', numIn('acDnDb', 15), numIn('acDnA', 2)),
     fr('  Gürültü aralığı (s)', numIn('acN0', ''), numIn('acN1', '')),
+    fr('  Kuantalama adımı', numIn('acQ', '', {min: 0, placeholder: 'yok', title: 'Sinyal kaba kuantalıysa (az sayıda ayrık seviye) ADC adımı: gürültü tabanı en az adım²/12 alınır. Otomatik temizleme doldurur.'})),
     h('div', {class: 'btns'}, btn('Görünen aralığı gürültü yap', setNoiseFromView), btn('Aralığı kaldır', () => { S.plot.bands = []; $('#acN0').value = ''; $('#acN1').value = ''; S.plot.invalidate(); })),
     h('div', {class: 'note'}, 'Gürültü aralığı: yalnızca arka plan gürültüsünün olduğu sessiz bir bölüm seçin. Spektral azaltma bu bölümün ortalama spektrumunu çıkarır.')));
   r.append(card('Dinle ve kaydet',
@@ -381,7 +382,7 @@ async function acAuto(add) {
     $('#acDc').value = p.dc; $('#acHpOn').checked = !!p.hp; if (p.hp) $('#acHp').value = p.hp; $('#acLpOn').checked = !!p.lp; if (p.lp) $('#acLp').value = p.lp;
     $('#acNOn').checked = !!p.notch; if (p.notch) { $('#acNf').value = p.notch; $('#acNq').value = p.nq; $('#acNh').value = p.nh; }
     if (p.dnMode === 'min') { $('#acN0').value = ''; $('#acN1').value = ''; S.plot.bands = []; S.plot.invalidate(); }
-    $('#acClOn').checked = p.click; $('#acClK').value = p.ck; $('#acClS').value = p.cs; $('#acDnOn').checked = p.dn; $('#acDnDb').value = p.dnDb; $('#acDnA').value = p.dnA;
+    $('#acQ').value = p.q ? +p.q.toPrecision(6) : ''; $('#acClOn').checked = p.click; $('#acClK').value = p.ck; $('#acClS').value = p.cs; $('#acDnOn').checked = p.dn; $('#acDnDb').value = p.dnDb; $('#acDnA').value = p.dnA;
     if (r.noise) { const t0 = ch.t(a + r.noise[0]), t1 = ch.t(a + r.noise[1]); $('#acN0').value = +t0.toPrecision(8); $('#acN1').value = +t1.toPrecision(8); S.plot.bands = [{x0: t0, x1: t1, color: '#2aa198'}]; S.plot.invalidate(); }
     $('#acLog').textContent = 'OTOMATİK ANALİZ\n' + r.log.join('\n');
     if (add) await acAddClean();
@@ -392,7 +393,7 @@ function acGetSeg() {
   const tr = activeTrace(), ax = activeAxes(); if (!tr) throw new Error('Önce bir iz seçin (tercihen akustik, as…)');
   return {tr, ax};
 }
-function opts() { return {dc: sv('acDc'), hp: ck('acHpOn') ? num('acHp') : 0, lp: ck('acLpOn') ? num('acLp') : 0, notch: ck('acNOn') ? num('acNf') : 0, nq: num('acNq'), nh: num('acNh') | 0, click: ck('acClOn'), ck: num('acClK') | 0, cs: num('acClS'), dn: ck('acDnOn'), dnDb: num('acDnDb'), dnA: num('acDnA')}; }
+function opts() { return {dc: sv('acDc'), hp: ck('acHpOn') ? num('acHp') : 0, lp: ck('acLpOn') ? num('acLp') : 0, notch: ck('acNOn') ? num('acNf') : 0, nq: num('acNq'), nh: num('acNh') | 0, click: ck('acClOn'), ck: num('acClK') | 0, cs: num('acClS'), dn: ck('acDnOn'), dnDb: num('acDnDb'), dnA: num('acDnA'), q: num('acQ') > 0 ? num('acQ') : 0}; }
 async function preChain(x, fs, o, log) {
   let y = x;
   if (o.dc === 'mean') { let m = 0; for (const v of y) m += v; m /= y.length; y = y.map(v => v - m); } else if (o.dc === 'lin') y = DSP.detrendLinear(y);
@@ -413,9 +414,9 @@ async function acPrepare(clean) {
     const n0 = num('acN0'), n1 = num('acN1');
     if (n1 > n0) {
       const na = Math.max(0, Math.floor(ch.timeIdx(n0))), nb = Math.min(ch.n, Math.ceil(ch.timeIdx(n1)));
-      const nz = await preChain(DSP.segment(ch.data, ch.del, na, nb), fs, o); y = await DSPW.run('spectralDenoise', [y, nz, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA}], y === x ? [nz] : [y, nz]); log.push(`Gürültü profili: ${fmtCnt(nb - na)} örnek (seçilen sessiz bölüm)`);
+      const nz = await preChain(DSP.segment(ch.data, ch.del, na, nb), fs, o); y = await DSPW.run('spectralDenoise', [y, nz, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA, minVar: o.q * o.q / 12}], y === x ? [nz] : [y, nz]); log.push(`Gürültü profili: ${fmtCnt(nb - na)} örnek (seçilen sessiz bölüm)`);
     } else {   // sessiz bölüm verilmedi: durağan gürültü tabanı sinyalden tahmin edilir
-      const Pn = await DSPW.run('noiseFloorMinStat', [y, 2048, 0.1]); y = await DSPW.run('spectralDenoise', [y, null, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA, noisePower: Pn}], y === x ? [] : [y]); log.push('Gürültü profili: sinyalden otomatik tahmin (frekans başına en düşük %10 çerçeve)');
+      const Pn = await DSPW.run('noiseFloorMinStat', [y, 2048, 0.1]); y = await DSPW.run('spectralDenoise', [y, null, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA, noisePower: Pn, minVar: o.q * o.q / 12}], y === x ? [] : [y]); log.push('Gürültü profili: sinyalden otomatik tahmin (frekans başına en düşük %10 çerçeve)');
     }
   }
   return {y, fs, a, b, ch, log, raw: x, ax};
