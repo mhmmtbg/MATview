@@ -16,7 +16,7 @@ async def main():
         lg2 = await pg.evaluate("[document.querySelector('.lgd').offsetHeight, S.plot.axes[0].lgMin, document.querySelector('.lgd .lfold').textContent]"); print('katlı', lg2); assert lg2[0] < 30 and lg2[1] and '14 iz' in lg2[2]
         svg = await pg.evaluate("S.plot.toSVG()"); assert 'iz_13' not in svg   # katlı lejant dışa aktarmada da yok
         await pg.click('.lgd .lfold'); assert not await pg.evaluate("S.plot.axes[0].lgMin")
-        await pg.click('#tb-legend'); assert await pg.evaluate("S.plot.axes.every(a=>a.lgMin)"); await pg.click('#tb-legend')
+        await pg.evaluate("toggleAllLegends(S.plot)"); assert await pg.evaluate("S.plot.axes.every(a=>a.lgMin)"); await pg.evaluate("toggleAllLegends(S.plot)")
         # 8 alt grafik → kaydırma
         await pg.evaluate("""async()=>{ for(let k=0;k<7;k++){ const d=new Float64Array(500).map((_,i)=>Math.cos(i/(9+k))); const c=addDerived('alt_'+k,d,null); c.dtS=1/500; await addToNewAxes([c]); } }"""); await pg.wait_for_timeout(400)
         st = await pg.evaluate("(()=>{const v=S.plot.cv.parentElement; return {n:S.plot.axes.length, H:S.plot.H, Hv:S.plot.Hv, sh:v.scrollHeight, ch:v.clientHeight, cls:v.className, hs:S.plot.axes.map(a=>Math.round(a.rect.h))}})()"); print('kaydırma', st)

@@ -159,3 +159,67 @@ async function computeSliding() {
   const sv0 = typeof switchView === 'function' ? switchView : null; if (!sv0) return;
   switchView = function (v) { sv0(v); for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P && P._cpanel) P._cpanel.style.display = P.cv.parentElement.classList.contains('hidden') ? 'none' : ''; };
 })();
+
+/* ---------- Lejant ve Düzen açılır menüleri; araç çubuğu taşınca yalnız simge ---------- */
+function popClose() { const m = $('#popm'); if (m) { m.remove(); document.removeEventListener('pointerdown', popOutside, true); if (m._esc) document.removeEventListener('keydown', m._esc, true); } }
+function popOutside(e) { const m = $('#popm'); if (m && !m.contains(e.target) && !(m._anchor && m._anchor.contains(e.target))) popClose(); }
+function popOpen(anchor, title, build) {
+  const was = $('#popm'); popClose(); if (was && was._anchor === anchor) return;   // aynı düğme: kapat
+  const m = h('div', {id: 'popm', class: 'popm', role: 'dialog', 'aria-label': title}); m._anchor = anchor; document.body.append(m);
+  const render = () => { m.replaceChildren(h('div', {class: 'pmh'}, title), ...build(render)); place(); };
+  const place = () => { const r = anchor.getBoundingClientRect(), w = m.offsetWidth; m.style.top = r.bottom + 4 + 'px'; m.style.left = Math.max(4, Math.min(innerWidth - w - 4, r.left)) + 'px'; };
+  render(); m._render = render;
+  setTimeout(() => document.addEventListener('pointerdown', popOutside, true), 0);
+  const esc = e => { if (e.key === 'Escape' && $('#popm') === m) { e.stopPropagation(); popClose(); anchor.focus(); } }; m._esc = esc; document.addEventListener('keydown', esc, true);
+}
+const pmSeg = (opts, cur, fn) => h('div', {class: 'pmseg', role: 'radiogroup'}, ...opts.map(([v, t]) => h('button', {class: 'noic' + (String(cur) === String(v) ? ' on' : ''), role: 'radio', 'aria-checked': String(String(cur) === String(v)), onclick: () => fn(v)}, t)));
+const pmRow = (label, ...c) => h('div', {class: 'pmrow'}, h('span', {class: 'pml'}, label), ...c);
+function lgSave(P) { try { localStorage.setItem('mv.lg', JSON.stringify({size: P.lgSize || 'm', corner: P.lgCorner || 'tr'})); } catch (_) {} }
+function lgApply(P) { if (P._ov) P._ov._sig = ''; P.invalidate(); }
+function legendMenu(anchor) {
+  const P = curPlot();
+  popOpen(anchor, 'Lejant', render => {
+    const set = (k, v) => { P[k] = v; lgApply(P); lgSave(P); render(); };
+    const allMin = P.axes.length && P.axes.every(a => a.lgMin);
+    return [
+      h('label', {class: 'pmchk'}, h('input', {type: 'checkbox', checked: P.legend !== false, onchange: e => { P.legend = e.target.checked; const c = $('#legendOn'); if (c && P === S.plot) c.checked = P.legend; lgApply(P); render(); }}), 'Lejantları göster'),
+      pmRow('Katla', pmSeg([['min', 'Tümünü katla'], ['open', 'Tümünü aç']], allMin ? 'min' : (P.axes.every(a => !a.lgMin) ? 'open' : ''), v => { for (const a of P.axes) a.lgMin = v === 'min'; lgApply(P); render(); })),
+      pmRow('Boyut', pmSeg([['s', 'Küçük'], ['m', 'Orta'], ['l', 'Büyük']], P.lgSize || 'm', v => set('lgSize', v))),
+      pmRow('Konum', pmSeg([['tl', '↖ Sol üst'], ['tr', '↗ Sağ üst'], ['bl', '↙ Sol alt'], ['br', '↘ Sağ alt']], P.lgCorner || 'tr', v => { for (const a of P.axes) a.lgPos = null; set('lgCorner', v); })),
+      h('div', {class: 'pmbtns'}, h('button', {class: 'noic', title: 'Elle sürüklenmiş lejantları seçili köşeye geri al', onclick: () => { for (const a of P.axes) a.lgPos = null; lgApply(P); }}, 'Konumları sıfırla')),
+      h('div', {class: 'pmnote'}, 'Tek alt grafikte: lejant başlığındaki ▾ katlar, ⋯ ile sürüklenir. Katlı lejant PNG / SVG çıktısına girmez.')];
+  });
+}
+function layoutSave(P) { try { localStorage.setItem('mv.layout', JSON.stringify({cols: P.cols || 'auto', cellW: P.cellW || null, cellH: P.cellH || null, sync: !!P.syncSize})); } catch (_) {} }
+function sizeUISync(P) { const m = $('#popm'); if (m && m._size && m._render) m._render(); }
+function sizeMenu(anchor) {
+  const P = curPlot();
+  popOpen(anchor, 'Alt grafik düzeni', render => {
+    const m = $('#popm'); if (m) m._size = true;
+    const apply = () => { for (const a of P.axes) if (P.cellW || P.cellH) { if (P.cellW) a.wfrac = null; if (P.cellH) a.hpx = null; } P.invalidate(); };
+    const num = (k, ph) => h('input', {type: 'number', min: k === 'cellW' ? 120 : 60, step: 10, value: P[k] || '', placeholder: ph, onchange: e => { const v = Math.round(+e.target.value); P[k] = v > 0 ? Math.max(k === 'cellW' ? 120 : 60, v) : null; apply(); render(); }});
+    const cols = P.gridCols(), W = P.W || 0, {L, R} = P.margins();
+    const fit = P.cellW ? Math.max(1, Math.min(4, Math.floor(W / (P.cellW + L + R)))) : null;
+    return [
+      pmRow('Sütun', pmSeg([['auto', 'Otomatik'], [1, '1'], [2, '2'], [3, '3'], [4, '4']], P.cols || 'auto', v => { P.cols = v; P.invalidate(); render(); })),
+      pmRow('Genişlik (px)', num('cellW', 'otomatik')), pmRow('Yükseklik (px)', num('cellH', 'otomatik')),
+      h('label', {class: 'pmchk', title: 'Açıkken herhangi bir alt grafiğin sağ alt köşesinden yapılan boyutlandırma tümüne uygulanır'}, h('input', {type: 'checkbox', checked: !!P.syncSize, onchange: e => { P.syncSize = e.target.checked; render(); }}), 'Köşeden boyutlandırma tüm grafiklere uygulansın'),
+      h('div', {class: 'pmnote'}, `Şu an ${cols} sütun · ${P.axes.length} alt grafik` + (P.cellW && (P.cols || 'auto') === 'auto' ? ` · bu genişlikte panele ${fit} sütun sığıyor (ızgara ortalanır)` : '') + '. Otomatik sütunda genişlik verilince sığan kadar (en çok 4) yan yana dizilir.'),
+      h('div', {class: 'pmbtns'},
+        h('button', {class: 'noic', title: 'Sütun, boyut ve eşzamanlı boyutlandırma ayarını yeni açılışlar için varsayılan yap', onclick: () => { layoutSave(P); toast('Varsayılan düzen kaydedildi'); }}, 'Varsayılan yap'),
+        h('button', {class: 'noic', title: 'Otomatik sütun, otomatik boyut; alt grafiklerin tek tek boyutları da sıfırlanır', onclick: () => { P.cols = 'auto'; P.cellW = P.cellH = null; for (const a of P.axes) { a.hpx = null; a.wfrac = null; a.hw = 1; } P.invalidate(); render(); }}, 'Sıfırla'))];
+  });
+}
+// araç çubukları: düğme adları sığmıyorsa yalnız simge göster
+function fitBar(el) {
+  if (!el) return; el.classList.remove('compact');
+  if (el.scrollWidth > el.clientWidth + 1) el.classList.add('compact');
+}
+(function () {
+  window.addEventListener('DOMContentLoaded', () => setTimeout(() => {
+    try { const o = JSON.parse(localStorage.getItem('mv.lg') || 'null'); if (o) for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) { P.lgSize = o.size; P.lgCorner = o.corner; } } catch (_) {}
+    try { const o = JSON.parse(localStorage.getItem('mv.layout') || 'null'); if (o && S.plot) { S.plot.cols = o.cols || 'auto'; S.plot.cellW = o.cellW || null; S.plot.cellH = o.cellH || null; S.plot.syncSize = !!o.sync; S.plot.invalidate(); } } catch (_) {}
+    for (const id of ['toolbar', 'viewbar']) { const el = $('#' + id); if (!el) continue; const ro = new ResizeObserver(() => fitBar(el)); ro.observe(el); fitBar(el); }
+    window.addEventListener('resize', () => { const m = $('#popm'); if (m) popClose(); });
+  }, 0));
+})();
