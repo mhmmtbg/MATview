@@ -36,6 +36,11 @@ async def main():
         await pg.click('.acbar .acb-pp'); ok(await pg.evaluate('S.audio.paused'), 'grafik çubuğundan duraklat'); await pg.click('.acbar .acb-fwd'); p5 = await pg.evaluate('acPos()')
         await pg.click('.acbar .acb-back'); ok(abs(await pg.evaluate('acPos()') - p5 + 10) < 1e-3 or await pg.evaluate('acPos()') == 0, 'grafik çubuğundan geri sar')
         await pg.click('.acbar .acb-pp')
+        ws = set()
+        for k in [0, 3.3, 9.99, 10.4, 25.5, 39.9]:
+            await pg.evaluate(f'acSeekTo({k}, true)'); ws.add(await pg.evaluate("[Math.round(S.plot._acBar.querySelector('.acb-seek').getBoundingClientRect().width), Math.round(document.querySelector('#acSeek').getBoundingClientRect().width)].join()"))
+        await pg.click('.acbar .acb-pp'); ws.add(await pg.evaluate("[Math.round(S.plot._acBar.querySelector('.acb-seek').getBoundingClientRect().width), Math.round(document.querySelector('#acSeek').getBoundingClientRect().width)].join()")); await pg.click('.acbar .acb-pp')
+        ok(len(ws) == 1, 'süre değişince konum çubuğu genişliği oynuyor ' + str(ws))
         await pg.click('button:has-text("■ Durdur")'); ok(await pg.is_disabled('#acPP') and await pg.text_content('#acPos') == '–', 'durdur')
         ok(await pg.evaluate("!S.plot.xtra && !(S.plot._acBar && S.plot._acBar.isConnected)"), 'durdurunca grafik çubuğu kalkar')
         await pg.screenshot(path='/tmp/ac3.png')

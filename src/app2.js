@@ -466,11 +466,13 @@ function acTogglePause() {
 function acTrUI(el) {
   const A = S.audio, on = !!(A && A.buf && !A.stopped); for (const id of ['acBack', 'acPP', 'acFwd', 'acSeek']) { const e = $('#' + id); if (e) e.disabled = !on; }
   if (el == null) el = on ? acPos() : 0;
-  const t = on ? `${fmtNum(el, 4)} / ${fmtNum(A.dur, 4)} s` + (A.paused ? ' · duraklatıldı' : '') : '–', v = on ? Math.round(el / A.dur * 1000) : 0, pp = on && A.paused ? '▶' : '❚❚';
+  // sabit basamak (2 ondalık) + sabit genişlikli kutu: süre akarken çubuk uzayıp kısalmaz
+  const dg = on ? A.dur.toFixed(2).length : 0, t = on ? `${el.toFixed(2).padStart(dg, '\u2007')} / ${A.dur.toFixed(2)} s` + (A.paused ? ' · duraklatıldı' : '') : '–', v = on ? Math.round(el / A.dur * 1000) : 0, pp = on && A.paused ? '▶' : '❚❚';
+  const wch = on ? (2 * dg + 6 + 17) + 'ch' : '';
   const set = (e, k, x) => { if (e && e[k] !== x) e[k] = x; };
-  set($('#acPP'), 'textContent', pp); set($('#acPos'), 'textContent', t); { const sk = $('#acSeek'); if (sk && on && document.activeElement !== sk) sk.value = v; }
+  set($('#acPP'), 'textContent', pp); set($('#acPos'), 'textContent', t); { const ps = $('#acPos'); if (ps && ps.style.width !== wch) ps.style.width = wch; } { const sk = $('#acSeek'); if (sk && on && document.activeElement !== sk) sk.value = v; }
   const bar = S.plot && S.plot._acBar; if (bar && bar.isConnected) {
-    set(bar.querySelector('.acb-pp'), 'textContent', pp); set(bar.querySelector('.acb-pos'), 'textContent', t);
+    set(bar.querySelector('.acb-pp'), 'textContent', pp); set(bar.querySelector('.acb-pos'), 'textContent', t); { const ps = bar.querySelector('.acb-pos'); if (ps.style.width !== wch) ps.style.width = wch; }
     set(bar.querySelector('.acb-nm'), 'textContent', on ? (A.clean ? 'temizlenmiş' : 'orijinal') + (A.speed !== 1 ? ' · ×' + fmtNum(A.speed, 3) : '') : '');
     const sk = bar.querySelector('.acb-seek'); if (sk && on && document.activeElement !== sk) sk.value = v;
   }
