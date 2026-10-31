@@ -360,3 +360,5 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .popm .pmnote{color:var(--muted);font-size:11px;line-height:1.35}
 /* lejant boyutları */
 .lgd.lg-s{font-size:10px}.lgd.lg-s .sw{width:12px}.lgd.lg-m{font-size:12px}.lgd.lg-l{font-size:14px}.lgd.lg-l .sw{width:22px;height:3px}
+
+.actr{display:flex;align-items:center;gap:4px;margin:6px 0;flex-wrap:wrap}.actr button{padding:2px 8px;min-width:32px}.actr select{width:auto}.actr input[type=range]{flex:1;min-width:120px}.actr #acPos{font-variant-numeric:tabular-nums;font-size:12px;white-space:nowrap}

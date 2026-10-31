@@ -326,7 +326,16 @@ const DSP = (() => {
     const std = n > 1 ? Math.sqrt(Math.max(0, (s2 - n * mean * mean) / (n - 1))) : NaN;
     return {n, mean, rms, std, min: mn, max: mx, p2p: mx - mn, deleted: nd};
   }
-  function wavBlob(y, rate) {
+  // opt.float: 32-bit IEEE kayan nokta (değerler ölçeklenmeden; ör. Pa), aksi hâlde 16-bit PCM (−1…1)
+  function wavBlob(y, rate, opt) {
+    if (opt && opt.float) {
+      const n = y.length, buf = new ArrayBuffer(58 + n * 4), dv = new DataView(buf), wr = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+      wr(0, 'RIFF'); dv.setUint32(4, 50 + n * 4, true); wr(8, 'WAVE'); wr(12, 'fmt '); dv.setUint32(16, 18, true);
+      dv.setUint16(20, 3, true); dv.setUint16(22, 1, true); dv.setUint32(24, rate, true); dv.setUint32(28, rate * 4, true); dv.setUint16(32, 4, true); dv.setUint16(34, 32, true); dv.setUint16(36, 0, true);
+      wr(38, 'fact'); dv.setUint32(42, 4, true); dv.setUint32(46, n, true); wr(50, 'data'); dv.setUint32(54, n * 4, true);
+      for (let i = 0; i < n; i++) dv.setFloat32(58 + i * 4, y[i], true);
+      return new Blob([buf], {type: 'audio/wav'});
+    }
     const n = y.length, buf = new ArrayBuffer(44 + n * 2), dv = new DataView(buf);
     const wr = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
     wr(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); wr(8, 'WAVE'); wr(12, 'fmt '); dv.setUint32(16, 16, true);

@@ -12,7 +12,7 @@ MATLAB `.mat` dosyalarını okuyan, MATLAB benzeri grafik çizen; yakınlaştır
 - Büyük veri (14 M+ örnek) için min/max inceltme; kutu/tekerlek zoom, pan, veri imleci.
 - Kutu/kement ile nokta silme, eşik ve Hampel sıçrama tespiti, geri al/yinele (orijinal dosya değişmez).
 - Spektrum, spektrogram, Butterworth süzgeçler, MATLAB tarzı ifade satırı.
-- Akustik: dinleme, tık/notch/HP/LP/spektral gürültü azaltma, WAV kaydı.
+- Akustik: dinleme (ileri/geri sarma, duraklatma, konum çubuğu; Shift+←/→/Boşluk), tık/notch/HP/LP/spektral gürültü azaltma, WAV kaydı (dinleme için 16-bit normalize ya da kalibre 32-bit float — Pa değerleri korunur).
 - Dışa aktarma: PNG, CSV, MAT (v5), oturum.
 - **Kod** görünümü: MATLAB alt kümesini (matris, hücre, yapı, işlev, döngüler, fft/butter/filtfilt/pwelch…) kurulum olmadan çalıştırır; `ch('kanal')` ile açık kanalları okur, `addch` ile sonuç ekler; `figure/subplot/plot` ile **Figür** görünümüne çizer. `.m` dosyaları açılır/kaydedilir. GUIDE arayüzleri (`.m` + `.fig`) **Arayüz** görünümünde çalışır.
 

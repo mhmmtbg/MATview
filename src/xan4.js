@@ -45,6 +45,9 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.10', d: 'Akustik oynatmada sarma ve kalibre WAV', items: [
+    'Akustik: oynatma sırasında ⏪/⏩ ile seçilebilir adımla (1/5/10/30 s) geri/ileri sarma, ❚❚/▶ duraklat-devam, konum çubuğu ve "geçen / toplam s" göstergesi; Shift+← / Shift+→ / Shift+Boşluk kısayolları. Duraklatılmışken sarınca konum değişir, ses kapalı kalır.',
+    'Akustik: "WAV kaydet (kalibre, 32-bit float)" — örnekler ölçeklenmeden (ör. Pa) yazılır; dosya yeniden açıldığında mutlak seviye ve dB SPL korunur.']},
   {v: '2.9', d: 'Telemetri tek panel, canlı grafik Zaman sekmesinde, ızgara düzeni', items: [
     'Telemetri: dosya çözümleme ve canlı oynatma tek panelde; üst çubukta oynatma + Çöz ve MATView\'de aç / Çöz ve dosyalara yaz. Oynatma paneli Oynat ile katlanır, canlı durum aç/kapa kutusu, işlem kaydı ayrı pencerede.',
     'Telemetri: "Çözülen Veriler" tablosu — kompakt başlık, sağda sabit işlem düğmeleri, kalıcı sütun görünümü; grafik düğmesi MATView Zaman sekmesinde canlı kanal açar; kamera açılır penceresi (ekran alıntısı, MP4).',
