@@ -103,6 +103,10 @@ Yerel pencere için saf Go (cgo'suz) `github.com/jchv/go-webview2` kullanılır;
 
 **Oturum ve rapor:** `oturum.json` (v2) türetilmiş kanalları (veri + formül / işlem açıklaması), test fazlarını, şartname profillerini, kontrol/cevap rollerini, rapor öğelerini ve çift Y düzenini de saklar. Rapor düzenleyici: sürükle-bırak sıralama, başlık / açıklama düzenleme, **yan yana (2 sütun)** şekiller (HTML ve Word). Okuyucular: MAT **v7.3** hücre / yapı / karakter / mantıksal / seyrek (Kod sekmesi `load`), MAT **v5 seyrek**, **MDF 3.x** (temel). XLSX / DOCX çıktıları **deflate** sıkıştırmalı.
 
+## Sürüm 2.9 — Telemetri tek panel
+
+Telemetri görünümü tek panel: **üst çubukta** dosyadan canlı oynatma (▶ / ❚❚ / ■ / ● Kayıt, çerçeve kaydırıcısı) ile **Çöz ve MATView'de aç** / **Çöz ve dosyalara yaz** yan yana; ikisi de aynı kayıt dosyalarını kullanır. *▾ Dosyadan Oynatma* paneli (dosyalar, periyot, döngü) tıklayınca açılır, ▶ Oynat'ta kendiliğinden katlanır. **Durum** düğmesi canlı durum kutusunu lejant gibi açıp kapatır; **İşlem Kaydı** arka planda tutulur ve düğmeyle açılır. Ortada **Çözülen Veriler** tablosu (eski *Canlı Çalışma Kopyası*); etiketler ve seçenekler tek satırlık başlıkta, template işlemleri *Template ▾* menüsünde, satır sonundaki işlem düğmeleri tablo yatay kaydırılsa da **sağda sabit**. **Sütunlar ▾** ile seçilen sütun görünümü saklanır, uygulama her açılışta bununla başlar. Satırdaki grafik düğmesi parametreyi **MATView Zaman sekmesinde canlı** çizer (yakınlaştırınca izleme durur, Sığdır ile sürer); Telemetri sekmesine dönünce oynatma kaldığı yerden devam eder. Video satırının kamera düğmesi görüntüyü taşınabilir **açılır pencerede** oynatır (ekran alıntısı PNG, pencere açıldığından beri MP4 indir). Video dosyaları (*.h264 / .mp4 / video .bin*) **Video** düğmesiyle açılır.
+
 ## Testler hakkında
 `bash test/run_tests.sh` tüm testleri çalıştırır; testler yalnızca betiklerin ürettiği yapay verilerle çalışır, depoda gerçek ölçüm verisi yoktur.
 

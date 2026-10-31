@@ -45,6 +45,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.9', d: 'Telemetri tek panel, canlı grafik Zaman sekmesinde, ızgara düzeni', items: [
+    'Telemetri: dosya çözümleme ve canlı oynatma tek panelde; üst çubukta oynatma + Çöz ve MATView\'de aç / Çöz ve dosyalara yaz. Oynatma paneli Oynat ile katlanır, canlı durum aç/kapa kutusu, işlem kaydı ayrı pencerede.',
+    'Telemetri: "Çözülen Veriler" tablosu — kompakt başlık, sağda sabit işlem düğmeleri, kalıcı sütun görünümü; grafik düğmesi MATView Zaman sekmesinde canlı kanal açar; kamera açılır penceresi (ekran alıntısı, MP4).',
+    'Grafik: Düzen ▾ (1–4 sütun ızgara, tüm alt grafiklere genişlik/yükseklik, eşzamanlı köşe boyutlandırma), Lejant ▾ (göster, katla, boyut, konum), 5+ alt grafikte kaydırma.']},
   {v: '2.8', d: 'Yerel Windows penceresi, çift Y, çoklu imleç, sanal ağaç, yeni süzgeçler, kod düzenleyici, oturum v2', items: [
     'Windows: MATView.exe kendi uygulama penceresinde (WebView2, kurulumsuz) ve ilk açılışta ekranı kaplayarak açılır; F11 tam ekran.',
     'Performans: SRS, spektrogram, FRF, filtfilt, Hampel ve spektral gürültü azaltma arka plan işçisinde; DSP / MATLAB kaynakları tek kez gömülü; olay güdümlü arayüz yenileme.',

@@ -509,6 +509,85 @@ body.rz-chart, body.rz-chart * { cursor: nwse-resize !important; user-select: no
 .raw-units .empty { padding: 10px; }
 .raw-custom { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 13px; }
 .field.off .raw-units, .field.off .raw-custom { opacity: .55; }
+
+/* ===== Tek panel düzeni (MATView 2.9): üst çubukta oynatma + çözümleme; ortada çözülen veriler ===== */
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; overflow: hidden; }
+.maintabs.tlbar { position: static; flex: none; flex-wrap: wrap; gap: 6px; padding: 6px 10px; row-gap: 6px; }
+.maintabs.tlbar .btn { margin-left: 0; }
+.tlbar .sep { align-self: center; height: 20px; }
+.tlbar .tl-files { font-size: 12px; color: var(--muted); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlbar .sim-nav { flex: 1 1 260px; min-width: 220px; flex-wrap: nowrap; }
+.tlbar .sim-nav input[type=range] { flex: 1 1 120px; min-width: 80px; }
+.tlbar .sim-nav .btn.icon { width: 26px; height: 26px; }
+.tlbar .sim-nav .inp { height: 26px; width: 84px; }
+.tlbar .sim-nav .fi { font-size: 11.5px; }
+.tl-prog { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; }
+.tl-prog.hidden { display: none; }
+.tl-prog .progress { width: 90px; height: 6px; margin: 0; display: inline-block; }
+.tl-prog .progress .bar { display: block; }
+#runState { cursor: pointer; }
+.tl-drw[aria-expanded=false] { color: var(--muted); }
+.tl-drawer { flex: none; background: var(--panel); border-bottom: 1px solid var(--line); padding: 8px 14px 10px; }
+.tl-drawer.hidden { display: none; }
+.tl-dform { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: flex-start; }
+.tl-dcell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tl-dcell > label:first-child { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.tl-dcell .help, .tl-drawer > .lv-src > .help { font-size: 11.5px; color: var(--faint); max-width: 420px; }
+.tl-drawer > .lv-src > .help { margin-top: 6px; max-width: none; }
+.tl-drow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tl-drow .file-chips { margin-top: 0; }
+.tl-fmode .seg { margin-bottom: 0; }
+.tl-fmode .seg button { padding: 4px 10px; font-size: 12px; }
+.tl-fmode .hint { font-size: 11.5px; margin: 4px 0 0; max-width: 520px; }
+main.tl-main { flex: 1; min-height: 0; max-width: none; margin: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+main.tl-main.hidden { display: none; }
+main.tl-main > #lvRawCard { flex: none; }
+.tl-data { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.tl-dh { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line2); background: var(--panel2); border-radius: var(--radius) var(--radius) 0 0; flex-wrap: nowrap; min-width: 0; position: relative; }
+.tl-dh h2 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .7px; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.tl-dh .subtabs { border-bottom: none; margin: 0; flex-wrap: nowrap; flex: none; }
+.tl-dh .subtabs button { padding: 3px 10px; font-size: 12px; top: 0; border-radius: 4px; border: 1px solid transparent; }
+.tl-dh .subtabs button.active { border-color: var(--line); }
+.tl-dh .unit-chips { flex: 1 1 140px; min-width: 60px; margin: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: 1px; }
+.tl-dh .uchip { padding: 1px 9px; font-size: 11.5px; white-space: nowrap; flex: none; }
+.tl-dh .grow { flex: 1 1 0; min-width: 0; }
+.tl-dh .hint { white-space: nowrap; font-size: 11.5px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tl-dh .grow { display: none; }
+.tl-dh .inp { height: 26px; width: 190px; flex: 0 1 190px; min-width: 90px; }
+.tl-dh .tl-help { width: 26px; justify-content: center; padding: 0; cursor: help; }
+.tl-menu { position: absolute; right: 40px; top: 100%; z-index: 20; display: flex; flex-direction: column; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; }
+.tl-menu.hidden { display: none; }
+.tl-menu .btn { justify-content: flex-start; }
+.tl-cols { position: absolute; right: 120px; top: 100%; z-index: 20; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; width: 270px; max-height: 70vh; display: flex; flex-direction: column; gap: 6px; }
+.tl-cols .col-list { max-height: 50vh; overflow: auto; }
+.tl-cols .tl-cb { display: flex; gap: 6px; flex-wrap: wrap; }
+.tl-cols .note { font-size: 11.5px; color: var(--muted); }
+.tl-data #lvGeneral:empty { display: none; }
+.tl-data .lv-wrap { flex: 1; max-height: none; min-height: 120px; border: none; border-radius: 0 0 var(--radius) var(--radius); }
+/* işlem düğmeleri sağda sabit: tablo yatay kaydırılsa da görünür */
+.lv-table td.act { position: sticky; right: 0; z-index: 1; border-left: 1px solid var(--line2); }
+.lv-table thead th:last-child { position: sticky; right: 0; z-index: 3; border-left: 1px solid var(--line2); }
+/* canlı durum: lejant gibi açılıp kapanan kutu */
+.tl-status { position: absolute; top: 44px; right: 14px; z-index: 6; width: min(620px, calc(100% - 28px)); max-height: calc(100% - 60px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px 10px; }
+.tl-status.hidden { display: none; }
+.tl-status .tl-sh { display: flex; align-items: center; gap: 8px; }
+.tl-status .tl-sh b { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); flex: 1; }
+.tl-status .stats { gap: 6px; margin-top: 8px; }
+.tl-status .stat { padding: 5px 8px; }
+.tl-status .stat .v { font-size: 14px; }
+.tl-status .sub-h { margin: 8px 0 0; font-size: 11px; }
+#tlStatusBtn[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme=dark] #tlStatusBtn[aria-pressed=true] { color: #0b0d10; }
+/* kamera: açılır pencere */
+.tl-vwin { position: fixed; right: 16px; bottom: 16px; z-index: 40; width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); display: flex; flex-direction: column; }
+.tl-vwin.hidden { display: none; }
+.tl-vwin .card-h { cursor: move; user-select: none; }
+.tl-vwin .card-b { padding: 8px; overflow: auto; min-height: 0; }
+.tl-vwin .chart { flex: 1 1 100%; }
+.tl-vwin [for=lvChartSec], .tl-vwin #lvChartSec, .tl-vwin #lvChartSec + span { display: none; }
+.vpmodal { width: 980px; }
+#logOverlay .log { height: min(62vh, 640px); border-top: none; }
 </style>
 </head>
 <body>
@@ -532,93 +611,59 @@ body.rz-chart, body.rz-chart * { cursor: nwse-resize !important; user-select: no
   </div>
 </header>
 
-<nav class="maintabs" id="mainTabs">
-  <button type="button" data-tab="file" class="active">Dosya Çözümleme</button>
-  <button type="button" data-tab="live">Canlı Oynatma<span class="dot" id="liveTabDot"></span></button>
-  <button type="button" data-tab="video">Video / Kamera</button>
-  <button type="button" data-tab="mat" class="hidden">MAT Görüntüleyici</button>
+<nav class="maintabs tlbar" id="mainTabs">
+  <button class="btn sm tl-drw" id="tlDrawerBtn" type="button" aria-expanded="true" aria-controls="tlDrawer" title="Kayıt dosyaları ve oynatma ayarları (aç / kapat). Oynat'a basınca kendiliğinden katlanır.">▾ Dosyadan Oynatma</button>
+  <span class="tl-files" id="tlFilesSum" title="Seçili kayıt dosyaları">Dosya seçilmedi</span>
+  <span id="lvConnBadge" class="badge mute">Bağlı değil</span><span class="dot" id="liveTabDot"></span>
+  <span class="sep"></span>
+  <button class="btn primary sm" type="button" id="lvConnect" title="Kaydı gerçek zamanlı akış gibi oynat">▶ Oynat</button>
+  <button class="btn sm" type="button" id="lvPause" disabled title="Oynatmayı duraklat / devam et (boşluk). Tablo ve grafikler donar.">❚❚ Duraklat</button>
+  <button class="btn sm" type="button" id="lvDisconnect" disabled title="Oynatmayı durdur">■ Durdur</button>
+  <button class="btn sm rec" type="button" id="lvRec" disabled title="Oynatılan akışı yeni bir .bin dosyasına kaydeder (ör. bir bölümü kesip ayırmak için)">● Kayıt</button>
+  <div class="sim-nav off" id="lvSimNav">
+              <button class="btn icon" type="button" id="lvFrPrev" data-nav title="Önceki çerçeve">◀</button>
+              <input type="range" id="lvFrSlider" data-nav min="1" max="1" step="1" value="1" title="Sürükleyerek çerçeveler arasında gezin">
+              <button class="btn icon" type="button" id="lvFrNext" data-nav title="Sonraki çerçeve">▶</button>
+              <input class="inp mono" id="lvFrNum" data-nav type="number" min="1" step="1" title="Gitmek istediğiniz çerçeve numarasını yazıp Enter'a basın">
+              <span class="fi" id="lvFrInfo">–</span>
+            </div>
+  <span class="sep"></span>
+  <button class="btn sm" id="btnRunMv" type="button" title="Kaydın tamamını çözer ve tüm parametreleri MATView'e kanal olarak yükler (çizim, spektrum, kod). Dosya yazılmaz.">Çöz ve MATView'de aç</button>
+  <button class="btn sm" id="btnRun" type="button" title="Kaydın tamamını çözer; CSV / MAT / ham veri / video dosyalarını çıktı klasörüne (veya ZIP'e) yazar">Çöz ve dosyalara yaz</button>
+  <button class="btn sm" id="btnStop" type="button" disabled title="Çözümlemeyi durdur">Durdur</button>
+  <span class="tl-prog" id="tlProg" title="Çözümleme ilerlemesi"><span class="progress"><span class="bar" id="pBar"></span></span><b id="pPct">0%</b></span>
+  <span id="runState" class="badge mute" role="button" tabindex="0" title="Çözümleme durumu · tıklayın: İşlem Kaydı">Hazır</span>
   <span class="tabgrow"></span>
-  <span class="ver" id="verLabel2"></span>
-  <button class="btn sm" id="btnSettingsTab" type="button" title="Çerçeve formatı, çerçeve tipleri ve template'ler, sayaç, çıktı">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    Çerçeve Ayarları
-  </button>
+  <button class="btn sm" type="button" id="tlStatusBtn" aria-pressed="false" title="Canlı durum kutusunu aç / kapat (veri hızı, çerçeve oranı, kayıp, kayıt)">Durum</button>
+  <button class="btn sm" type="button" id="lvRawToggle" title="Gelen ham byte'ları hex olarak göster / gizle">Ham Veri</button>
+  <button class="btn sm" type="button" id="tlVideoBtn" title="Video dosyası oynat: çözümlemenin ürettiği video .bin, .h264 ya da .mp4">Video</button>
+  <button class="btn sm" type="button" id="tlLogBtn" title="İşlem kaydı (arka planda tutulur): uyarılar, hatalar, çözümleme özeti">İşlem Kaydı</button>
+  <button class="btn sm" id="btnSettingsTab" type="button" title="Çerçeve formatı, çerçeve tipleri ve template'ler, sayaç, çıktı, canlı görünüm">Çerçeve Ayarları</button>
+  <span class="ver" id="verLabel2" hidden></span>
 </nav>
 
-<main id="tabFile" class="tabpage">
-  <section class="card">
-    <div class="card-h">
-      <h2>Kayıt Dosyaları</h2>
-      <div class="actions">
-        <button class="btn sm" id="btnAddFile" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          Dosya Ekle
-        </button>
-        <button class="btn sm" id="btnSortFiles" type="button" title="Dosyaları ada göre sırala">Ada Göre Sırala</button>
-        <button class="btn sm" id="btnClearFiles" type="button">Listeyi Temizle</button>
-      </div>
-    </div>
-    <div class="card-b">
-      <input type="file" id="fileInput" accept=".bin,.binary" multiple hidden>
-      <div class="drop" id="dropZone">.bin / .binary dosyalarını buraya sürükleyin veya <b>Dosya Ekle</b> ile seçin. MATView penceresine ya da Klasör paneline bırakılan binary dosyalar da buraya gelir.</div>
-      <div class="tbl-wrap">
-        <table class="tbl">
-          <thead><tr><th style="width:56px">#</th><th>Dosya</th><th class="num">Boyut</th><th title="Dosyadaki ilk ve son çerçeve numarası. Tümü işaretli değilse yalnız girilen aralık çözülür.">Çerçeve aralığı</th><th style="width:96px"></th></tr></thead>
-          <tbody id="fileBody"></tbody>
-        </table>
-      </div>
-      <div class="fmode">
-        <div class="fmode-l">Birden fazla dosya seçildiğinde</div>
+<div class="tl-drawer" id="tlDrawer">
+  <div class="seg hidden" id="lvSource"><button type="button" data-src="sim">Dosyadan Oynat</button></div>
+  <div class="lv-src" data-src="sim">
+    <div class="tl-dform">
+      <div class="tl-dcell"><label>Kayıt dosyaları</label><div class="tl-drow"><button class="btn sm" type="button" id="lvSimPick">Dosya Seç</button><input type="file" id="lvSimInput" accept=".bin,.binary" multiple hidden><div class="file-chips" id="lvSimFiles"></div></div><div class="help">Birden fazla dosya sırayla tek akış olarak oynatılır; çözümleme de aynı dosyaları kullanır. Dosyayı bu panele ya da MATView'e sürükleyebilirsiniz.</div></div>
+      <div class="tl-dcell"><label for="lv_simPeriod">Çerçeve periyodu (ms)</label><input class="inp w-s" id="lv_simPeriod" type="number" min="0.1" step="any"><div class="help">Akış hızı = çerçeve uzunluğu / periyot.</div></div>
+      <div class="tl-dcell"><label>Döngü</label><label class="switch"><input type="checkbox" id="lv_simLoop"><span class="tr"></span><span class="sl">Dosya bitince başa dön</span></label></div>
+      <div class="tl-dcell tl-fmode" id="tlFmode"><label>Birden fazla dosya çözülürken</label><div class="fmode">
+        
         <div class="seg" id="fileMode">
           <button type="button" data-mode="concat">Aynı kaydın parçaları</button>
           <button type="button" data-mode="separate">Farklı kayıtlar</button>
           <button type="button" data-mode="merge">Aynı kaydın kopyaları (birleştir)</button>
         </div>
         <p class="hint" id="fileModeHint"></p>
-      </div>
+      </div></div>
     </div>
-  </section>
+    <div class="help" id="lvFrHelp">Üst çubuktaki kaydırıcı, ◀ ▶ veya çerçeve numarası ile istediğiniz çerçeveye gidilir; akış otomatik duraklar. <b>Devam Et</b> seçilen çerçeveden itibaren oynatır.</div>
+  </div>
+</div>
 
-  <section class="card">
-    <div class="card-h"><h2>Yapılandırma Özeti</h2><button class="btn sm" id="btnSettings2" type="button">Düzenle</button></div>
-    <div class="card-b">
-      <dl class="summary" id="summary"></dl>
-      <div id="summaryNotes"></div>
-    </div>
-  </section>
-
-  <section class="card span2">
-    <div class="card-h">
-      <h2>Çözümleme</h2>
-      <span id="runState" class="badge mute">Hazır</span>
-    </div>
-    <div class="card-b">
-      <div class="run-row">
-        <button class="btn primary big" id="btnRunMv" type="button" title="Kaydı çözer ve tüm parametreleri MATView'e kanal olarak yükler (çizim, spektrum, kod). Dosya yazılmaz; istenirse sonuçtan tek .mat kaydedilir.">Çöz ve MATView'de aç</button>
-        <button class="btn big" id="btnRun" type="button" title="Kaydı çözer; CSV / MAT / ham veri / video dosyalarını çıktı klasörüne (veya ZIP'e) yazar">Çöz ve dosyalara yaz</button>
-        <button class="btn" id="btnStop" type="button" disabled>Durdur</button>
-        <span id="runHint" class="hint" style="margin:0"></span>
-      </div>
-      <div class="progress"><div class="bar" id="pBar"></div></div>
-      <div class="progress-meta"><span id="pPhase">Bekleniyor</span><span><b id="pPct">0%</b></span></div>
-      <div class="stats">
-        <div class="stat"><div class="k">İşlenen Veri</div><div class="v" id="stBytes">0 B</div></div>
-        <div class="stat"><div class="k">Bulunan Çerçeve</div><div class="v" id="stFrames">0</div></div>
-        <div class="stat" id="stSkippedBox"><div class="k">Atlanan Byte</div><div class="v" id="stSkipped">0</div></div>
-        <div class="stat" id="stLostBox"><div class="k">Kayıp Çerçeve</div><div class="v" id="stLost">0</div></div>
-        <div class="stat" id="stUnknownBox"><div class="k">Tanımsız Belirteç</div><div class="v" id="stUnknown">0</div></div>
-        <div class="stat" id="stPacketsBox"><div class="k">Undersample Paket</div><div class="v" id="stPackets">0 <small>/ 0 atılan</small></div></div>
-        <div class="stat"><div class="k">Hız</div><div class="v" id="stSpeed">–</div></div>
-        <div class="stat"><div class="k">Geçen Süre</div><div class="v" id="stTime">0 sn</div></div>
-      </div>
-      <div class="types-line" id="stTypes"></div>
-      <div class="result" id="result"></div>
-    </div>
-  </section>
-
-</main>
-
-<main id="tabLive" class="tabpage live-main hidden">
+<main id="tabLive" class="tabpage tl-main">
   <section class="card span2 hidden" id="lvRawCard">
     <div class="card-h">
       <h2>Gelen Ham Veri</h2>
@@ -646,51 +691,28 @@ body.rz-chart, body.rz-chart * { cursor: nwse-resize !important; user-select: no
     </div>
   </section>
 
-  <section class="card">
-    <div class="card-h"><h2>Dosyadan Canlı Oynatma</h2><span id="lvConnBadge" class="badge mute">Bağlı değil</span></div>
-    <div class="card-b">
-      <div class="seg hidden" id="lvSource">
-        <button type="button" data-src="sim">Dosyadan Oynat</button>
-      </div>
-      <p class="hint" style="margin:0 0 12px">Kayıt dosyası gerçek zamanlı akış gibi, çerçeve periyoduna göre oynatılır; tablo, grafikler ve video penceresi canlı güncellenir. Kaydırıcıyla istediğiniz çerçeveye gidebilirsiniz.</p>
-
-      <div class="lv-src" data-src="sim">
-        <div class="form">
-          <label>Kayıt dosyaları</label>
-          <div class="field"><button class="btn sm" type="button" id="lvSimPick">Dosya Seç</button><input type="file" id="lvSimInput" accept=".bin,.binary" multiple hidden><div class="file-chips" id="lvSimFiles"></div><div class="help">Birden fazla dosya sırayla tek akış olarak oynatılır.</div></div>
-          <label for="lv_simPeriod">Çerçeve periyodu (ms)</label>
-          <div class="field"><input class="inp w-s" id="lv_simPeriod" type="number" min="0.1" step="any"><div class="help">Akış hızı = çerçeve uzunluğu / periyot.</div></div>
-          <label>Döngü</label>
-          <div class="field"><label class="switch"><input type="checkbox" id="lv_simLoop"><span class="tr"></span><span class="sl">Dosya bitince başa dön</span></label></div>
-          <label for="lvFrNum">Çerçeve</label>
-          <div class="field">
-            <div class="sim-nav off" id="lvSimNav">
-              <button class="btn icon" type="button" id="lvFrPrev" data-nav title="Önceki çerçeve">◀</button>
-              <input type="range" id="lvFrSlider" data-nav min="1" max="1" step="1" value="1" title="Sürükleyerek çerçeveler arasında gezin">
-              <button class="btn icon" type="button" id="lvFrNext" data-nav title="Sonraki çerçeve">▶</button>
-              <input class="inp mono" id="lvFrNum" data-nav type="number" min="1" step="1" title="Gitmek istediğiniz çerçeve numarasını yazıp Enter'a basın">
-              <span class="fi" id="lvFrInfo">–</span>
-            </div>
-            <div class="help" id="lvFrHelp">Kaydırıcı, ◀ ▶ veya çerçeve numarası ile istediğiniz çerçeveye gidilir; akış otomatik duraklar. <b>Devam Et</b> seçilen çerçeveden itibaren oynatır.</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="run-row" style="margin-top:16px">
-        <button class="btn primary" type="button" id="lvConnect">▶ Oynat</button>
-        <button class="btn" type="button" id="lvDisconnect" disabled>■ Durdur</button>
-        <button class="btn" type="button" id="lvPause" disabled title="Oynatmayı duraklat / devam et. Tablo ve grafikler donar.">❚❚ Duraklat</button>
-        <span class="sep"></span>
-        <button class="btn rec" type="button" id="lvRec" disabled title="Oynatılan akışı yeni bir .bin dosyasına kaydeder (ör. bir bölümü kesip ayırmak için)">● Kayıt Başlat</button>
-        <span class="sep"></span>
-        <button class="btn" type="button" id="lvRawToggle" title="Gelen ham byte'ları hex olarak göster / gizle">Ham Veri</button>
+  <section class="card tl-data" id="tlData">
+    <div class="tl-dh">
+      <h2>Çözülen Veriler</h2><span id="lvWorkBadge" class="badge mute"></span>
+      <div class="subtabs" id="lvSubtabs"></div>
+      <div class="unit-chips" id="lvUnits"></div>
+      <span class="grow"></span>
+      <span id="lvWorkInfo" class="hint" style="margin:0"></span>
+      <input class="inp w-m" id="lvFilter" type="search" placeholder="Birim / etiket / değişken ara">
+      <button class="btn sm" type="button" id="tlColsBtn" title="Tabloda gösterilecek sütunlar; seçimi kaydedip her açılışta bu görünümle başlayın">Sütunlar ▾</button>
+      <button class="btn sm" type="button" id="tlMoreBtn" title="Template çalışma kopyası işlemleri">Template ▾</button>
+      <button class="btn sm tl-help" type="button" title="Satırları soldaki ⋮⋮ tutamağıyla, sütunları başlıklarından sürükleyerek taşıyın. Sütun genişliği: başlığın sağ kenarını sürükleyin, çift tık içeriğe sığdırır. Başlığa sağ tık: sütunu gizle. Etiket düğmelerinden birden fazlası seçilerek tablo süzülür. Satır sonundaki grafik düğmesi parametreyi MATView Zaman sekmesinde canlı çizer; kamera düğmesi videoyu açılır pencerede oynatır. Değişiklikler yalnız çalışma kopyasını etkiler; asıl template için Template ▾ › Orijinalin Üzerine Yaz.">?</button>
+      <div class="tl-menu hidden" id="tlMore" role="menu">
+        <button class="btn sm" type="button" id="lvAddRow">+ Satır Ekle</button>
+        <button class="btn sm" type="button" id="lvRevert">Orijinale Dön</button>
+        <button class="btn sm" type="button" id="lvSaveOrig">Orijinalin Üzerine Yaz</button>
+        <button class="btn sm" type="button" id="lvExport">Excel'e Aktar</button>
       </div>
     </div>
-  </section>
-
-  <section class="card">
-    <div class="card-h"><h2>Canlı Durum</h2><span id="lvRecBadge" class="badge mute">Kayıt yok</span></div>
-    <div class="card-b">
+    <div id="lvGeneral"></div>
+    <div class="lv-wrap" id="lvWrap"></div>
+    <div class="tl-status hidden" id="tlStatus" role="region" aria-label="Canlı durum">
+      <div class="tl-sh"><b>Canlı durum</b><span id="lvRecBadge" class="badge mute">Kayıt yok</span><button class="btn icon sm" type="button" id="tlStatusX" title="Kapat">✕</button></div>
       <div class="stats">
         <div class="stat"><div class="k">Alınan Veri</div><div class="v" id="lvBytes">0 B</div></div>
         <div class="stat"><div class="k">Veri Hızı</div><div class="v" id="lvRate">–</div></div>
@@ -713,51 +735,90 @@ body.rz-chart, body.rz-chart * { cursor: nwse-resize !important; user-select: no
       </div>
     </div>
   </section>
+</main>
 
-  <section class="card span2 hidden" id="lvChartsCard">
-    <div class="card-h">
-      <h2>Grafikler</h2>
-      <div class="actions" style="align-items:center">
+<section class="card tl-vwin hidden" id="lvChartsCard" role="dialog" aria-label="Kamera">
+  <div class="card-h tl-vwh" id="tlVwinH" title="Başlıktan sürükleyerek taşıyın">
+    <h2>Kamera</h2>
+    <div class="actions" style="align-items:center">
         <label for="lvChartSec" style="font-size:12.5px;color:var(--muted)">Son</label>
         <input class="inp w-s" style="height:28px;width:80px" id="lvChartSec" type="number" min="1" step="1">
         <span style="font-size:12.5px;color:var(--muted)">saniye</span>
         <button class="btn sm" type="button" id="lvChartsClear">Tümünü Kapat</button>
       </div>
+  </div>
+  <div class="card-b"><div class="charts" id="lvCharts"></div></div>
+</section>
+
+<div id="tabFile" class="hidden" aria-hidden="true">
+  <section class="card">
+    <div class="card-h">
+      <h2>Kayıt Dosyaları</h2>
+      <div class="actions">
+        <button class="btn sm" id="btnAddFile" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Dosya Ekle
+        </button>
+        <button class="btn sm" id="btnSortFiles" type="button" title="Dosyaları ada göre sırala">Ada Göre Sırala</button>
+        <button class="btn sm" id="btnClearFiles" type="button">Listeyi Temizle</button>
+      </div>
     </div>
-    <div class="card-b"><div class="chart-hint">Sürükle: veri seç (Delete ile sil) · Tekerlek: zoom · Shift+tekerlek veya ← →: sağa-sola kaydır · Zoom ve seçim canlı akışı durdurmaz; durdurmak için ❚❚ veya boşluk · Sağ tık: menü · Limit ikonu: eksen limitlerini elle gir · ↗: ayrı pencerede aç · Sağ alt köşe: boyutlandır · Video satırı: video penceresi</div><div class="charts" id="lvCharts"></div></div>
+    <div class="card-b">
+      <input type="file" id="fileInput" accept=".bin,.binary" multiple hidden>
+      <div class="drop" id="dropZone">.bin / .binary dosyalarını buraya sürükleyin veya <b>Dosya Ekle</b> ile seçin. MATView penceresine ya da Klasör paneline bırakılan binary dosyalar da buraya gelir.</div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th style="width:56px">#</th><th>Dosya</th><th class="num">Boyut</th><th title="Dosyadaki ilk ve son çerçeve numarası. Tümü işaretli değilse yalnız girilen aralık çözülür.">Çerçeve aralığı</th><th style="width:96px"></th></tr></thead>
+          <tbody id="fileBody"></tbody>
+        </table>
+      </div>
+      
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2>Yapılandırma Özeti</h2><button class="btn sm" id="btnSettings2" type="button">Düzenle</button></div>
+    <div class="card-b">
+      <dl class="summary" id="summary"></dl>
+      <div id="summaryNotes"></div>
+    </div>
   </section>
 
   <section class="card span2">
     <div class="card-h">
-      <h2>Template — Canlı Çalışma Kopyası</h2>
-      <span id="lvWorkBadge" class="badge mute"></span>
+      <h2>Çözümleme</h2>
+      
     </div>
     <div class="card-b">
-      <div class="subtabs" id="lvSubtabs"></div>
-      <div class="lv-toolbar">
-        <button class="btn sm" type="button" id="lvAddRow">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-          Satır Ekle
-        </button>
-        <button class="btn sm" type="button" id="lvRevert">Orijinale Dön</button>
-        <button class="btn sm" type="button" id="lvSaveOrig">Orijinalin Üzerine Yaz</button>
-        <button class="btn sm" type="button" id="lvExport">Excel'e Aktar</button>
-        <span class="grow"></span>
-        <span id="lvWorkInfo" class="hint" style="margin:0"></span>
-        <input class="inp w-m" id="lvFilter" type="search" placeholder="Birim / etiket / değişken ara">
+      <div class="run-row">
+        
+        
+        
+        <span id="runHint" class="hint" style="margin:0"></span>
       </div>
-      <div class="unit-chips" id="lvUnits"></div>
-      <div id="lvGeneral"></div>
-      <div class="lv-wrap" id="lvWrap"></div>
-      <p class="hint">Satırları soldaki <b>⋮⋮</b> tutamağıyla, sütunları başlıklarından sürükleyerek taşıyabilirsiniz. Sütun genişliğini başlığın sağ kenarından sürükleyerek değiştirin; kenara çift tıklarsanız genişlik içeriğe göre ayarlanır. Başlığa sağ tıklayarak sütunu gizleyebilirsiniz; görünecek sütunlar Ayarlar &gt; Canlı Görünüm sayfasından da seçilir. Üstteki etiket düğmelerinden birden fazlasını seçerek tabloyu filtreleyebilirsiniz (etiketi boş satırlar birim adıyla gruplanır). Değişiklikler yalnızca çalışma kopyasını etkiler; asıl template'i değiştirmek için <b>Orijinalin Üzerine Yaz</b>.</p>
+      
+      <div class="progress-meta"><span id="pPhase">Bekleniyor</span></div>
+      <div class="stats">
+        <div class="stat"><div class="k">İşlenen Veri</div><div class="v" id="stBytes">0 B</div></div>
+        <div class="stat"><div class="k">Bulunan Çerçeve</div><div class="v" id="stFrames">0</div></div>
+        <div class="stat" id="stSkippedBox"><div class="k">Atlanan Byte</div><div class="v" id="stSkipped">0</div></div>
+        <div class="stat" id="stLostBox"><div class="k">Kayıp Çerçeve</div><div class="v" id="stLost">0</div></div>
+        <div class="stat" id="stUnknownBox"><div class="k">Tanımsız Belirteç</div><div class="v" id="stUnknown">0</div></div>
+        <div class="stat" id="stPacketsBox"><div class="k">Undersample Paket</div><div class="v" id="stPackets">0 <small>/ 0 atılan</small></div></div>
+        <div class="stat"><div class="k">Hız</div><div class="v" id="stSpeed">–</div></div>
+        <div class="stat"><div class="k">Geçen Süre</div><div class="v" id="stTime">0 sn</div></div>
+      </div>
+      <div class="types-line" id="stTypes"></div>
+      <div class="result" id="result"></div>
     </div>
   </section>
-</main>
 
-<main id="tabVideo" class="tabpage hidden">
-  <section class="card span2">
-    <div class="card-h"><h2>Video Oynat</h2><span id="vpState" class="badge mute">Dosya seçilmedi</span></div>
-    <div class="card-b">
+</div>
+
+<div class="overlay hidden" id="vpOverlay">
+  <div class="panel modal vpmodal" role="dialog" aria-label="Video">
+    <div class="panel-h"><h2>Video</h2><span id="vpState" class="badge mute">Dosya seçilmedi</span><button class="btn sm" type="button" id="vpX">Kapat</button></div>
+    <div class="mbody" id="tabVideo">
       <div class="vp-bar">
         <button class="btn" type="button" id="vpPick">Dosya Seç</button>
         <input type="file" id="vpInput" accept=".bin,.binary,.h264,.264,.mp4" hidden>
@@ -789,8 +850,8 @@ body.rz-chart, body.rz-chart * { cursor: nwse-resize !important; user-select: no
         <div class="vp-info" data-vp="info"></div>
       </div>
     </div>
-  </section>
-</main>
+  </div>
+</div>
 
 <main id="tabMat" class="tabpage mv-main hidden">
   <section class="card span2">
@@ -822,20 +883,17 @@ body.rz-chart, body.rz-chart * { cursor: nwse-resize !important; user-select: no
   </section>
 </main>
 
-<div class="logwrap" id="logWrap">
-  <section class="card">
-    <div class="card-h">
-      <h2>İşlem Kaydı</h2>
-      <div class="actions">
-        <button class="btn sm" id="btnLogDl" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
-          Log İndir
-        </button>
+<div class="overlay hidden" id="logOverlay">
+  <div class="panel modal" role="dialog" aria-label="İşlem kaydı">
+    <div class="panel-h"><h2>İşlem Kaydı</h2>
+      <div class="actions" style="display:flex;gap:6px">
+        <button class="btn sm" id="btnLogDl" type="button">Log İndir</button>
         <button class="btn sm" id="btnLogClear" type="button">Temizle</button>
+        <button class="btn sm" id="logX" type="button">Kapat</button>
       </div>
     </div>
     <pre class="log" id="logView"></pre>
-  </section>
+  </div>
 </div>
 
 <!-- AYARLAR -->
@@ -5284,7 +5342,7 @@ function updateRunButton() {
   $('#btnStop').disabled = !running;
   $('#btnAddFile').disabled = running; $('#btnClearFiles').disabled = running; $('#btnSortFiles').disabled = running || files.length < 2;
 }
-function setState(label, cls) { var b = $('#runState'); b.textContent = label; b.className = 'badge ' + cls; }
+function setState(label, cls) { var b = $('#runState'); b.textContent = label; b.className = 'badge ' + cls; var pg = $('#tlProg'); if (pg) pg.classList.toggle('hidden', label === 'Hazır'); }
 function setProgress(frac, phase) {
   var pct = Math.max(0, Math.min(100, frac * 100));
   $('#pBar').style.width = pct.toFixed(1) + '%';
@@ -5482,30 +5540,37 @@ $('#btnLogClear').onclick = function () { logLines = []; renderLog(); };
 
 /* ---------- ana sekmeler ---------- */
 function showTab(t) {
-  $$('#mainTabs button').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === t); });
-  $('#tabFile').classList.toggle('hidden', t !== 'file');
+  if (t === 'video') { openVideoDlg(); t = 'live'; }
+  if (t !== 'mat') t = 'live';
   $('#tabLive').classList.toggle('hidden', t !== 'live');
-  $('#tabVideo').classList.toggle('hidden', t !== 'video');
   $('#tabMat').classList.toggle('hidden', t !== 'mat');
-  if (t === 'video' && window.TPVideo) window.TPVideo.onShow();
-  $('#logWrap').classList.toggle('wide', t === 'live' || t === 'mat');
+  var dr = $('#tlDrawer'); if (dr && t === 'mat') dr.classList.add('hidden');
   try { localStorage.setItem('telemetryParser.tab', t); } catch (e) {}
   if (window.TPLive) { window.TPLive.onShow(t === 'live'); window.TPLive.onShowMat(t === 'mat'); }
 }
-$$('#mainTabs button').forEach(function (b) { b.onclick = function () { showTab(b.dataset.tab); }; });
+function openVideoDlg() { $('#vpOverlay').classList.remove('hidden'); if (window.TPVideo) window.TPVideo.onShow(); }
+$('#vpX').onclick = function () { $('#vpOverlay').classList.add('hidden'); };
+$('#vpOverlay').addEventListener('mousedown', function (e) { if (e.target === this) this.classList.add('hidden'); });
+function openLog() { $('#logOverlay').classList.remove('hidden'); renderLog(); var v = $('#logView'); v.scrollTop = v.scrollHeight; }
+$('#tlLogBtn').onclick = openLog; $('#logX').onclick = function () { $('#logOverlay').classList.add('hidden'); };
+$('#logOverlay').addEventListener('mousedown', function (e) { if (e.target === this) this.classList.add('hidden'); });
+$('#runState').onclick = openLog; $('#runState').onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLog(); } };
+$('#tlVideoBtn').onclick = openVideoDlg;
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { $('#logOverlay').classList.add('hidden'); $('#vpOverlay').classList.add('hidden'); } });
+$$('#mainTabs button[data-tab]').forEach(function (b) { b.onclick = function () { showTab(b.dataset.tab); }; });
 
 window.TPUI = {
   getS: function () { return S; }, esc: esc, uiLog: uiLog, download: download, stamp: stamp, fmtDur: fmtDur,
   showModal: showModal, FS_OK: FS_OK, getOutDir: function () { return outDir; }, pickDir: pickDir,
   ensureDirPermission: ensureDirPermission, save: save, onChanged: onChanged, showTab: showTab, indexFrames: indexFrames,
   replaceSettings: function (o) { S = normalize(o); onChanged(true); fillForm(); },
-  addFiles: function (list) { addFiles(list); }, isRunning: function () { return running; }, saveSingleMat: saveSingleMat,
+  addFiles: function (list) { addFiles(list); }, setFiles: function (list) { if (running) return false; files = []; addFiles(list); return true; }, isRunning: function () { return running; }, saveSingleMat: saveSingleMat,
   hasTemplates: function () { return usableTemplates() > 0; }, addTemplates: addTemplates
 };
 
 /* ---------- başlangıç ---------- */
 $('#verLabel').textContent = 'v' + TP.VERSION; $('#verLabel2').textContent = 'telemetryParser v' + TP.VERSION + ' tabanlı';
-revalidate(); renderFiles(); renderSummary(); renderLog(); resetStats(0);
+revalidate(); renderFiles(); renderSummary(); renderLog(); resetStats(0); $('#tlProg').classList.add('hidden');
 if (FS_OK) idbGet('outDir').then(function (d) { if (d) { outDir = d; renderOutDir(); renderSummary(); } }).catch(function () {});
 uiLog('BİLGİ', 'Telemetri Çözümleyici v' + TP.VERSION + ' hazır. ' + (FS_OK ? 'Çıktılar seçilen klasöre yazılacak.' : 'Bu tarayıcıda çıktılar ZIP olarak indirilecek.'));
 })();
@@ -6880,6 +6945,7 @@ function vfReset(f) {
   f.dec = null; f.frame = null; f.sps = null; f.pps = null; f.needKey = true; f.vinfo = null; f.err = '';
   f.nAU = 0; f.nOut = 0; f.dropped = 0; f.meter = []; f.chunks = 0;
   f.dp = new TP.VideoDepack({ onAU: function (au) { vfAU(f, au); } });
+  f.mw = null; f.mwBytes = 0;
 }
 function closeVfig(f, noRender) {
   closePop(f);
@@ -6907,6 +6973,7 @@ function vfFeed(i, unit, b, base) {
 }
 function vfAU(f, au) {
   f.nAU++;
+  vfRec(f, au);
   for (var k = 0; k < au.nals.length; k++) { var t = au.nals[k][0] & 0x1f; if (t === 7) f.sps = au.nals[k]; else if (t === 8) f.pps = au.nals[k]; }
   if (typeof VideoDecoder === 'undefined') { f.err = 'Bu tarayıcı video çözmeyi desteklemiyor (WebCodecs gerekli: Chrome veya Edge).'; return; }
   if (!f.dec) {
@@ -6975,10 +7042,38 @@ function vfInfo(f, now) {
   f.errEl.textContent = f.err || ''; f.errEl.classList.toggle('hidden', !f.err);
   if (!f.frame) vfDraw(f);
 }
+// açık video penceresi kareleri MP4 için bellekte biriktirir (en çok ~400 MB); MP4 indir o ana kadarki kaydı verir
+function VMem() { this.parts = []; }
+VMem.prototype.put = function (u8) { this.parts.push(u8.slice()); return this.parts.length - 1; };
+VMem.prototype.get = async function (r) { return this.parts[r]; };
+function vfRec(f, au) {
+  if (f.mwFull || !TP.Mp4Writer) return;
+  if (!f.mw) f.mw = new TP.Mp4Writer(new VMem(), { fps: 30 });
+  var mw = f.mw; au.nals.forEach(function (x) { var t = x[0] & 0x1f; if (t === 7) f.sps = f.sps || x; else if (t === 8) f.pps = f.pps || x; });
+  if (!mw.sps && f.sps) { mw.sps = f.sps; try { mw.info = TP.parseSps(f.sps); } catch (e) { mw.info = null; } }
+  if (!mw.pps && f.pps) mw.pps = f.pps;
+  var n0 = mw.sizes.length; try { mw.add(au); } catch (e) { return; } if (mw.sizes.length > n0) f.mwBytes += mw.sizes[mw.sizes.length - 1];
+  if (f.mwBytes > 400 * 1048576) { f.mwFull = true; U.uiLog('UYARI', vfigName(f) + ': video kaydı 400 MB sınırına ulaştı; MP4 bu noktaya kadar indirilebilir'); }
+}
+function vfFileName(f, ext) { return vfigName(f).replace(/[^A-Za-z0-9_\-ğüşıöçĞÜŞİÖÇ]+/g, '_') + '_' + U.stamp() + '.' + ext; }
+function vfSave(name, blob, type) { var host = window.parent !== window && window.parent.MATViewTLM; if (host && host.saveFile) host.saveFile(name, blob); else U.download(name, blob, type); }
+async function vfMp4(f) {
+  if (!f.mw || !f.mw.sizes.length) { U.showModal('MP4', '<div class="notice warn">Henüz kaydedilecek kare yok (ilk anahtar kare bekleniyor). Oynatma sürerken tekrar deneyin.</div>'); return; }
+  var b = await f.mw.toBlob(), name = vfFileName(f, 'mp4'); vfSave(name, b, 'video/mp4');
+  U.uiLog('BİLGİ', name + ': ' + f.mw.sizes.length + ' kare MP4 olarak kaydedildi');
+}
+function vfSnap(f) {
+  var fr = f.frame, c = document.createElement('canvas');
+  if (fr) { c.width = fr.displayWidth || fr.codedWidth; c.height = fr.displayHeight || fr.codedHeight; c.getContext('2d').drawImage(fr, 0, 0, c.width, c.height); }
+  else if (f.canvas) { c.width = f.canvas.width; c.height = f.canvas.height; c.getContext('2d').drawImage(f.canvas, 0, 0); }
+  c.toBlob(function (b) { if (b) vfSave(vfFileName(f, 'png'), b, 'image/png'); }, 'image/png');
+}
 function vfigHtml(f) {
   var b = function (k, t, ic) { return '<button class="btn icon" type="button" data-v="' + k + '" title="' + esc(t) + '">' + ic + '</button>'; };
   var tools = b('pause', 'Durdur / devam et (boşluk)', f.paused ? CHART_ICONS.play : CHART_ICONS.pause) +
     '<span class="sep"></span>' + b('zin', 'Yakınlaştır (tekerlek)', CHART_ICONS.zin) + b('zout', 'Uzaklaştır', CHART_ICONS.zout) + b('home', 'Sığdır (çift tık)', CHART_ICONS.home) +
+    '<span class="sep"></span>' + b('snap', 'Ekran alıntısı (PNG)', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>') +
+    b('mp4', 'MP4 indir (pencere açıldığından beri)', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>') +
     '<button class="btn icon" type="button" data-pop title="' + (popAlive(f) ? 'Ana pencereye geri al' : 'Ayrı pencerede aç') + '">' + CHART_ICONS.popout + '</button>';
   var t = chartTitle({ i: f.i, id: f.id, k: 0 });
   return '<div class="chart vfig" data-uid="' + f.uid + '"><div class="chart-h"><span class="ctools">' + tools + '</span>' +
@@ -7009,6 +7104,8 @@ function vfButton(f, b) {
   else if (v === 'zin') vfZoom(f, 1.25);
   else if (v === 'zout') vfZoom(f, 0.8);
   else if (v === 'home') { f.z = 1; f.px = 0; f.py = 0; vfDraw(f); }
+  else if (v === 'snap') vfSnap(f);
+  else if (v === 'mp4') vfMp4(f);
 }
 function bindVfig(f) {
   var cv = f.canvas;
@@ -7713,9 +7810,50 @@ $('#lvSimPick').onclick = function () { $('#lvSimInput').click(); };
 $('#lvSimInput').onchange = function () {
   simFiles = Array.prototype.filter.call(this.files, function (f) { return /\.(bin|binary)$/i.test(f.name); });
   this.value = '';
+  simFilesChanged();
+};
+// oynatma ve çözümleme aynı kayıt dosyalarını kullanır
+function simFilesChanged() {
   $('#lvSimFiles').innerHTML = simFiles.map(function (f) { return '<span>' + esc(f.name) + ' · ' + fmtBytes(f.size) + '</span>'; }).join('');
   simBlob = null; simCur = -1; simIndex();
-};
+  if (U.setFiles) U.setFiles(simFiles);
+  var tot = simFiles.reduce(function (a, f) { return a + f.size; }, 0), sum = $('#tlFilesSum');
+  if (sum) { sum.textContent = simFiles.length ? (simFiles.length === 1 ? simFiles[0].name : simFiles.length + ' dosya') + ' · ' + fmtBytes(tot) : 'Dosya seçilmedi'; sum.title = simFiles.map(function (f) { return f.name; }).join('\n') || 'Seçili kayıt dosyası yok'; }
+  var fm = $('#tlFmode'); if (fm) fm.classList.toggle('hidden', simFiles.length < 2);
+  if (!simFiles.length) drawerSet(true);
+}
+function drawerSet(open) { var d = $('#tlDrawer'), b = $('#tlDrawerBtn'); if (!d) return; d.classList.toggle('hidden', !open); b.setAttribute('aria-expanded', String(open)); b.textContent = (open ? '▾' : '▸') + ' Dosyadan Oynatma'; }
+$('#tlDrawerBtn').onclick = function () { drawerSet($('#tlDrawer').classList.contains('hidden')); };
+$('#lvConnect').addEventListener('click', function () { if (simFiles.length) drawerSet(false); });
+// canlı durum kutusu (lejant gibi aç / kapat)
+function statusSet(open) { $('#tlStatus').classList.toggle('hidden', !open); $('#tlStatusBtn').setAttribute('aria-pressed', String(open)); try { localStorage.setItem('telemetryParser.status', open ? '1' : '0'); } catch (e) {} }
+$('#tlStatusBtn').onclick = function () { statusSet($('#tlStatus').classList.contains('hidden')); };
+$('#tlStatusX').onclick = function () { statusSet(false); };
+try { if (localStorage.getItem('telemetryParser.status') === '1') statusSet(true); } catch (e) {}
+// template işlemleri menüsü
+$('#tlMoreBtn').onclick = function (e) { e.stopPropagation(); $('#tlMore').classList.toggle('hidden'); };
+$('#tlMore').addEventListener('click', function () { $('#tlMore').classList.add('hidden'); });
+document.addEventListener('mousedown', function (e) { if (!e.target.closest('#tlMore, #tlMoreBtn')) $('#tlMore').classList.add('hidden'); if (!e.target.closest('#tlCols, #tlColsBtn')) { var c = $('#tlCols'); if (c) c.remove(); } });
+/* ---------- sütun görünümü: kalıcı (her açılışta bu sütunlarla başlar) ---------- */
+var COLS_KEY = 'telemetryParser.cols.v1';
+function colsPersist() { try { localStorage.setItem(COLS_KEY, JSON.stringify(S().live.columns || [])); } catch (e) {} }
+function colsRestore() { try { var c = JSON.parse(localStorage.getItem(COLS_KEY) || 'null'); if (Array.isArray(c) && c.length) S().live.columns = c; } catch (e) {} }
+colsRestore();
+var _uSave = U.save; U.save = function () { _uSave.apply(this, arguments); colsPersist(); };
+function colsPanel() {
+  var old = $('#tlCols'); if (old) { old.remove(); return; }
+  var p = document.createElement('div'); p.id = 'tlCols'; p.className = 'tl-cols'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', 'Sütunlar');
+  function draw() {
+    p.innerHTML = '<div class="col-list">' + colOrder().map(function (c) { var cd = COLMAP[c.key]; return '<label><input type="checkbox" data-col="' + c.key + '"' + (c.visible ? ' checked' : '') + '> ' + esc(cd.label) + '<span class="kind">' + (cd.tpl != null ? 'template' : 'canlı') + '</span></label>'; }).join('') + '</div>' +
+      '<div class="note">Seçim otomatik saklanır; uygulama her açıldığında bu sütunlarla başlar. Sıra: başlıkları sürükleyin.</div>' +
+      '<div class="tl-cb"><button class="btn sm" type="button" data-c="save">Görünümü kaydet</button><button class="btn sm" type="button" data-c="def">Varsayılan sütunlar</button></div>';
+  }
+  draw();
+  p.addEventListener('change', function (e) { var k = e.target.dataset.col; if (!k) return; colOrder().forEach(function (c) { if (c.key === k) c.visible = e.target.checked; }); U.save(); renderTable(); renderColList(); });
+  p.addEventListener('click', function (e) { var b = e.target.closest('[data-c]'); if (!b) return; if (b.dataset.c === 'save') { U.save(); colsPersist(); U.uiLog('BİLGİ', 'Sütun görünümü kaydedildi'); b.textContent = 'Kaydedildi ✓'; } else { S().live.columns = null; try { localStorage.removeItem(COLS_KEY); } catch (x) {} U.save(); renderTable(); renderColList(); draw(); } });
+  $('#tlData .tl-dh').appendChild(p);
+}
+$('#tlColsBtn').onclick = function (e) { e.stopPropagation(); colsPanel(); };
 $('#lvConnect').onclick = function () { paused = false; simCur = -1; connect(); };
 $('#lvDisconnect').onclick = function () { disconnect(); };
 $('#lvRec').onclick = function () { if (rec) recStop(); else recStart(); };
@@ -8232,8 +8370,7 @@ window.TPLive = {
   setSimFiles: function (list) {
     if (connState !== 'idle') { U.uiLog('UYARI', 'Oynatma sürerken dosya değiştirilemez; önce Durdur'); return false; }
     simFiles = Array.prototype.filter.call(list, function (f) { return /\.(bin|binary)$/i.test(f.name); });
-    $('#lvSimFiles').innerHTML = simFiles.map(function (f) { return '<span>' + esc(f.name) + ' · ' + fmtBytes(f.size) + '</span>'; }).join('');
-    simBlob = null; simCur = -1; simIndex();
+    simFilesChanged();
     return simFiles.length > 0;
   },
   themeChanged: function () { CSSV = null; renderCharts(); if (FS_MAT.visible) renderCharts(FS_MAT); },
@@ -8247,10 +8384,41 @@ window.TPLive = {
   }
 };
 
+/* ---------- grafikler MATView Zaman sekmesinde: canlı kanal köprüsü ----------
+   Veri satırındaki grafik düğmesi sinyali MATView'e canlı kanal olarak verir ve Zaman sekmesine geçer; MATView
+   periyodik olarak yeni örnekleri çeker (liveData). Telemetri paneline dönüldüğünde oynatma kaldığı yerden sürer. */
+var MVH = (function () { try { return window.parent !== window && window.parent.MATViewTLM && window.parent.MATViewTLM.liveChart ? window.parent.MATViewTLM : null; } catch (e) { return null; } })();
+if (MVH) {
+  newFigure = function (i, id, k) { MVH.liveChart([{ key: sigKey(i, id, k), i: i, id: id, k: k }], 'new'); };
+  showAddMenu = function (btn, i, id, k) {
+    var sig = { key: sigKey(i, id, k), i: i, id: id, k: k }, axes = MVH.liveAxes(), items = [{ ttl: chartTitle(sig).name }, { label: '+ Yeni alt grafik (MATView Zaman)', fn: function () { MVH.liveChart([sig], 'new'); } }];
+    if (axes.length) { items.push('-', { ttl: 'MATView alt grafiğine ekle' }); axes.forEach(function (a, j) { items.push({ label: (j + 1) + '. alt grafik — ' + a, fn: function () { MVH.liveChart([sig], j); } }); }); }
+    var m = menuItems(items), r = btn.getBoundingClientRect(); showFigMenu(m.html, r.left - 260, r.top, m.acts);
+  };
+}
+var liveSubs = {};
+window.TPLive.liveSub = function (sig) { if (!liveSubs[sig.key]) { refKey(sig.key, 1); liveSubs[sig.key] = 1; } else liveSubs[sig.key]++; var t = chartTitle(sig), w = work[sig.i], k = w ? w.ids.indexOf(sig.id) : -1, row = k >= 0 ? w.rows[k + 1] : null; try { updateRowStatus(); buildChips(); } catch (e) {} return { name: t.name, ft: t.ft, unit: row ? (row[0] || '') : '' }; };
+window.TPLive.liveUnsub = function (key) { if (!liveSubs[key]) return; if (--liveSubs[key] <= 0) { delete liveSubs[key]; refKey(key, -1); try { updateRowStatus(); buildChips(); } catch (e) {} } };
+// sinceT'den sonraki örnekler; gen: oynatma oturumu (yeniden bağlanınca değişir, zaman sıfırlanır)
+window.TPLive.liveData = function (key, sinceT) { var p = key.split(':'), hi = hist[+p[0]], h = hi && hi.get(p[1] + ':' + p[2]); if (!h || !h.t.length) return { t: [], v: [], gen: cnt.t0 }; var j = sinceT == null ? 0 : upperT(h.t, sinceT); return { t: h.t.slice(j), v: h.v.slice(j), gen: cnt.t0 }; };
+window.TPLive.liveState = function () { return { conn: connState, paused: paused, win: chartWin(), t0: cnt.t0 }; };
+(function () { var fm = $('#tlFmode'); if (fm) fm.classList.add('hidden'); })();
+// kamera penceresi başlıktan sürüklenerek taşınır
+(function () {
+  var win = $('#lvChartsCard'), hd = $('#tlVwinH');
+  hd.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('button, input, select, label')) return;
+    e.preventDefault(); var r = win.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    function mv(ev) { win.style.left = Math.max(0, Math.min(innerWidth - 80, ev.clientX - dx)) + 'px'; win.style.top = Math.max(0, Math.min(innerHeight - 40, ev.clientY - dy)) + 'px'; win.style.right = 'auto'; win.style.bottom = 'auto'; }
+    function up() { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); }
+    addEventListener('pointermove', mv); addEventListener('pointerup', up);
+  });
+})();
+
 compileAll(); saveWork(); setConn('idle'); startTick();
 var savedTab = 'file';
 try { savedTab = localStorage.getItem('telemetryParser.tab') || 'file'; } catch (e) { }
-U.showTab(savedTab === 'live' || savedTab === 'video' ? savedTab : 'file');
+U.showTab('live');
 })();
 
 /* ============================================================
@@ -8445,7 +8613,7 @@ sync();
 (function () {
 var U = window.TPUI;
 window.TPHost = {
-  addFiles: function (list) { U.addFiles(list); U.showTab('file'); },
+  addFiles: function (list) { U.showTab('live'); return window.TPLive.setSimFiles(list); },
   playFiles: function (list) { U.showTab('live'); return window.TPLive.setSimFiles(list); },
   playVideo: function (f) { U.showTab('video'); window.TPVideo.pick(f); },
   addTemplateFiles: function (list) { return U.addTemplates(list); },
@@ -8471,7 +8639,7 @@ window.addEventListener('drop', function (e) {
   var t = e.target, zone = t && t.closest && t.closest('#dropZone, #vpDrop, #mvWsPane');
   if (zone || !e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
   var fl = Array.prototype.slice.call(e.dataTransfer.files), bins = fl.filter(function (f) { return /\.(bin|binary)$/i.test(f.name); });
-  if (t && t.closest && t.closest('#tabLive') && bins.length) { window.TPLive.setSimFiles(bins); return; }
+  if (t && t.closest && t.closest('#tabLive, #tlDrawer, #mainTabs') && bins.length) { window.TPLive.setSimFiles(bins); return; }
   try { if (window.parent !== window && window.parent.MATViewTLM) window.parent.MATViewTLM.dropFiles(Array.prototype.slice.call(e.dataTransfer.files)); } catch (x) {}
 });
 try { if (window.parent !== window && window.parent.MATViewTLM) window.parent.MATViewTLM.ready(window); } catch (e) {}
