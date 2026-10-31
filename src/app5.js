@@ -114,6 +114,7 @@ function syncOverlay(P) {
   ov.style.height = P.H + 'px';
   const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + (P.lgSize || 'm') + (P.lgCorner || 'tr') + P.gridCols() + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
   if (sig !== ov._sig) { ov._sig = sig; buildOv(P, ov); }
+  if (P === S.plot && typeof acBarSync === 'function') acBarSync(P, ov);
   for (const p of ov._parts) { p.upd(); if (p.cor && p.ax.rect) { const r = p.ax.rect; p.cor.style.left = r.x + r.w - 12 + 'px'; p.cor.style.top = r.y + r.h - 12 + 'px'; } }
 }
 // lejant katla / aç (tek alt grafik) ve tümünü (L değil: L kement; Ctrl+L değil: adres çubuğu) — araç çubuğundaki Lejant düğmesi

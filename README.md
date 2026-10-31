@@ -12,7 +12,7 @@ MATLAB `.mat` dosyalarını okuyan, MATLAB benzeri grafik çizen; yakınlaştır
 - Büyük veri (14 M+ örnek) için min/max inceltme; kutu/tekerlek zoom, pan, veri imleci.
 - Kutu/kement ile nokta silme, eşik ve Hampel sıçrama tespiti, geri al/yinele (orijinal dosya değişmez).
 - Spektrum, spektrogram, Butterworth süzgeçler, MATLAB tarzı ifade satırı.
-- Akustik: dinleme (ileri/geri sarma, duraklatma, konum çubuğu; Shift+←/→/Boşluk), tık/notch/HP/LP/spektral gürültü azaltma, WAV kaydı (dinleme için 16-bit normalize ya da kalibre 32-bit float — Pa değerleri korunur).
+- Akustik: dinleme (ileri/geri sarma, duraklatma, konum çubuğu — çalan grafiğin altında da; Shift+←/→/Boşluk), tık/notch/HP/LP/spektral gürültü azaltma, WAV kaydı (dinleme için 16-bit normalize ya da kalibre 32-bit float — Pa değerleri korunur).
 - Dışa aktarma: PNG, CSV, MAT (v5), oturum.
 - **Kod** görünümü: MATLAB alt kümesini (matris, hücre, yapı, işlev, döngüler, fft/butter/filtfilt/pwelch…) kurulum olmadan çalıştırır; `ch('kanal')` ile açık kanalları okur, `addch` ile sonuç ekler; `figure/subplot/plot` ile **Figür** görünümüne çizer. `.m` dosyaları açılır/kaydedilir. GUIDE arayüzleri (`.m` + `.fig`) **Arayüz** görünümünde çalışır.
 
@@ -131,7 +131,7 @@ Telemetri görünümü tek panel: **üst çubukta** dosyadan canlı oynatma (▶
 ## Test seviyesi ve akustik otomatik temizleme
 
 - **Test seviyesi (Analiz sekmesi):** titreşim izinde −9/−6/−3/0 dB gibi seviye platolarını otomatik bulur (pencere RMS'i, adıma yuvarlama), zaman grafiğini boyar, "Seviye başına spektrum" her plato için PSD çizer. Referans (0 dB) en yüksek seviye ya da seçilen profilin Grms'idir. Profille karşılaştırmada seviye otomatik tespit edilip profil o seviyeye kaydırılır.
-- **Akustik → Otomatik temizle:** DC/eğilim, 50/60 Hz uğultusu, düşük frekans gürültüsü, tık/pop ve gürültü profilini kendisi bulur; sessiz bölüm yoksa gürültü tabanını minimum istatistikle tahmin eder; temiz kanalı ekler, önce/sonra spektrumunu çizer ve ölçülen etkiyi (RMS, gürültü tabanı, uğultu tepesi) yazar.
+- **Akustik → Otomatik temizle:** DC/eğilim, şebeke (50/60 Hz) ya da arka planda sürekli duran başka bir tonal parazit (harmonikleriyle), düşük frekans gürültüsü, tık/pop ve gürültü profilini kendisi bulur; sessiz bölüm yoksa gürültü tabanını minimum istatistikle tahmin eder; temiz kanalı ekler, önce/sonra spektrumunu çizer ve ölçülen etkiyi (RMS, gürültü tabanı, uğultu tepesi) yazar.
 
 
 ## Arayüz (UX) güncellemesi
