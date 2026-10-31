@@ -67,7 +67,7 @@ async def main():
         ok(has_menu, 'dosya menüsünde tek .mat yok')
         # kamera videosu
         await pg.click('#viewtabs button[data-v=tlm]')
-        await f.click('#mainTabs button[data-tab=video]')
+        await f.click('#tlVideoBtn')
         nv = await f.locator('#vpList button').count()
         print('çözülen video:', nv)
         if HAS_CAM:
@@ -79,7 +79,7 @@ async def main():
             print('video:', vi, 'codec:', can)
             if can: ok(vi['w'] == 320 and vi['d'] > 10, 'video oynatılamadı')
         # dosyadan canlı oynatma
-        await f.click('#mainTabs button[data-tab=live]')
+        await f.evaluate("document.querySelector('#vpX').click()")
         await f.set_input_files('#lvSimInput', [D + 'kayit.bin'])
         await f.wait_for_function("/\\//.test(document.querySelector('#lvFrInfo').textContent)", timeout=30000)
         await f.click('#lvConnect')

@@ -106,7 +106,7 @@ window.MATViewTLM = {
   addSessions(sessions, client, videos) {
     let n = 0, sk = 0;
     for (const ss of sessions) { const r = tlmAddSession(ss, client); n += r.nCh; sk += r.skipped; }
-    const vid = videos && videos.length ? ` · ${videos.length} kamera videosu (Telemetri › Video / Kamera)` : '';
+    const vid = videos && videos.length ? ` · ${videos.length} kamera videosu (Telemetri › Video)` : '';
     toast(`${sessions.map(s => s.label).join(', ')}: ${fmtCnt(n)} kanal MATView’e eklendi` + (sk ? ` (${sk} byte array kanal yalnız tek .mat’te)` : '') + vid, 9000, {t: 'Kanalları göster', fn: () => { if (typeof wspShowPane === 'function') wspShowPane('data'); switchView('time'); }});
     if (typeof wspShowPane === 'function') wspShowPane('data');
   },
@@ -117,8 +117,84 @@ window.MATViewTLM = {
     }
     return saveBlob(blob, name);
   },
-  dropFiles(list) { openFiles(list); }
+  dropFiles(list) { openFiles(list); },
+  // canlı grafik: telemetri sinyalleri MATView Zaman sekmesinde canlı kanal olarak çizilir
+  liveChart(list, where) { tlmLiveChart(list, where); },
+  liveAxes() { return S.plot.axes.map(a => a.traces.map(t => t.label).slice(0, 3).join(', ') + (a.traces.length > 3 ? ' …' : '') || 'boş'); }
 };
+
+/* ---------- canlı telemetri kanalları (Zaman sekmesi) ----------
+   Kanal verisi telemetri modülünün geçmiş tamponundan 250 ms'de bir çekilir ve büyüyen dizilere eklenir. Zaman, oynatma
+   başlangıcından itibaren saniyedir. Alt grafik son "pencere" kadarı izler; kullanıcı yakınlaştırır / kaydırırsa izleme
+   durur, Sığdır (Home) ile yeniden başlar. Oynatma yeniden başlatılırsa (yeni oturum) kanallar sıfırlanır. */
+const TLV = {file: null, chans: new Map(), timer: 0, gen: null, follow: new Set()};
+function tlvFile() {
+  if (TLV.file && S.files.includes(TLV.file)) return TLV.file;
+  const f = {id: 'f' + (importFile.seq++), name: 'Canlı telemetri', table: true, tlmLive: true, mat: null, vars: [], channels: [], mcache: new Map(), Tpkt: 1, baseFs: 1, cnts: {}, baseN: 0, cols: []};
+  S.files.push(f); S.fopen.add(f.id); TLV.file = f; TLV.chans.clear(); return f;
+}
+function tlvChannel(sig) {
+  let c = TLV.chans.get(sig.key); if (c && TLV.file && TLV.file.channels.includes(c)) return c;
+  const L = TLM.win.TPLive, info = L.liveSub(sig), f = tlvFile();
+  const nm = (info.name || sig.key).replace(/\s*\/\s*/, '/');
+  c = new Channel({name: nm, rest: nm.split('/').slice(1).join('/') || nm, base: nm, comp: '', dev: info.ft || 'canlı', kind: kindOf(nm, nm), n: 0, file: f, label: nm, varIdx: -1, tbl: true, unit: ''});
+  c.data = new Float64Array(0); c.g = new Float64Array(0); c.spp = 1; c.Tpkt = 1e-3; c.tlvDt = 0; c.t0 = 0; c.tlvKey = sig.key; c.tlvBuf = {v: new Float64Array(1024), g: new Float64Array(1024), n: 0, last: null};
+  f.channels.push(c); TLV.chans.set(sig.key, c); return c;
+}
+function tlvAppend(c, t, v, t0) {
+  const B = c.tlvBuf, n = t.length; if (!n) return false;
+  if (B.n + n > B.v.length) { let cap = B.v.length; while (cap < B.n + n) cap *= 2; const nv = new Float64Array(cap), ng = new Float64Array(cap); nv.set(B.v.subarray(0, B.n)); ng.set(B.g.subarray(0, B.n)); B.v = nv; B.g = ng; }
+  const dt = c.tlvDt || 1;   // g birimi: örnek periyodu (Tpkt); ilk örneklerden kestirilir, böylece kanal fs'i doğru olur
+  for (let i = 0; i < n; i++) { B.v[B.n + i] = +v[i]; B.g[B.n + i] = (t[i] - t0) / dt; }
+  B.n += n; B.last = t[n - 1];
+  if (!c.tlvDt && B.n >= 24) { const d = []; for (let i = 1; i < B.n; i++) { const x = B.g[i] - B.g[i - 1]; if (x > 0) d.push(x); } d.sort((p, q) => p - q); const md = d.length ? d[d.length >> 1] : 1; if (md > 0) { for (let i = 0; i < B.n; i++) B.g[i] /= md; c.tlvDt = md; c.Tpkt = md / 1000; } }
+  if (B.n > 4e6) { const k = B.n - 3e6; B.v.copyWithin(0, k, B.n); B.g.copyWithin(0, k, B.n); B.n -= k; }   // bellek sınırı: en eski örnekler düşer
+  c.data = B.v.subarray(0, B.n); c.g = B.g.subarray(0, B.n); c.n = B.n; c.pyr = null; c._mm = null; return true;
+}
+function tlvReset() { for (const c of TLV.chans.values()) { const B = c.tlvBuf; B.n = 0; B.last = null; c.tlvDt = 0; c.Tpkt = 1e-3; c.data = B.v.subarray(0, 0); c.g = B.g.subarray(0, 0); c.n = 0; c.pyr = null; } }
+function tlvPoll() {
+  if (!TLM.ready || !TLV.chans.size) return;
+  const L = TLM.win.TPLive; let st; try { st = L.liveState(); } catch (_) { return; }
+  if (TLV.gen !== st.t0) { if (TLV.gen != null) tlvReset(); TLV.gen = st.t0; }
+  let any = false, tmax = -Infinity;
+  for (const c of TLV.chans.values()) {
+    if (!TLV.file || !TLV.file.channels.includes(c)) continue;
+    let r; try { r = L.liveData(c.tlvKey, c.tlvBuf.last); } catch (_) { continue; }
+    if (tlvAppend(c, r.t, r.v, st.t0)) any = true;
+    if (c.n) tmax = Math.max(tmax, c.t(c.n - 1));
+  }
+  if (!any) return;
+  const win = (st.win || 10000) / 1000;
+  for (const ax of S.plot.axes) if (TLV.follow.has(ax) && ax.traces.some(t => t.ch && t.ch.tlvKey) && isFinite(tmax)) ax.xlim = [Math.max(0, tmax - win), Math.max(tmax, win)];
+  if (S.view === 'time') S.plot.invalidate();
+}
+function tlmLiveChart(list, where) {
+  if (!TLM.ready) return;
+  const chs = list.map(tlvChannel);
+  let ax;
+  if (where === 'new' || !S.plot.axes[where]) { ax = S.plot.addAxes(); }
+  else ax = S.plot.axes[where];
+  for (const c of chs) if (!ax.traces.some(t => t.ch === c)) ax.traces.push(makeTrace(c));
+  if (typeof assignYAxes === 'function') assignYAxes(ax, ax.traces.slice(-chs.length));
+  if (typeof axisLabelFor === 'function') axisLabelFor(ax);
+  TLV.follow.add(ax); S.plot.active = ax;
+  if (!TLV.timer) TLV.timer = setInterval(tlvPoll, 250);
+  tlvPoll(); renderChips(); renderTree(); switchView('time'); refreshAll();
+  if (!TLV.hinted) { TLV.hinted = true; toast('Canlı telemetri Zaman sekmesinde · yakınlaştırınca izleme durur, Sığdır (Home) ile sürer · Telemetri sekmesine dönünce oynatma kaldığı yerden devam eder', 9000, {t: 'Telemetriye dön', fn: () => tlmShow('live')}); }
+}
+// kullanıcı yakınlaştırır / kaydırırsa o alt grafikte izleme durur; Sığdır izlemeyi yeniden açar
+(function () {
+  const hook = () => {
+    if (!S.plot || S.plot._tlvHooked) return; S.plot._tlvHooked = true;
+    const oc = S.plot.onChange; S.plot.onChange = k => { if (k === 'view' && S.plot._userView) { const a = S.plot.active; if (a) TLV.follow.delete(a); } oc(k); };
+    const cv = S.plot.cv; ['pointerdown', 'wheel'].forEach(ev => cv.addEventListener(ev, () => { S.plot._userView = true; setTimeout(() => { S.plot._userView = false; }, 400); }, {capture: true, passive: true}));
+    const fa = S.plot.fitAll.bind(S.plot); S.plot.fitAll = xOnly => { for (const a of S.plot.axes) if (a.traces.some(t => t.ch && t.ch.tlvKey)) TLV.follow.add(a); fa(xOnly); tlvPoll(); };
+  };
+  window.addEventListener('DOMContentLoaded', () => setTimeout(hook, 0)); if (document.readyState !== 'loading') setTimeout(hook, 0);
+})();
+// canlı kanal dosyası kapatılınca abonelikler bırakılır
+const _tlvClose = closeFile;
+closeFile = function (f) { if (f && f.tlmLive) { for (const c of TLV.chans.values()) { try { TLM.win.TPLive.liveUnsub(c.tlvKey); } catch (_) {} } TLV.chans.clear(); TLV.file = null; clearInterval(TLV.timer); TLV.timer = 0; } return _tlvClose(f); };
 
 // tema eşitleme
 new MutationObserver(() => { if (TLM.ready) { try { TLM.win.TPHost.setTheme(document.documentElement.dataset.theme || ''); } catch (_) {} } }).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
