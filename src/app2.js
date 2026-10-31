@@ -358,8 +358,18 @@ function buildAcoustic() {
     h('div', {class: 'note'}, 'Gürültü aralığı: yalnızca arka plan gürültüsünün olduğu sessiz bir bölüm seçin. Spektral azaltma bu bölümün ortalama spektrumunu çıkarır.')));
   r.append(card('Dinle ve kaydet',
     h('div', {class: 'btns', style: 'margin-top:0'}, btn('▶ Orijinal', () => acPlay(false), 'primary'), btn('▶ Temizlenmiş', () => acPlay(true), 'primary'), btn('■ Durdur', acStop)),
+    h('div', {class: 'actr', id: 'acTr'},
+      h('button', {id: 'acBack', title: 'Geri sar (Shift+←)', onclick: () => acSkip(-1), disabled: true}, '⏪'),
+      h('button', {id: 'acPP', title: 'Duraklat / devam (Shift+Boşluk)', onclick: acTogglePause, disabled: true}, '❚❚'),
+      h('button', {id: 'acFwd', title: 'İleri sar (Shift+→)', onclick: () => acSkip(1), disabled: true}, '⏩'),
+      selIn('acStep', [['1', '1 s'], ['5', '5 s'], ['10', '10 s'], ['30', '30 s']], '5'),
+      h('input', {type: 'range', id: 'acSeek', min: 0, max: 1000, step: 1, value: 0, disabled: true, title: 'Sürükleyerek konuma git', 'aria-label': 'Oynatma konumu',
+        oninput: e => { const A = S.audio; if (A && A.buf) acSeekTo(+e.target.value / 1000 * A.dur, true); }}),
+      h('span', {id: 'acPos', class: 'muted'}, '–')),
     h('div', {class: 'btns'}, btn('Temizlenmiş kanalı ekle', acAddClean), btn('Önce/sonra spektrum', acCompare)),
     h('div', {class: 'btns'}, btn('WAV kaydet (orijinal)', () => acWav(false)), btn('WAV kaydet (temiz)', () => acWav(true))),
+    h('div', {class: 'btns'}, btn('WAV kaydet (kalibre, 32-bit float)', () => acWav(false, true))),
+    h('div', {class: 'note'}, 'Normal WAV dinlemek içindir: tepe değere göre ölçeklenir, mutlak seviye (Pa) kaybolur. Kalibre WAV örnekleri olduğu gibi (ör. Pa) 32-bit kayan noktalı yazar; MATView ya da bir ses/akustik analiz programında yeniden açıldığında değerler ve dB SPL (re 20 µPa) korunur.'),
     h('div', {id: 'acLog', class: 'note', style: 'white-space:pre-line'})));
   return r;
 }
@@ -410,7 +420,37 @@ async function acPrepare(clean) {
   }
   return {y, fs, a, b, ch, log, raw: x};
 }
-function acStop() { const A = S.audio; if (A) { try { A.src.stop(); } catch (e) {} A.stopped = true; } S.plot.playhead = null; S.plot.invalidate(); }
+function acStop() { const A = S.audio; if (A) { try { A.src && A.src.stop(); } catch (e) {} A.stopped = true; A.buf = null; } S.plot.playhead = null; S.plot.invalidate(); acTrUI(); }
+// konum (sinyal saniyesi): offset + (şimdi − başlangıç) × hız; döngüde süreye göre sarılır
+function acPos() { const A = S.audio; if (!A || !A.buf) return 0; let el = A.paused ? A.offset : A.offset + (A.ctx.currentTime - A.start) * A.speed; if (A.loop) el = ((el % A.dur) + A.dur) % A.dur; return Math.max(0, Math.min(A.dur, el)); }
+function acStartAt(el) {
+  const A = S.audio; if (!A || !A.buf) return;
+  if (A.src) { A.src.onended = null; try { A.src.stop(); } catch (e) {} }
+  el = Math.max(0, Math.min(A.dur, el));
+  const src = A.ctx.createBufferSource(); src.buffer = A.buf; src.loop = A.loop; src.connect(A.gain);
+  src.start(0, Math.min(A.buf.duration - 1e-3, el / A.speed));
+  Object.assign(A, {src, start: A.ctx.currentTime, offset: el, paused: false, stopped: false});
+  src.onended = () => { if (S.audio === A && A.src === src && !A.loop && !A.paused) { A.offset = A.dur; A.paused = true; S.plot.playhead = null; S.plot.invalidate(); acTrUI(); } };
+  acTrUI(); requestAnimationFrame(acTick);
+}
+function acTick() {
+  const A = S.audio; if (!A || !A.buf || A.stopped) return;
+  const el = acPos(); S.plot.playhead = A.t0 + el; S.plot.invalidate(); acTrUI(el);
+  if (!A.paused) requestAnimationFrame(acTick);
+}
+function acSeekTo(el, keepPaused) { const A = S.audio; if (!A || !A.buf) return; if (A.paused && keepPaused) { A.offset = Math.max(0, Math.min(A.dur, el)); S.plot.playhead = A.t0 + A.offset; S.plot.invalidate(); acTrUI(); } else acStartAt(el); }
+function acSkip(dir) { const A = S.audio; if (!A || !A.buf) return; acSeekTo(acPos() + dir * (+sv('acStep') || 5), true); }
+function acTogglePause() {
+  const A = S.audio; if (!A || !A.buf) return;
+  if (A.paused) { acStartAt(A.offset >= A.dur - 1e-3 ? 0 : A.offset); return; }
+  A.offset = acPos(); A.paused = true; if (A.src) { A.src.onended = null; try { A.src.stop(); } catch (e) {} } acTrUI();
+}
+function acTrUI(el) {
+  const A = S.audio, on = !!(A && A.buf && !A.stopped); for (const id of ['acBack', 'acPP', 'acFwd', 'acSeek']) { const e = $('#' + id); if (e) e.disabled = !on; }
+  const pp = $('#acPP'); if (pp) pp.textContent = on && A.paused ? '▶' : '❚❚';
+  if (el == null) el = on ? acPos() : 0; const sk = $('#acSeek'); if (sk && on && document.activeElement !== sk) sk.value = Math.round(el / A.dur * 1000);
+  const ps = $('#acPos'); if (ps) { const t = on ? `${fmtNum(el, 4)} / ${fmtNum(A.dur, 4)} s` + (A.paused ? ' · duraklatıldı' : '') : '–'; if (ps.textContent !== t) ps.textContent = t; }
+}
 async function acPlay(clean) {
   acStop();
   await busy(clean ? 'Temizleniyor…' : 'Hazırlanıyor…', async () => {
@@ -423,14 +463,17 @@ async function acPlay(clean) {
     const sm = []; const st = Math.max(1, Math.floor(y.length / 20000)); for (let i = 0; i < y.length; i += st) sm.push(Math.abs(y[i])); sm.sort((u, v) => u - v); const pk = sm[Math.floor(sm.length * 0.999)] || 1;
     const nrm = 0.9 / pk, fade = Math.min(Math.floor(rate * 0.01), y.length >> 2);
     for (let i = 0; i < y.length; i++) { let v = y[i] * nrm; v = v > 1 ? 1 : v < -1 ? -1 : v; if (i < fade) v *= i / fade; else if (i > y.length - fade) v *= (y.length - i) / fade; d[i] = v; }
-    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = ck('acLoop'); const gain = ctx.createGain(); gain.gain.value = +sv('acVol'); src.connect(gain).connect(ctx.destination);
-    const t0 = p.ch.t(p.a), dur = (p.b - p.a) / p.fs; src.start();
-    S.audio = {ctx, src, gain, start: ctx.currentTime, t0, speed, dur, loop: src.loop, stopped: false};
-    src.onended = () => { if (S.audio && S.audio.src === src && !src.loop) { S.plot.playhead = null; S.plot.invalidate(); } };
-    const tick = () => { const A = S.audio; if (!A || A.src !== src || A.stopped) return; let el = (A.ctx.currentTime - A.start) * A.speed; if (A.loop) el %= A.dur; if (el > A.dur + 0.05) { S.plot.playhead = null; S.plot.invalidate(); return; } S.plot.playhead = A.t0 + el; S.plot.invalidate(); requestAnimationFrame(tick); };
-    requestAnimationFrame(tick);
+    const gain = ctx.createGain(); gain.gain.value = +sv('acVol'); gain.connect(ctx.destination);
+    S.audio = {ctx, buf, gain, src: null, t0: p.ch.t(p.a), speed, dur: y.length / fs, loop: ck('acLoop'), offset: 0, paused: false, stopped: false, start: ctx.currentTime};
+    acStartAt(0);
   });
 }
+// Shift+← / Shift+→ sar, Shift+Boşluk duraklat (yalnız ses çalarken; giriş kutularında değil)
+window.addEventListener('keydown', e => {
+  const A = S.audio; if (!A || !A.buf || A.stopped || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+  const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && t.type !== 'range') return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); acSkip(-1); } else if (e.key === 'ArrowRight') { e.preventDefault(); acSkip(1); } else if (e.key === ' ') { e.preventDefault(); acTogglePause(); }
+}, true);
 async function acAddClean() {
   await busy('Temizleniyor…', async () => {
     const p = await acPrepare(true); $('#acLog').textContent = p.log.join('\n');
@@ -468,9 +511,10 @@ async function acAutoRun() {
     $('#acLog').textContent = lines.join('\n');
   });
 }
-async function acWav(clean) {
+async function acWav(clean, calib) {
   await busy('WAV hazırlanıyor…', async () => {
-    const p = await acPrepare(clean); let y = p.y, fs = p.fs; let dec = 1; while (fs / dec > 96000) dec++; if (dec > 1) { const o = new Float64Array(Math.floor(y.length / dec)); for (let i = 0; i < o.length; i++) o[i] = y[i * dec]; y = o; fs /= dec; }
+    const p = await acPrepare(clean); let y = p.y, fs = p.fs;
+    if (calib) { const r = Math.round(fs); if (Math.abs(r - fs) > 1e-6 * fs) toast('Örnekleme ' + fmtNum(fs, 8) + ' Hz → WAV başlığına ' + r + ' Hz yazıldı', 6000); await saveBlob(DSP.wavBlob(y, r, {float: true}), sanitizeName(p.ch.name) + (clean ? '_temiz' : '') + '_' + (p.ch.unit || 'kalibre').replace(/[^A-Za-z0-9]/g, '') + '.wav'); return; } let dec = 1; while (fs / dec > 96000) dec++; if (dec > 1) { const o = new Float64Array(Math.floor(y.length / dec)); for (let i = 0; i < o.length; i++) o[i] = y[i * dec]; y = o; fs /= dec; }
     let pk = 0; for (let i = 0; i < y.length; i++) { const a = Math.abs(y[i]); if (a > pk) pk = a; } const g = 0.95 / (pk || 1);
     const rate = Math.max(8000, Math.round(fs * Math.max(1, num('acSpeed') || 1))); await saveBlob(DSP.wavBlob(y.map(v => v * g), rate), sanitizeName(p.ch.name) + (clean ? '_temiz' : '') + '.wav');
   });
