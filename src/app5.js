@@ -112,7 +112,7 @@ function syncOverlay(P) {
   const ov = ensureOv(P);
   if (!P.axes.length || !P.axes[0].rect || !P.W) { if (ov.firstChild) { ov.replaceChildren(); ov._parts = []; ov._sig = ''; } return; }
   ov.style.height = P.H + 'px';
-  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
+  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + (P.lgSize || 'm') + (P.lgCorner || 'tr') + P.gridCols() + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
   if (sig !== ov._sig) { ov._sig = sig; buildOv(P, ov); }
   for (const p of ov._parts) { p.upd(); if (p.cor && p.ax.rect) { const r = p.ax.rect; p.cor.style.left = r.x + r.w - 12 + 'px'; p.cor.style.top = r.y + r.h - 12 + 'px'; } }
 }
@@ -132,17 +132,22 @@ function buildOv(P, ov) {
     if (i > 0 && main) bar.append(mk('merge', 'Bir üstteki alt grafikle birleştir (aynı eksen)', () => mergeUp(P, ax)));
     const cor = h('div', {class: 'axcorner', title: 'Köşeden sürükle: bu alt grafiğin yüksekliği ve genişliği · çift tık: varsayılan boyut', role: 'separator', 'aria-label': 'Alt grafiği boyutlandır'});
     cor.onpointerdown = e => {
-      e.preventDefault(); e.stopPropagation(); cor.setPointerCapture(e.pointerId); const r0 = Object.assign({}, ax.rect), x0 = e.clientX, y0 = e.clientY, full = Math.max(50, P.W - r0.x - (P.margins ? P.margins().R : 18));
+      e.preventDefault(); e.stopPropagation(); const r0 = Object.assign({}, ax.rect), x0 = e.clientX, y0 = e.clientY, full = Math.max(50, P.W - r0.x - (P.margins ? P.margins().R : 18));
       document.body.classList.add('dragging2');
-      cor.onpointermove = ev => { ax.hpx = Math.max(60, Math.round(r0.h + ev.clientY - y0)); ax.wfrac = Math.min(1, Math.max(0.2, (r0.w + ev.clientX - x0) / full)); if (ax.wfrac > 0.985) ax.wfrac = null; P.invalidate(); };
-      cor.onpointerup = () => { cor.onpointermove = cor.onpointerup = null; document.body.classList.remove('dragging2'); P.onChange('view'); };
+      cor.onpointermove = ev => {
+        if (P.syncSize) { P.cellH = Math.max(60, Math.round(r0.h + ev.clientY - y0)); P.cellW = Math.max(120, Math.round(r0.w + ev.clientX - x0)); for (const a of P.axes) { a.hpx = null; a.wfrac = null; } if (typeof sizeUISync === 'function') sizeUISync(P); }
+        else { ax.hpx = Math.max(60, Math.round(r0.h + ev.clientY - y0)); ax.wfrac = Math.min(1, Math.max(0.2, (r0.w + ev.clientX - x0) / full)); if (ax.wfrac > 0.985) ax.wfrac = null; }
+        P.invalidate(); };
+      // pencere dinleyicileri: ızgara yeniden dizilip tutamak yeniden oluşsa da sürükleme sürer
+      const mv = ev => cor.onpointermove(ev), up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); cor.onpointermove = null; document.body.classList.remove('dragging2'); P.onChange('view'); };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
     };
-    cor.ondblclick = e => { e.stopPropagation(); ax.hpx = null; ax.wfrac = null; P.invalidate(); };
+    cor.ondblclick = e => { e.stopPropagation(); if (P.syncSize) { P.cellW = P.cellH = null; if (typeof sizeUISync === 'function') sizeUISync(P); } ax.hpx = null; ax.wfrac = null; P.invalidate(); };
     ov.append(cor);
     ov.append(bar); const part = {ax, bar, cor, upd() { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; }}; ov._parts.push(part);
     if (P.legend && ax.traces.length) {
       const nv = ax.traces.filter(t => !t.noLegend).length;
-      const lg = h('div', {class: 'lgd' + (ax.lgMin ? ' min' : ''), 'aria-label': 'Lejant'}), rows = [], grip = h('div', {class: 'lgrip', title: 'Tutup sürükleyerek taşı · çift tık: varsayılan yer'}, '⋯');
+      const lg = h('div', {class: 'lgd lg-' + (P.lgSize || 'm') + (ax.lgMin ? ' min' : ''), 'aria-label': 'Lejant'}), rows = [], grip = h('div', {class: 'lgrip', title: 'Tutup sürükleyerek taşı · çift tık: varsayılan yer'}, '⋯');
       const fold = h('button', {class: 'lfold noic', title: ax.lgMin ? 'Lejantı aç' : 'Lejantı katla', 'aria-expanded': String(!ax.lgMin), onclick: e => { e.stopPropagation(); toggleLegend(P, ax); }}, ax.lgMin ? '▸ ' + nv + ' iz' : '▾');
       lg.append(h('div', {class: 'lhead'}, fold, grip));
       grip.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); grip.setPointerCapture(e.pointerId); const lp = ax.lgPos || {dx: 0, dy: 0}, x0 = e.clientX - lp.dx, y0 = e.clientY - lp.dy; grip.onpointermove = ev => { ax.lgPos = {dx: ev.clientX - x0, dy: ev.clientY - y0}; part.upd(); P.invalidate(); }; grip.onpointerup = () => { grip.onpointermove = grip.onpointerup = null; }; };
@@ -159,10 +164,12 @@ function buildOv(P, ov) {
         lg.append(row); rows.push({tr, ex});
       });
       ov.append(lg); part.lg = lg; part.rows = rows;
-      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; const lp = ax.lgPos || {dx: 0, dy: 0}, lw = lg.offsetWidth || 120, lh = lg.offsetHeight || 40, right = Math.max(P.W - r.x - r.w - 0, Math.min(P.W - r.x - lw, P.W - r.x - r.w + 8 - lp.dx)), top = Math.max(r.y, Math.min(r.y + r.h - lh, r.y + 6 + lp.dy)); lg.style.right = right + 'px'; lg.style.top = top + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px'; lg.style.maxHeight = Math.max(40, r.h - 4) + 'px';
+      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; const lp = ax.lgPos || {dx: 0, dy: 0}, cn = P.lgCorner || 'tr', lw = lg.offsetWidth || 120, lh = lg.offsetHeight || 40;
+        const left0 = cn[1] === 'l' ? r.x + 6 + lp.dx : r.x + r.w - lw - 6 + lp.dx, top0 = cn[0] === 'b' ? r.y + r.h - lh - 6 + lp.dy : r.y + 6 + lp.dy;
+        const left = Math.max(r.x, Math.min(r.x + r.w - lw, left0)), top = Math.max(r.y, Math.min(r.y + r.h - lh, top0)); lg.style.right = 'auto'; lg.style.left = left + 'px'; lg.style.top = top + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px'; lg.style.maxHeight = Math.max(40, r.h - 4) + 'px';
         for (const q of rows) { const t = q.tr.visible ? P.legendExtra(q.tr, ax) : ''; if (q.ex._t !== t) { q.ex._t = t; q.ex.textContent = t; } } };
     }
-    if (i < n - 1) {
+    if (i < n - 1 && P.gridCols() === 1) {
       const sep = h('div', {class: 'hsep', title: 'Sürükleyerek alt grafik yüksekliklerini ayarla'}); ov.append(sep);
       sep.onpointerdown = e => {
         e.preventDefault(); sep.setPointerCapture(e.pointerId); const a = ax, b = P.axes[i + 1], unit = a.rect.h / (a.hw || 1), ha = a.rect.h, hb = b.rect.h, y0 = e.clientY;
@@ -203,7 +210,7 @@ function shortcutsDialog() {
     ['Esc', 'Seçimi kaldır / menüyü kapat'], ['Çift tık (ağaç)', 'Kanalı yeni alt grafiğe ekle (Ayarlar’dan değişir)'], ['Shift + çift tık', 'Tercihin tersi: aktif grafiğe ekle'], ['Shift + tık (ağaç)', 'Aralık seç'], ['Ctrl + tık (ağaç)', 'Çoklu seç'],
     ['Lejanta tık', 'İzi göster / gizle'], ['Lejanta sağ tık', 'Renk, kalınlık, taşı, kaldır'], ['Lejantı sürükle', 'İzi başka alt grafiğe taşı'], ['Alt grafik ayırıcısı', 'Sürükle: yükseklik · çift tık: eşitle'], ['↑ ↓ Enter (ağaç)', 'Klavyeyle gezin / ekle'], ['* (ağaç)', 'Kanalı sık kullanılanlara ekle / çıkar'],
     ['Alt+← / Alt+→', 'Önceki / sonraki görünüm (yakınlaştırma geçmişi)'], ['X', 'Senkron dikey izleme (tüm alt grafiklerde değerler)'], ['Shift + tık (İmleç)', 'Yeni imleç ekle (çoklu imleç, ölçüm paneli)'], ['Esc', 'İmleçleri temizle'],
-    ['Ctrl+B / Ctrl+Shift+B', 'Sol / sağ paneli gizle-göster'], ['Alt grafik köşesi (sağ alt)', 'Sürükle: o grafiğin yüksekliği / genişliği · çift tık: varsayılan'], ['5+ alt grafik', 'Görünüm dikey kaydırılır: tekerlek kaydırır, Ctrl+tekerlek X yakınlaştırır, Shift+tekerlek Y'], ['Lejant ▾ / araç çubuğu Lejant', 'Lejantı katla / tüm lejantları katla'], ['Panel kenarı', 'Sürükle: genişlik · çift tık: varsayılan'], ['F11', 'Tam ekran'], ['?', 'Bu pencere']];
+    ['Ctrl+B / Ctrl+Shift+B', 'Sol / sağ paneli gizle-göster'], ['Alt grafik köşesi (sağ alt)', 'Sürükle: o grafiğin yüksekliği / genişliği · çift tık: varsayılan'], ['5+ alt grafik', 'Görünüm dikey kaydırılır: tekerlek kaydırır, Ctrl+tekerlek X yakınlaştırır, Shift+tekerlek Y'], ['Lejant ▾ (araç çubuğu)', 'Göster/gizle, tümünü katla, boyut, konum'], ['Düzen ▾ (araç çubuğu)', 'Sütun (1–4, ızgara), tüm grafiklerin genişlik/yüksekliği, eşzamanlı köşe boyutlandırma'], ['Panel kenarı', 'Sürükle: genişlik · çift tık: varsayılan'], ['F11', 'Tam ekran'], ['?', 'Bu pencere']];
   modal('Klavye kısayolları ve fare', h('table', {class: 'kv'}, rows.map(r => h('tr', null, h('td', null, h('kbd', null, r[0])), h('td', null, r[1])))), [{t: 'Kapat', primary: true}]);
 }
 function updDblBtn() { const b = $('#btnDbl'); if (!b) return; const s = b.querySelector('.lbltxt') || (() => { const t = h('span', {class: 'lbltxt'}); b.append(t); b.childNodes.forEach(c => { if (c.nodeType === 3) c.remove(); }); return t; })(); s.textContent = 'Çift tık: ' + (S.pref.dbl === 'same' ? 'aktif grafiğe ekle' : 'yeni alt grafik'); }

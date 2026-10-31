@@ -123,7 +123,7 @@ class Plot {
   resize() {
     const p = this.cv.parentElement, w = p.clientWidth, hv = p.clientHeight;
     if (!w || !hv) return;
-    this.Hv = hv; const h = Math.max(hv, Math.ceil(this.contentH(hv)));
+    this.Hv = hv; const h = Math.max(hv, Math.ceil(this.contentH(hv, w)));
     let dpr = window.devicePixelRatio || 1; while (dpr > 1 && w * h * dpr * dpr > 6e7) dpr = Math.max(1, dpr / 1.5);   // çok uzun tuvalde bellek sınırı
     if (this.W === w && this.H === h && this.dpr === dpr && this.cv.width === Math.round(w * dpr)) { this.invalidate(); return; }
     this.dpr = dpr; this.W = w; this.H = h;
@@ -134,24 +134,33 @@ class Plot {
   }
   // yerleşim ölçüleri: kenar boşlukları ve alt grafik yükseklikleri (hv: görünür yükseklik)
   margins() { const t = this.axes.some(a => a.title); return {L: 74, R: this.axes.some(a => this.hasRight(a)) ? 72 : 18, T: t ? 26 : 10, B: 40, gap: t ? 40 : 26}; }
-  heights(hv) {
-    const n = this.axes.length; if (!n) return [];
-    const {T, B, gap} = this.margins(), mv = this.maxVisible || 5, fixed = this.axes.reduce((s, a) => s + (a.hpx ? a.hpx : 0), 0), nf = this.axes.filter(a => !a.hpx).length;
-    let tw = 0; for (const a of this.axes) if (!a.hpx) tw += a.hw || 1;
-    // görünür alan en çok mv alt grafiği sığdırır; fazlası kaydırılır
-    const slots = Math.min(n, mv), availV = Math.max(60, hv - T - B - gap * (slots - 1)), unit = availV / slots;
-    const flex = n <= mv ? Math.max(60 * nf, availV + gap * 0 - fixed - 0) : unit * tw;
-    return this.axes.map(a => a.hpx ? Math.max(50, a.hpx) : Math.max(50, n <= mv ? flex * (a.hw || 1) / (tw || 1) : unit * (a.hw || 1)));
+  // ---- ızgara: cols = 'auto' | 1..4; cellW / cellH: tüm alt grafiklerin çizim alanı boyutu (px, boş = otomatik) ----
+  gridCols(W) {
+    const n = this.axes.length; if (!n) return 1; const {L, R} = this.margins(), w = W || this.W || 800;
+    let c = this.cols && this.cols !== 'auto' ? +this.cols : (this.cellW ? Math.floor(w / (this.cellW + L + R)) : 1);
+    return Math.max(1, Math.min(4, c || 1, n));
   }
-  contentH(hv) { if (!this.axes.length) return hv; const {T, B, gap} = this.margins(), hs = this.heights(hv); return T + B + gap * (hs.length - 1) + hs.reduce((a, b) => a + b, 0); }
+  rowsOf(cols) { const r = []; for (let i = 0; i < this.axes.length; i += cols) r.push(this.axes.slice(i, i + cols)); return r; }
+  // satır yükseklikleri (hv: görünür yükseklik): görünür alana en çok maxVisible satır sığar, fazlası kaydırılır
+  heights(hv, W) {
+    const rows = this.rowsOf(this.gridCols(W)), n = rows.length; if (!n) return [];
+    const {T, B, gap} = this.margins(), mv = this.maxVisible || 5;
+    const rh = rows.map(r => this.cellH ? this.cellH : Math.max(0, ...r.map(a => a.hpx || 0))), rw = rows.map(r => Math.max(...r.map(a => a.hw || 1)));
+    const fixed = rh.reduce((a, b) => a + b, 0), nf = rh.filter(v => !v).length; let tw = 0; rw.forEach((w, i) => { if (!rh[i]) tw += w; });
+    const slots = Math.min(n, mv), availV = Math.max(60, hv - T - B - gap * (slots - 1)), unit = availV / slots, flex = Math.max(60 * nf, availV - fixed);
+    return rows.map((r, i) => rh[i] ? Math.max(50, rh[i]) : Math.max(50, n <= mv ? flex * rw[i] / (tw || 1) : unit * rw[i]));
+  }
+  contentH(hv, W) { if (!this.axes.length) return hv; const {T, B, gap} = this.margins(), hs = this.heights(hv, W); return T + B + gap * (hs.length - 1) + hs.reduce((a, b) => a + b, 0); }
   // içerik yüksekliği değiştiyse tuvali yeniden boyutlandır (alt grafik eklendi / kaldırıldı / elle boyutlandı)
-  fitContent() { const p = this.cv.parentElement; if (!p || !this.Hv) return false; const need = Math.max(p.clientHeight, Math.ceil(this.contentH(p.clientHeight))); if (need !== this.H || p.clientWidth !== this.W) { this.resize(); return true; } return false; }
+  fitContent() { const p = this.cv.parentElement; if (!p || !this.Hv) return false; const need = Math.max(p.clientHeight, Math.ceil(this.contentH(p.clientHeight, p.clientWidth))); if (need !== this.H || p.clientWidth !== this.W) { this.resize(); return true; } return false; }
   // ---------- yerleşim ----------
   layout(W, H) {
     const n = this.axes.length; if (!n) return;
-    const {L, R, T, gap} = this.margins(), hs = this.heights(this.Hv && H === this.H ? this.Hv : H), full = Math.max(50, W - L - R);
+    const {L, R, T, gap} = this.margins(), cols = this.gridCols(W), rows = this.rowsOf(cols), hs = this.heights(this.Hv && H === this.H ? this.Hv : H, W);
+    let boxW = W / cols; if (this.cellW) boxW = Math.min(boxW, this.cellW + L + R);
+    const off = cols > 1 || this.cellW ? Math.max(0, (W - cols * boxW) / 2) : 0;   // ızgara ortalanır
     let y = T;
-    this.axes.forEach((ax, i) => { const h = hs[i]; ax.rect = {x: L, y, w: Math.max(50, full * Math.min(1, Math.max(0.2, ax.wfrac || 1))), h}; y += h + gap; });
+    rows.forEach((row, ri) => { row.forEach((ax, c) => { const full = Math.max(50, boxW - L - R); ax.rect = {x: off + c * boxW + L, y, w: Math.max(50, full * Math.min(1, Math.max(0.2, ax.wfrac || 1))), h: hs[ri]}; ax.row = ri; ax.col = c; }); y += hs[ri] + gap; });
   }
   bounds() {
     let lo = Infinity, hi = -Infinity;
@@ -293,17 +302,17 @@ class Plot {
     }
     ctx.fillStyle = T.muted; ctx.textBaseline = 'top';
     const xl = ax.xlabel || this.opts.xlabel || 'Zaman (s)';
-    if (ax === this.axes[this.axes.length - 1] || forExport) ctx.fillText(xl, r.x + r.w / 2, r.y + r.h + 21);
+    if (ax === this.axes[this.axes.length - 1] || forExport || (ax.row != null && ax.row === this.axes[this.axes.length - 1].row)) ctx.fillText(xl, r.x + r.w / 2, r.y + r.h + 21);
     if (ax.ylabel) { ctx.save(); ctx.translate(13, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ax.ylabel, 0, 0); ctx.restore(); }
     // gösterge
     if (this.legend && !ax.lgMin && (forExport || !this.domLegend)) {
       const vis = ax.traces.filter(t => t.visible && !t.noLegend); if (vis.length) {
-        ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        const fsz = {s: 9, m: 11, l: 14}[this.lgSize || 'm'], lh = Math.round(fsz * 1.45); ctx.font = fsz + 'px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const lbl = new Map(vis.map(t => [t, t.label + (t.yr ? ' (sağ Y)' : '') + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
-        const bw = wmax + 34, bh = vis.length * 16 + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx = Math.max(r.x, Math.min(r.x + r.w - bw, r.x + r.w - bw - 6 + lp.dx)), by = Math.max(r.y, Math.min(r.y + r.h - bh, r.y + 6 + lp.dy));
+        const cn = this.lgCorner || 'tr', bw = wmax + 34, bh = vis.length * lh + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx0 = cn[1] === 'l' ? r.x + 6 + lp.dx : r.x + r.w - bw - 6 + lp.dx, by0 = cn[0] === 'b' ? r.y + r.h - bh - 6 + lp.dy : r.y + 6 + lp.dy, bx = Math.max(r.x, Math.min(r.x + r.w - bw, bx0)), by = Math.max(r.y, Math.min(r.y + r.h - bh, by0));
         ctx.globalAlpha = .92; ctx.fillStyle = T.box; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1;
         ctx.strokeStyle = T.grid; ctx.strokeRect(bx + .5, by + .5, bw, bh);
-        vis.forEach((t, i) => { const y = by + 11 + i * 16; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
+        vis.forEach((t, i) => { const y = by + 3 + lh / 2 + i * lh; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
       }
     }
     ctx.restore();

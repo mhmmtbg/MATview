@@ -106,7 +106,7 @@ kbd{border:1px solid var(--border);border-radius:3px;padding:0 4px;font-size:12p
 
 /* ---- ikonlar, menüler, grafik üstü katman ---- */
 #center{container-type:inline-size}
-@container (max-width:900px){#toolbar .lbl{display:none}}
+
 @media (max-width:1250px){#top .lbl,#top .car{display:none}}
 button:has(.ico){display:inline-flex;align-items:center;gap:6px;justify-content:center}
 .ico{display:inline-flex;line-height:0;flex:none}.ic{display:block}
@@ -353,6 +353,20 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .lgd{overflow-y:auto;overflow-x:hidden}.lgd .lhead{display:flex;align-items:center;gap:2px;position:sticky;top:0;background:var(--panel);z-index:1}
 .lgd .lhead .lgrip{flex:1}.lgd .lfold{border:none;background:none;padding:0 4px;font-size:11px;line-height:14px;color:var(--muted);cursor:pointer;white-space:nowrap}.lgd .lfold:hover{color:var(--fg)}
 .lgd.min .lrow{display:none}.lgd.min{padding:1px 2px}
+
+/* araç çubukları taşınca yalnız simge; düğme adları alt satıra kırılmaz */
+#toolbar button{white-space:nowrap;flex:none}#toolbar.compact .lbl{display:none}#toolbar.compact{gap:2px;overflow-x:auto;scrollbar-width:none}#toolbar.compact::-webkit-scrollbar{display:none}#toolbar.compact button{padding:4px 4px}#toolbar.compact .sep{margin:0 2px}
+#viewbar.compact>button{font-size:0;padding-left:7px;padding-right:7px}#viewbar.compact>button svg{margin:0}
+/* açılır menü (Lejant / Düzen) — düz görünüm */
+.popm{position:fixed;z-index:60;min-width:260px;max-width:min(380px,96vw);background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;display:flex;flex-direction:column;gap:7px}
+.popm .pmh{font-weight:600;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.popm .pmrow{display:flex;align-items:center;gap:8px;justify-content:space-between}.popm .pml{color:var(--muted);white-space:nowrap}
+.popm .pmseg{display:flex;flex-wrap:wrap;gap:0}.popm .pmseg button{padding:2px 8px;font-size:12px;border-radius:0;margin-left:-1px}.popm .pmseg button:first-child{border-radius:4px 0 0 4px;margin-left:0}.popm .pmseg button:last-child{border-radius:0 4px 4px 0}
+.popm .pmseg button.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.popm input[type=number]{width:110px}.popm .pmchk{display:flex;gap:6px;align-items:center}.popm .pmbtns{display:flex;gap:6px;justify-content:flex-end}.popm .pmbtns button{font-size:12px;padding:2px 8px}
+.popm .pmnote{color:var(--muted);font-size:11px;line-height:1.35}
+/* lejant boyutları */
+.lgd.lg-s{font-size:10px}.lgd.lg-s .sw{width:12px}.lgd.lg-m{font-size:12px}.lgd.lg-l{font-size:14px}.lgd.lg-l .sw{width:22px;height:3px}
 </style>
 </head>
 <body>
@@ -3043,7 +3057,7 @@ class Plot {
   resize() {
     const p = this.cv.parentElement, w = p.clientWidth, hv = p.clientHeight;
     if (!w || !hv) return;
-    this.Hv = hv; const h = Math.max(hv, Math.ceil(this.contentH(hv)));
+    this.Hv = hv; const h = Math.max(hv, Math.ceil(this.contentH(hv, w)));
     let dpr = window.devicePixelRatio || 1; while (dpr > 1 && w * h * dpr * dpr > 6e7) dpr = Math.max(1, dpr / 1.5);   // çok uzun tuvalde bellek sınırı
     if (this.W === w && this.H === h && this.dpr === dpr && this.cv.width === Math.round(w * dpr)) { this.invalidate(); return; }
     this.dpr = dpr; this.W = w; this.H = h;
@@ -3054,24 +3068,33 @@ class Plot {
   }
   // yerleşim ölçüleri: kenar boşlukları ve alt grafik yükseklikleri (hv: görünür yükseklik)
   margins() { const t = this.axes.some(a => a.title); return {L: 74, R: this.axes.some(a => this.hasRight(a)) ? 72 : 18, T: t ? 26 : 10, B: 40, gap: t ? 40 : 26}; }
-  heights(hv) {
-    const n = this.axes.length; if (!n) return [];
-    const {T, B, gap} = this.margins(), mv = this.maxVisible || 5, fixed = this.axes.reduce((s, a) => s + (a.hpx ? a.hpx : 0), 0), nf = this.axes.filter(a => !a.hpx).length;
-    let tw = 0; for (const a of this.axes) if (!a.hpx) tw += a.hw || 1;
-    // görünür alan en çok mv alt grafiği sığdırır; fazlası kaydırılır
-    const slots = Math.min(n, mv), availV = Math.max(60, hv - T - B - gap * (slots - 1)), unit = availV / slots;
-    const flex = n <= mv ? Math.max(60 * nf, availV + gap * 0 - fixed - 0) : unit * tw;
-    return this.axes.map(a => a.hpx ? Math.max(50, a.hpx) : Math.max(50, n <= mv ? flex * (a.hw || 1) / (tw || 1) : unit * (a.hw || 1)));
+  // ---- ızgara: cols = 'auto' | 1..4; cellW / cellH: tüm alt grafiklerin çizim alanı boyutu (px, boş = otomatik) ----
+  gridCols(W) {
+    const n = this.axes.length; if (!n) return 1; const {L, R} = this.margins(), w = W || this.W || 800;
+    let c = this.cols && this.cols !== 'auto' ? +this.cols : (this.cellW ? Math.floor(w / (this.cellW + L + R)) : 1);
+    return Math.max(1, Math.min(4, c || 1, n));
   }
-  contentH(hv) { if (!this.axes.length) return hv; const {T, B, gap} = this.margins(), hs = this.heights(hv); return T + B + gap * (hs.length - 1) + hs.reduce((a, b) => a + b, 0); }
+  rowsOf(cols) { const r = []; for (let i = 0; i < this.axes.length; i += cols) r.push(this.axes.slice(i, i + cols)); return r; }
+  // satır yükseklikleri (hv: görünür yükseklik): görünür alana en çok maxVisible satır sığar, fazlası kaydırılır
+  heights(hv, W) {
+    const rows = this.rowsOf(this.gridCols(W)), n = rows.length; if (!n) return [];
+    const {T, B, gap} = this.margins(), mv = this.maxVisible || 5;
+    const rh = rows.map(r => this.cellH ? this.cellH : Math.max(0, ...r.map(a => a.hpx || 0))), rw = rows.map(r => Math.max(...r.map(a => a.hw || 1)));
+    const fixed = rh.reduce((a, b) => a + b, 0), nf = rh.filter(v => !v).length; let tw = 0; rw.forEach((w, i) => { if (!rh[i]) tw += w; });
+    const slots = Math.min(n, mv), availV = Math.max(60, hv - T - B - gap * (slots - 1)), unit = availV / slots, flex = Math.max(60 * nf, availV - fixed);
+    return rows.map((r, i) => rh[i] ? Math.max(50, rh[i]) : Math.max(50, n <= mv ? flex * rw[i] / (tw || 1) : unit * rw[i]));
+  }
+  contentH(hv, W) { if (!this.axes.length) return hv; const {T, B, gap} = this.margins(), hs = this.heights(hv, W); return T + B + gap * (hs.length - 1) + hs.reduce((a, b) => a + b, 0); }
   // içerik yüksekliği değiştiyse tuvali yeniden boyutlandır (alt grafik eklendi / kaldırıldı / elle boyutlandı)
-  fitContent() { const p = this.cv.parentElement; if (!p || !this.Hv) return false; const need = Math.max(p.clientHeight, Math.ceil(this.contentH(p.clientHeight))); if (need !== this.H || p.clientWidth !== this.W) { this.resize(); return true; } return false; }
+  fitContent() { const p = this.cv.parentElement; if (!p || !this.Hv) return false; const need = Math.max(p.clientHeight, Math.ceil(this.contentH(p.clientHeight, p.clientWidth))); if (need !== this.H || p.clientWidth !== this.W) { this.resize(); return true; } return false; }
   // ---------- yerleşim ----------
   layout(W, H) {
     const n = this.axes.length; if (!n) return;
-    const {L, R, T, gap} = this.margins(), hs = this.heights(this.Hv && H === this.H ? this.Hv : H), full = Math.max(50, W - L - R);
+    const {L, R, T, gap} = this.margins(), cols = this.gridCols(W), rows = this.rowsOf(cols), hs = this.heights(this.Hv && H === this.H ? this.Hv : H, W);
+    let boxW = W / cols; if (this.cellW) boxW = Math.min(boxW, this.cellW + L + R);
+    const off = cols > 1 || this.cellW ? Math.max(0, (W - cols * boxW) / 2) : 0;   // ızgara ortalanır
     let y = T;
-    this.axes.forEach((ax, i) => { const h = hs[i]; ax.rect = {x: L, y, w: Math.max(50, full * Math.min(1, Math.max(0.2, ax.wfrac || 1))), h}; y += h + gap; });
+    rows.forEach((row, ri) => { row.forEach((ax, c) => { const full = Math.max(50, boxW - L - R); ax.rect = {x: off + c * boxW + L, y, w: Math.max(50, full * Math.min(1, Math.max(0.2, ax.wfrac || 1))), h: hs[ri]}; ax.row = ri; ax.col = c; }); y += hs[ri] + gap; });
   }
   bounds() {
     let lo = Infinity, hi = -Infinity;
@@ -3213,17 +3236,17 @@ class Plot {
     }
     ctx.fillStyle = T.muted; ctx.textBaseline = 'top';
     const xl = ax.xlabel || this.opts.xlabel || 'Zaman (s)';
-    if (ax === this.axes[this.axes.length - 1] || forExport) ctx.fillText(xl, r.x + r.w / 2, r.y + r.h + 21);
+    if (ax === this.axes[this.axes.length - 1] || forExport || (ax.row != null && ax.row === this.axes[this.axes.length - 1].row)) ctx.fillText(xl, r.x + r.w / 2, r.y + r.h + 21);
     if (ax.ylabel) { ctx.save(); ctx.translate(13, r.y + r.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ax.ylabel, 0, 0); ctx.restore(); }
     // gösterge
     if (this.legend && !ax.lgMin && (forExport || !this.domLegend)) {
       const vis = ax.traces.filter(t => t.visible && !t.noLegend); if (vis.length) {
-        ctx.font = '11px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        const fsz = {s: 9, m: 11, l: 14}[this.lgSize || 'm'], lh = Math.round(fsz * 1.45); ctx.font = fsz + 'px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const lbl = new Map(vis.map(t => [t, t.label + (t.yr ? ' (sağ Y)' : '') + this.legendExtra(t, ax)])); let wmax = 0; for (const t of vis) wmax = Math.max(wmax, ctx.measureText(lbl.get(t)).width);
-        const bw = wmax + 34, bh = vis.length * 16 + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx = Math.max(r.x, Math.min(r.x + r.w - bw, r.x + r.w - bw - 6 + lp.dx)), by = Math.max(r.y, Math.min(r.y + r.h - bh, r.y + 6 + lp.dy));
+        const cn = this.lgCorner || 'tr', bw = wmax + 34, bh = vis.length * lh + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx0 = cn[1] === 'l' ? r.x + 6 + lp.dx : r.x + r.w - bw - 6 + lp.dx, by0 = cn[0] === 'b' ? r.y + r.h - bh - 6 + lp.dy : r.y + 6 + lp.dy, bx = Math.max(r.x, Math.min(r.x + r.w - bw, bx0)), by = Math.max(r.y, Math.min(r.y + r.h - bh, by0));
         ctx.globalAlpha = .92; ctx.fillStyle = T.box; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1;
         ctx.strokeStyle = T.grid; ctx.strokeRect(bx + .5, by + .5, bw, bh);
-        vis.forEach((t, i) => { const y = by + 11 + i * 16; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
+        vis.forEach((t, i) => { const y = by + 3 + lh / 2 + i * lh; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
       }
     }
     ctx.restore();
@@ -4308,6 +4331,7 @@ const ICON = {
   fwd: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
   xhair: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v14" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.5"/><rect x="9.5" y="3" width="5" height="4" rx="1" fill="none" stroke="currentColor"/><circle cx="8" cy="10" r="1.6" fill="currentColor"/></svg>',
   legend: '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M4 6h3M4 9h3M9 6h3M9 9h3" stroke="currentColor" stroke-width="1.2"/></svg>',
+  gridl: '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="9" y="2" width="5" height="5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="2" y="9" width="5" height="5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="9" y="9" width="5" height="5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
   del: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4h10M6 4V2h4v2M5 4l.5 10h5L11 4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>'
 };
 const TOOLS = [['pan', 'Gez', 'Sürükleyerek kaydır. Tekerlek: X yakınlaştır, Shift+tekerlek: Y, Ctrl+tekerlek: ikisi (P)'], ['zoom', 'Yakınlaştır', 'Kutu çiz = yakınlaştır, tıkla = 2×, Shift+tıkla = uzaklaştır (Z)'], ['cursor', 'İmleç', 'Tıkla: en yakın örnek. Shift+tıkla: yeni imleç ekle (çoklu); imlece yakın tık: taşı. Ölçüm paneli ΔX/ΔY, eğim, alan, RMS (C) · Esc: temizle'], ['box', 'Kutu seç', 'Silinecek noktaları kutuyla seç (B)'], ['lasso', 'Kement', 'Silinecek noktaları serbest çizimle seç (L)']];
@@ -4318,7 +4342,8 @@ function buildToolbar() {
   tb.append(h('span', {class: 'sep'}), ib('tb-zin', 'zin', 'Yaklaş', 'Görünümü 2× yakınlaştır (+)', () => curPlot().zoomIn()), ib('tb-zout', 'zout', 'Uzaklaş', 'Görünümü 2× uzaklaştır (−)', () => curPlot().zoomOut()),
     ib('tb-fit', 'fit', 'Sığdır', 'Tümünü sığdır: tüm veriyi göster (Home / çift tık)', () => curPlot().fitAll()),
     ib('tb-back', 'back', 'Geri', 'Önceki görünüm (Alt+←)', () => viewHist(-1)), ib('tb-fwd', 'fwd', 'İleri', 'Sonraki görünüm (Alt+→)', () => viewHist(1)),
-    ib('tb-legend', 'legend', 'Lejant', 'Tüm lejantları katla / aç (alt grafikte: lejant başlığındaki ▾ ya da üst çubuktaki düğme)', () => toggleAllLegends()),
+    ib('tb-legend', 'legend', 'Lejant ▾', 'Lejant seçenekleri: göster / katla, boyut, konum', e => legendMenu(e.currentTarget)),
+    ib('tb-size', 'gridl', 'Düzen ▾', 'Alt grafik düzeni: sütun sayısı (ızgara), tüm alt grafiklerin genişlik / yüksekliği, eşzamanlı boyutlandırma', e => sizeMenu(e.currentTarget)),
     ib('tb-xhair', 'xhair', 'İzleme', 'Senkron dikey izleme: tüm alt grafiklerde imleç altındaki değerler (X)', () => toggleCrosshair()),
     h('span', {class: 'sep'}), ib('tb-undo', 'undo', 'Geri al', 'Ctrl+Z', undo), ib('tb-redo', 'redo', 'Yinele', 'Ctrl+Y', redo),
     h('span', {class: 'sep'}), ib('tb-del', 'del', 'Sil', 'Seçili noktaları sil (Delete)', deleteSelection));
@@ -5534,7 +5559,7 @@ function syncOverlay(P) {
   const ov = ensureOv(P);
   if (!P.axes.length || !P.axes[0].rect || !P.W) { if (ov.firstChild) { ov.replaceChildren(); ov._parts = []; ov._sig = ''; } return; }
   ov.style.height = P.H + 'px';
-  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
+  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + (P.lgSize || 'm') + (P.lgCorner || 'tr') + P.gridCols() + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
   if (sig !== ov._sig) { ov._sig = sig; buildOv(P, ov); }
   for (const p of ov._parts) { p.upd(); if (p.cor && p.ax.rect) { const r = p.ax.rect; p.cor.style.left = r.x + r.w - 12 + 'px'; p.cor.style.top = r.y + r.h - 12 + 'px'; } }
 }
@@ -5554,17 +5579,22 @@ function buildOv(P, ov) {
     if (i > 0 && main) bar.append(mk('merge', 'Bir üstteki alt grafikle birleştir (aynı eksen)', () => mergeUp(P, ax)));
     const cor = h('div', {class: 'axcorner', title: 'Köşeden sürükle: bu alt grafiğin yüksekliği ve genişliği · çift tık: varsayılan boyut', role: 'separator', 'aria-label': 'Alt grafiği boyutlandır'});
     cor.onpointerdown = e => {
-      e.preventDefault(); e.stopPropagation(); cor.setPointerCapture(e.pointerId); const r0 = Object.assign({}, ax.rect), x0 = e.clientX, y0 = e.clientY, full = Math.max(50, P.W - r0.x - (P.margins ? P.margins().R : 18));
+      e.preventDefault(); e.stopPropagation(); const r0 = Object.assign({}, ax.rect), x0 = e.clientX, y0 = e.clientY, full = Math.max(50, P.W - r0.x - (P.margins ? P.margins().R : 18));
       document.body.classList.add('dragging2');
-      cor.onpointermove = ev => { ax.hpx = Math.max(60, Math.round(r0.h + ev.clientY - y0)); ax.wfrac = Math.min(1, Math.max(0.2, (r0.w + ev.clientX - x0) / full)); if (ax.wfrac > 0.985) ax.wfrac = null; P.invalidate(); };
-      cor.onpointerup = () => { cor.onpointermove = cor.onpointerup = null; document.body.classList.remove('dragging2'); P.onChange('view'); };
+      cor.onpointermove = ev => {
+        if (P.syncSize) { P.cellH = Math.max(60, Math.round(r0.h + ev.clientY - y0)); P.cellW = Math.max(120, Math.round(r0.w + ev.clientX - x0)); for (const a of P.axes) { a.hpx = null; a.wfrac = null; } if (typeof sizeUISync === 'function') sizeUISync(P); }
+        else { ax.hpx = Math.max(60, Math.round(r0.h + ev.clientY - y0)); ax.wfrac = Math.min(1, Math.max(0.2, (r0.w + ev.clientX - x0) / full)); if (ax.wfrac > 0.985) ax.wfrac = null; }
+        P.invalidate(); };
+      // pencere dinleyicileri: ızgara yeniden dizilip tutamak yeniden oluşsa da sürükleme sürer
+      const mv = ev => cor.onpointermove(ev), up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); cor.onpointermove = null; document.body.classList.remove('dragging2'); P.onChange('view'); };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
     };
-    cor.ondblclick = e => { e.stopPropagation(); ax.hpx = null; ax.wfrac = null; P.invalidate(); };
+    cor.ondblclick = e => { e.stopPropagation(); if (P.syncSize) { P.cellW = P.cellH = null; if (typeof sizeUISync === 'function') sizeUISync(P); } ax.hpx = null; ax.wfrac = null; P.invalidate(); };
     ov.append(cor);
     ov.append(bar); const part = {ax, bar, cor, upd() { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; }}; ov._parts.push(part);
     if (P.legend && ax.traces.length) {
       const nv = ax.traces.filter(t => !t.noLegend).length;
-      const lg = h('div', {class: 'lgd' + (ax.lgMin ? ' min' : ''), 'aria-label': 'Lejant'}), rows = [], grip = h('div', {class: 'lgrip', title: 'Tutup sürükleyerek taşı · çift tık: varsayılan yer'}, '⋯');
+      const lg = h('div', {class: 'lgd lg-' + (P.lgSize || 'm') + (ax.lgMin ? ' min' : ''), 'aria-label': 'Lejant'}), rows = [], grip = h('div', {class: 'lgrip', title: 'Tutup sürükleyerek taşı · çift tık: varsayılan yer'}, '⋯');
       const fold = h('button', {class: 'lfold noic', title: ax.lgMin ? 'Lejantı aç' : 'Lejantı katla', 'aria-expanded': String(!ax.lgMin), onclick: e => { e.stopPropagation(); toggleLegend(P, ax); }}, ax.lgMin ? '▸ ' + nv + ' iz' : '▾');
       lg.append(h('div', {class: 'lhead'}, fold, grip));
       grip.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); grip.setPointerCapture(e.pointerId); const lp = ax.lgPos || {dx: 0, dy: 0}, x0 = e.clientX - lp.dx, y0 = e.clientY - lp.dy; grip.onpointermove = ev => { ax.lgPos = {dx: ev.clientX - x0, dy: ev.clientY - y0}; part.upd(); P.invalidate(); }; grip.onpointerup = () => { grip.onpointermove = grip.onpointerup = null; }; };
@@ -5581,10 +5611,12 @@ function buildOv(P, ov) {
         lg.append(row); rows.push({tr, ex});
       });
       ov.append(lg); part.lg = lg; part.rows = rows;
-      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; const lp = ax.lgPos || {dx: 0, dy: 0}, lw = lg.offsetWidth || 120, lh = lg.offsetHeight || 40, right = Math.max(P.W - r.x - r.w - 0, Math.min(P.W - r.x - lw, P.W - r.x - r.w + 8 - lp.dx)), top = Math.max(r.y, Math.min(r.y + r.h - lh, r.y + 6 + lp.dy)); lg.style.right = right + 'px'; lg.style.top = top + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px'; lg.style.maxHeight = Math.max(40, r.h - 4) + 'px';
+      part.upd = () => { const r = ax.rect; bar.style.left = r.x + 6 + 'px'; bar.style.top = r.y + 6 + 'px'; const lp = ax.lgPos || {dx: 0, dy: 0}, cn = P.lgCorner || 'tr', lw = lg.offsetWidth || 120, lh = lg.offsetHeight || 40;
+        const left0 = cn[1] === 'l' ? r.x + 6 + lp.dx : r.x + r.w - lw - 6 + lp.dx, top0 = cn[0] === 'b' ? r.y + r.h - lh - 6 + lp.dy : r.y + 6 + lp.dy;
+        const left = Math.max(r.x, Math.min(r.x + r.w - lw, left0)), top = Math.max(r.y, Math.min(r.y + r.h - lh, top0)); lg.style.right = 'auto'; lg.style.left = left + 'px'; lg.style.top = top + 'px'; lg.style.maxWidth = Math.max(120, r.w * 0.55) + 'px'; lg.style.maxHeight = Math.max(40, r.h - 4) + 'px';
         for (const q of rows) { const t = q.tr.visible ? P.legendExtra(q.tr, ax) : ''; if (q.ex._t !== t) { q.ex._t = t; q.ex.textContent = t; } } };
     }
-    if (i < n - 1) {
+    if (i < n - 1 && P.gridCols() === 1) {
       const sep = h('div', {class: 'hsep', title: 'Sürükleyerek alt grafik yüksekliklerini ayarla'}); ov.append(sep);
       sep.onpointerdown = e => {
         e.preventDefault(); sep.setPointerCapture(e.pointerId); const a = ax, b = P.axes[i + 1], unit = a.rect.h / (a.hw || 1), ha = a.rect.h, hb = b.rect.h, y0 = e.clientY;
@@ -5625,7 +5657,7 @@ function shortcutsDialog() {
     ['Esc', 'Seçimi kaldır / menüyü kapat'], ['Çift tık (ağaç)', 'Kanalı yeni alt grafiğe ekle (Ayarlar’dan değişir)'], ['Shift + çift tık', 'Tercihin tersi: aktif grafiğe ekle'], ['Shift + tık (ağaç)', 'Aralık seç'], ['Ctrl + tık (ağaç)', 'Çoklu seç'],
     ['Lejanta tık', 'İzi göster / gizle'], ['Lejanta sağ tık', 'Renk, kalınlık, taşı, kaldır'], ['Lejantı sürükle', 'İzi başka alt grafiğe taşı'], ['Alt grafik ayırıcısı', 'Sürükle: yükseklik · çift tık: eşitle'], ['↑ ↓ Enter (ağaç)', 'Klavyeyle gezin / ekle'], ['* (ağaç)', 'Kanalı sık kullanılanlara ekle / çıkar'],
     ['Alt+← / Alt+→', 'Önceki / sonraki görünüm (yakınlaştırma geçmişi)'], ['X', 'Senkron dikey izleme (tüm alt grafiklerde değerler)'], ['Shift + tık (İmleç)', 'Yeni imleç ekle (çoklu imleç, ölçüm paneli)'], ['Esc', 'İmleçleri temizle'],
-    ['Ctrl+B / Ctrl+Shift+B', 'Sol / sağ paneli gizle-göster'], ['Alt grafik köşesi (sağ alt)', 'Sürükle: o grafiğin yüksekliği / genişliği · çift tık: varsayılan'], ['5+ alt grafik', 'Görünüm dikey kaydırılır: tekerlek kaydırır, Ctrl+tekerlek X yakınlaştırır, Shift+tekerlek Y'], ['Lejant ▾ / araç çubuğu Lejant', 'Lejantı katla / tüm lejantları katla'], ['Panel kenarı', 'Sürükle: genişlik · çift tık: varsayılan'], ['F11', 'Tam ekran'], ['?', 'Bu pencere']];
+    ['Ctrl+B / Ctrl+Shift+B', 'Sol / sağ paneli gizle-göster'], ['Alt grafik köşesi (sağ alt)', 'Sürükle: o grafiğin yüksekliği / genişliği · çift tık: varsayılan'], ['5+ alt grafik', 'Görünüm dikey kaydırılır: tekerlek kaydırır, Ctrl+tekerlek X yakınlaştırır, Shift+tekerlek Y'], ['Lejant ▾ (araç çubuğu)', 'Göster/gizle, tümünü katla, boyut, konum'], ['Düzen ▾ (araç çubuğu)', 'Sütun (1–4, ızgara), tüm grafiklerin genişlik/yüksekliği, eşzamanlı köşe boyutlandırma'], ['Panel kenarı', 'Sürükle: genişlik · çift tık: varsayılan'], ['F11', 'Tam ekran'], ['?', 'Bu pencere']];
   modal('Klavye kısayolları ve fare', h('table', {class: 'kv'}, rows.map(r => h('tr', null, h('td', null, h('kbd', null, r[0])), h('td', null, r[1])))), [{t: 'Kapat', primary: true}]);
 }
 function updDblBtn() { const b = $('#btnDbl'); if (!b) return; const s = b.querySelector('.lbltxt') || (() => { const t = h('span', {class: 'lbltxt'}); b.append(t); b.childNodes.forEach(c => { if (c.nodeType === 3) c.remove(); }); return t; })(); s.textContent = 'Çift tık: ' + (S.pref.dbl === 'same' ? 'aktif grafiğe ekle' : 'yeni alt grafik'); }
@@ -11784,6 +11816,70 @@ async function computeSliding() {
 (function () {
   const sv0 = typeof switchView === 'function' ? switchView : null; if (!sv0) return;
   switchView = function (v) { sv0(v); for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P && P._cpanel) P._cpanel.style.display = P.cv.parentElement.classList.contains('hidden') ? 'none' : ''; };
+})();
+
+/* ---------- Lejant ve Düzen açılır menüleri; araç çubuğu taşınca yalnız simge ---------- */
+function popClose() { const m = $('#popm'); if (m) { m.remove(); document.removeEventListener('pointerdown', popOutside, true); if (m._esc) document.removeEventListener('keydown', m._esc, true); } }
+function popOutside(e) { const m = $('#popm'); if (m && !m.contains(e.target) && !(m._anchor && m._anchor.contains(e.target))) popClose(); }
+function popOpen(anchor, title, build) {
+  const was = $('#popm'); popClose(); if (was && was._anchor === anchor) return;   // aynı düğme: kapat
+  const m = h('div', {id: 'popm', class: 'popm', role: 'dialog', 'aria-label': title}); m._anchor = anchor; document.body.append(m);
+  const render = () => { m.replaceChildren(h('div', {class: 'pmh'}, title), ...build(render)); place(); };
+  const place = () => { const r = anchor.getBoundingClientRect(), w = m.offsetWidth; m.style.top = r.bottom + 4 + 'px'; m.style.left = Math.max(4, Math.min(innerWidth - w - 4, r.left)) + 'px'; };
+  render(); m._render = render;
+  setTimeout(() => document.addEventListener('pointerdown', popOutside, true), 0);
+  const esc = e => { if (e.key === 'Escape' && $('#popm') === m) { e.stopPropagation(); popClose(); anchor.focus(); } }; m._esc = esc; document.addEventListener('keydown', esc, true);
+}
+const pmSeg = (opts, cur, fn) => h('div', {class: 'pmseg', role: 'radiogroup'}, ...opts.map(([v, t]) => h('button', {class: 'noic' + (String(cur) === String(v) ? ' on' : ''), role: 'radio', 'aria-checked': String(String(cur) === String(v)), onclick: () => fn(v)}, t)));
+const pmRow = (label, ...c) => h('div', {class: 'pmrow'}, h('span', {class: 'pml'}, label), ...c);
+function lgSave(P) { try { localStorage.setItem('mv.lg', JSON.stringify({size: P.lgSize || 'm', corner: P.lgCorner || 'tr'})); } catch (_) {} }
+function lgApply(P) { if (P._ov) P._ov._sig = ''; P.invalidate(); }
+function legendMenu(anchor) {
+  const P = curPlot();
+  popOpen(anchor, 'Lejant', render => {
+    const set = (k, v) => { P[k] = v; lgApply(P); lgSave(P); render(); };
+    const allMin = P.axes.length && P.axes.every(a => a.lgMin);
+    return [
+      h('label', {class: 'pmchk'}, h('input', {type: 'checkbox', checked: P.legend !== false, onchange: e => { P.legend = e.target.checked; const c = $('#legendOn'); if (c && P === S.plot) c.checked = P.legend; lgApply(P); render(); }}), 'Lejantları göster'),
+      pmRow('Katla', pmSeg([['min', 'Tümünü katla'], ['open', 'Tümünü aç']], allMin ? 'min' : (P.axes.every(a => !a.lgMin) ? 'open' : ''), v => { for (const a of P.axes) a.lgMin = v === 'min'; lgApply(P); render(); })),
+      pmRow('Boyut', pmSeg([['s', 'Küçük'], ['m', 'Orta'], ['l', 'Büyük']], P.lgSize || 'm', v => set('lgSize', v))),
+      pmRow('Konum', pmSeg([['tl', '↖ Sol üst'], ['tr', '↗ Sağ üst'], ['bl', '↙ Sol alt'], ['br', '↘ Sağ alt']], P.lgCorner || 'tr', v => { for (const a of P.axes) a.lgPos = null; set('lgCorner', v); })),
+      h('div', {class: 'pmbtns'}, h('button', {class: 'noic', title: 'Elle sürüklenmiş lejantları seçili köşeye geri al', onclick: () => { for (const a of P.axes) a.lgPos = null; lgApply(P); }}, 'Konumları sıfırla')),
+      h('div', {class: 'pmnote'}, 'Tek alt grafikte: lejant başlığındaki ▾ katlar, ⋯ ile sürüklenir. Katlı lejant PNG / SVG çıktısına girmez.')];
+  });
+}
+function layoutSave(P) { try { localStorage.setItem('mv.layout', JSON.stringify({cols: P.cols || 'auto', cellW: P.cellW || null, cellH: P.cellH || null, sync: !!P.syncSize})); } catch (_) {} }
+function sizeUISync(P) { const m = $('#popm'); if (m && m._size && m._render) m._render(); }
+function sizeMenu(anchor) {
+  const P = curPlot();
+  popOpen(anchor, 'Alt grafik düzeni', render => {
+    const m = $('#popm'); if (m) m._size = true;
+    const apply = () => { for (const a of P.axes) if (P.cellW || P.cellH) { if (P.cellW) a.wfrac = null; if (P.cellH) a.hpx = null; } P.invalidate(); };
+    const num = (k, ph) => h('input', {type: 'number', min: k === 'cellW' ? 120 : 60, step: 10, value: P[k] || '', placeholder: ph, onchange: e => { const v = Math.round(+e.target.value); P[k] = v > 0 ? Math.max(k === 'cellW' ? 120 : 60, v) : null; apply(); render(); }});
+    const cols = P.gridCols(), W = P.W || 0, {L, R} = P.margins();
+    const fit = P.cellW ? Math.max(1, Math.min(4, Math.floor(W / (P.cellW + L + R)))) : null;
+    return [
+      pmRow('Sütun', pmSeg([['auto', 'Otomatik'], [1, '1'], [2, '2'], [3, '3'], [4, '4']], P.cols || 'auto', v => { P.cols = v; P.invalidate(); render(); })),
+      pmRow('Genişlik (px)', num('cellW', 'otomatik')), pmRow('Yükseklik (px)', num('cellH', 'otomatik')),
+      h('label', {class: 'pmchk', title: 'Açıkken herhangi bir alt grafiğin sağ alt köşesinden yapılan boyutlandırma tümüne uygulanır'}, h('input', {type: 'checkbox', checked: !!P.syncSize, onchange: e => { P.syncSize = e.target.checked; render(); }}), 'Köşeden boyutlandırma tüm grafiklere uygulansın'),
+      h('div', {class: 'pmnote'}, `Şu an ${cols} sütun · ${P.axes.length} alt grafik` + (P.cellW && (P.cols || 'auto') === 'auto' ? ` · bu genişlikte panele ${fit} sütun sığıyor (ızgara ortalanır)` : '') + '. Otomatik sütunda genişlik verilince sığan kadar (en çok 4) yan yana dizilir.'),
+      h('div', {class: 'pmbtns'},
+        h('button', {class: 'noic', title: 'Sütun, boyut ve eşzamanlı boyutlandırma ayarını yeni açılışlar için varsayılan yap', onclick: () => { layoutSave(P); toast('Varsayılan düzen kaydedildi'); }}, 'Varsayılan yap'),
+        h('button', {class: 'noic', title: 'Otomatik sütun, otomatik boyut; alt grafiklerin tek tek boyutları da sıfırlanır', onclick: () => { P.cols = 'auto'; P.cellW = P.cellH = null; for (const a of P.axes) { a.hpx = null; a.wfrac = null; a.hw = 1; } P.invalidate(); render(); }}, 'Sıfırla'))];
+  });
+}
+// araç çubukları: düğme adları sığmıyorsa yalnız simge göster
+function fitBar(el) {
+  if (!el) return; el.classList.remove('compact');
+  if (el.scrollWidth > el.clientWidth + 1) el.classList.add('compact');
+}
+(function () {
+  window.addEventListener('DOMContentLoaded', () => setTimeout(() => {
+    try { const o = JSON.parse(localStorage.getItem('mv.lg') || 'null'); if (o) for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) { P.lgSize = o.size; P.lgCorner = o.corner; } } catch (_) {}
+    try { const o = JSON.parse(localStorage.getItem('mv.layout') || 'null'); if (o && S.plot) { S.plot.cols = o.cols || 'auto'; S.plot.cellW = o.cellW || null; S.plot.cellH = o.cellH || null; S.plot.syncSize = !!o.sync; S.plot.invalidate(); } } catch (_) {}
+    for (const id of ['toolbar', 'viewbar']) { const el = $('#' + id); if (!el) continue; const ro = new ResizeObserver(() => fitBar(el)); ro.observe(el); fitBar(el); }
+    window.addEventListener('resize', () => { const m = $('#popm'); if (m) popClose(); });
+  }, 0));
 })();
 
 </script>
