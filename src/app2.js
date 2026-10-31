@@ -341,7 +341,7 @@ function buildAcoustic() {
     chkIn('acLoop', 'Döngü', false),
     h('div', {class: 'note'}, 'Örnekleme 8 kHz altına inerse hız otomatik artırılır. Dinlemeden önce ses düzeyini düşük tutun.')));
   r.append(card('Otomatik temizleme',
-    h('div', {class: 'note'}, 'Kaynak izi inceler: DC/eğilim, 50/60 Hz uğultusu ve harmonikleri, düşük frekans gürültüsü, tık/pop ve sessiz bölümden gürültü profilini kendisi bulup aşağıdaki ayarları doldurur. Sonra dinleyip ayarları değiştirebilirsiniz.'),
+    h('div', {class: 'note'}, 'Kaynak izi inceler: DC/eğilim, şebeke (50/60 Hz) ya da başka bir sabit frekanslı tonal parazit ve harmonikleri (arka planda aranır), düşük frekans gürültüsü, tık/pop ve sessiz bölümden gürültü profilini kendisi bulup aşağıdaki ayarları doldurur. Sonra dinleyip ayarları değiştirebilirsiniz.'),
     h('div', {class: 'btns'}, btn('Otomatik temizle (tespit + uygula)', acAutoRun, 'primary'), btn('Yalnız ayarla', () => acAuto(false)))));
   r.append(card('Parazit temizleme',
     fr('DC / eğilim', selIn('acDc', [['none', 'Yok'], ['mean', 'Ortalamayı çıkar'], ['lin', 'Doğrusal eğilimi çıkar']], 'mean')),
@@ -406,7 +406,7 @@ async function acPrepare(clean) {
   const {tr, ax} = acGetSeg(), ch = tr.ch; await ensureLoaded(ch); const fs = ch.fs; const [a, b] = specRange(tr, ax, sv('acScope'));
   if (b - a < 256) throw new Error('Aralık çok kısa');
   let x = DSP.segment(ch.data, ch.del, a, b), log = [];
-  if (!clean) { let m = 0; for (const v of x) m += v; m /= x.length; return {y: x.map(v => v - m), fs, a, b, ch, log, raw: x}; }
+  if (!clean) { let m = 0; for (const v of x) m += v; m /= x.length; return {y: x.map(v => v - m), fs, a, b, ch, log, raw: x, ax}; }
   const o = opts(); let y = await preChain(x, fs, o);
   if (o.click) { const r = DSP.declick(y, o.ck, o.cs, 2); y = r.y; log.push(`Tık temizleme: ${r.events} olay, ${fmtCnt(r.count)} örnek düzeltildi`); }
   if (o.dn) {
@@ -418,9 +418,27 @@ async function acPrepare(clean) {
       const Pn = await DSPW.run('noiseFloorMinStat', [y, 2048, 0.1]); y = await DSPW.run('spectralDenoise', [y, null, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA, noisePower: Pn}], y === x ? [] : [y]); log.push('Gürültü profili: sinyalden otomatik tahmin (frekans başına en düşük %10 çerçeve)');
     }
   }
-  return {y, fs, a, b, ch, log, raw: x};
+  return {y, fs, a, b, ch, log, raw: x, ax};
 }
-function acStop() { const A = S.audio; if (A) { try { A.src && A.src.stop(); } catch (e) {} A.stopped = true; A.buf = null; } S.plot.playhead = null; S.plot.invalidate(); acTrUI(); }
+function acStop() { const A = S.audio; if (A) { try { A.src && A.src.stop(); } catch (e) {} A.stopped = true; A.buf = null; } S.plot.playhead = null; S.plot.xtra = null; S.plot.invalidate(); acTrUI(); }
+// grafikteki oynatma çubuğu: çalan kanalın alt grafiğinin altında (eksen yazılarından sonra) şerit
+function acBarSync(P, ov) {
+  const A = S.audio, on = !!(A && A.buf && !A.stopped && A.ax && P.axes.includes(A.ax) && A.ax.rect);
+  let bar = P._acBar;
+  if (!on) { if (bar) bar.remove(); if (P.xtra) { P.xtra = null; P.invalidate(); } return; }
+  if (!P.xtra || P.xtra.ax !== A.ax) { P.xtra = {ax: A.ax, px: 34}; P.invalidate(); }
+  if (!bar) {
+    const b = (cls, title, fn, txt) => h('button', {class: cls, title, 'aria-label': title, onclick: e => { e.stopPropagation(); fn(); }}, txt);
+    bar = P._acBar = h('div', {class: 'acbar', onpointerdown: e => e.stopPropagation(), onwheel: e => e.stopPropagation()},
+      b('acb-back', 'Geri sar (Shift+←)', () => acSkip(-1), '⏪'), b('acb-pp', 'Duraklat / devam (Shift+Boşluk)', acTogglePause, '❚❚'), b('acb-fwd', 'İleri sar (Shift+→)', () => acSkip(1), '⏩'),
+      h('input', {type: 'range', class: 'acb-seek', min: 0, max: 1000, step: 1, value: 0, title: 'Sürükleyerek konuma git', 'aria-label': 'Oynatma konumu', oninput: e => { const A = S.audio; if (A && A.buf) acSeekTo(+e.target.value / 1000 * A.dur, true); }}),
+      h('span', {class: 'acb-pos'}), h('span', {class: 'acb-nm'}), b('acb-x', 'Durdur', acStop, '■'));
+  }
+  if (!bar.isConnected || bar.parentElement !== ov) ov.append(bar);
+  const r = A.ax.rect, last = A.ax.row === P.axes[P.axes.length - 1].row;
+  bar.style.left = r.x + 'px'; bar.style.width = r.w + 'px'; bar.style.top = (r.y + r.h + (last ? 38 : 20)) + 'px';
+  acTrUI();
+}
 // konum (sinyal saniyesi): offset + (şimdi − başlangıç) × hız; döngüde süreye göre sarılır
 function acPos() { const A = S.audio; if (!A || !A.buf) return 0; let el = A.paused ? A.offset : A.offset + (A.ctx.currentTime - A.start) * A.speed; if (A.loop) el = ((el % A.dur) + A.dur) % A.dur; return Math.max(0, Math.min(A.dur, el)); }
 function acStartAt(el) {
@@ -447,9 +465,15 @@ function acTogglePause() {
 }
 function acTrUI(el) {
   const A = S.audio, on = !!(A && A.buf && !A.stopped); for (const id of ['acBack', 'acPP', 'acFwd', 'acSeek']) { const e = $('#' + id); if (e) e.disabled = !on; }
-  const pp = $('#acPP'); if (pp) pp.textContent = on && A.paused ? '▶' : '❚❚';
-  if (el == null) el = on ? acPos() : 0; const sk = $('#acSeek'); if (sk && on && document.activeElement !== sk) sk.value = Math.round(el / A.dur * 1000);
-  const ps = $('#acPos'); if (ps) { const t = on ? `${fmtNum(el, 4)} / ${fmtNum(A.dur, 4)} s` + (A.paused ? ' · duraklatıldı' : '') : '–'; if (ps.textContent !== t) ps.textContent = t; }
+  if (el == null) el = on ? acPos() : 0;
+  const t = on ? `${fmtNum(el, 4)} / ${fmtNum(A.dur, 4)} s` + (A.paused ? ' · duraklatıldı' : '') : '–', v = on ? Math.round(el / A.dur * 1000) : 0, pp = on && A.paused ? '▶' : '❚❚';
+  const set = (e, k, x) => { if (e && e[k] !== x) e[k] = x; };
+  set($('#acPP'), 'textContent', pp); set($('#acPos'), 'textContent', t); { const sk = $('#acSeek'); if (sk && on && document.activeElement !== sk) sk.value = v; }
+  const bar = S.plot && S.plot._acBar; if (bar && bar.isConnected) {
+    set(bar.querySelector('.acb-pp'), 'textContent', pp); set(bar.querySelector('.acb-pos'), 'textContent', t);
+    set(bar.querySelector('.acb-nm'), 'textContent', on ? (A.clean ? 'temizlenmiş' : 'orijinal') + (A.speed !== 1 ? ' · ×' + fmtNum(A.speed, 3) : '') : '');
+    const sk = bar.querySelector('.acb-seek'); if (sk && on && document.activeElement !== sk) sk.value = v;
+  }
 }
 async function acPlay(clean) {
   acStop();
@@ -464,7 +488,7 @@ async function acPlay(clean) {
     const nrm = 0.9 / pk, fade = Math.min(Math.floor(rate * 0.01), y.length >> 2);
     for (let i = 0; i < y.length; i++) { let v = y[i] * nrm; v = v > 1 ? 1 : v < -1 ? -1 : v; if (i < fade) v *= i / fade; else if (i > y.length - fade) v *= (y.length - i) / fade; d[i] = v; }
     const gain = ctx.createGain(); gain.gain.value = +sv('acVol'); gain.connect(ctx.destination);
-    S.audio = {ctx, buf, gain, src: null, t0: p.ch.t(p.a), speed, dur: y.length / fs, loop: ck('acLoop'), offset: 0, paused: false, stopped: false, start: ctx.currentTime};
+    S.audio = {ctx, buf, gain, src: null, ax: p.ax, clean, t0: p.ch.t(p.a), speed, dur: y.length / fs, loop: ck('acLoop'), offset: 0, paused: false, stopped: false, start: ctx.currentTime};
     acStartAt(0);
   });
 }

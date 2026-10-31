@@ -285,15 +285,18 @@ const DSP = (() => {
     const alpha = opt.alpha ?? 2, floor = Math.pow(10, -(opt.reduceDb ?? 15) / 20);
     const n = x.length, out = new Float64Array(n + N), norm = new Float64Array(n + N);
     const pad = new Float64Array(n + 2 * N); pad.set(x, N);
-    let prevG = new Float64Array(nb).fill(1);
+    // karar yönlendirmeli (Ephraim–Malah) a priori SNR ile Wiener kazancı: kısa süreli gürültü tepelerinin bıraktığı
+    // "müzikal" kalıntıyı ve arka plan dip gürültüsünü klasik spektral çıkarmadan çok daha iyi bastırır
+    let prevG = new Float64Array(nb).fill(1); const prevS = new Float64Array(nb), dd = opt.dd ?? 0.98, ov = alpha / 2;
     for (let st = 0; st + N <= pad.length; st += hop) {
       for (let i = 0; i < N; i++) { re[i] = pad[st + i] * w[i]; im[i] = 0; }
       fft(re, im, false);
       const G = new Float64Array(nb);
       for (let k = 0; k < nb; k++) {
-        const py = re[k] * re[k] + im[k] * im[k] + 1e-30;
-        let g = Math.sqrt(Math.max(0, 1 - alpha * Pn[k] / py)); g = Math.max(floor, g);
-        G[k] = 0.6 * g + 0.4 * prevG[k];
+        const py = re[k] * re[k] + im[k] * im[k] + 1e-30, pn = ov * Pn[k] + 1e-30, gam = py / pn;
+        const xi = Math.max(1e-3, dd * prevS[k] / pn + (1 - dd) * Math.max(0, gam - 1));
+        const g = Math.max(floor, xi / (1 + xi)); prevS[k] = g * g * py;
+        G[k] = g;
       }
       prevG = G;
       // frekans yönünde hafif yumuşatma
@@ -344,6 +347,44 @@ const DSP = (() => {
     for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, y[i])) * 32767, true);
     return new Blob([buf], {type: 'audio/wav'});
   }
+  // Arka plandaki tonal aile: en sessiz pencerelerin ince çözünürlüklü PSD'sinde belirgin tepeler bulunur, en güçlü
+  // tepelerden temel frekans adayları (f, f/2, f/3) denenir; harmonik dizisi en güçlü olan seçilir. {f0, nh, hits, prom, mains} | null
+  function tonalFamily(x, fs) {
+    const n = x.length, W = Math.max(16384, Math.round(fs * 0.5)), nw = Math.floor(n / W); let bg = x;
+    if (nw >= 6) {
+      const r = []; for (let w = 0; w < nw; w++) { let s = 0, m = 0; for (let i = w * W; i < (w + 1) * W; i++) m += x[i]; m /= W; for (let i = w * W; i < (w + 1) * W; i++) s += (x[i] - m) ** 2; r.push([s, w]); }
+      r.sort((a, b) => a[0] - b[0]); const k = Math.max(3, Math.ceil(nw * 0.4)), sel = r.slice(0, k).map(v => v[1]).sort((a, b) => a - b);
+      bg = new Float64Array(k * W); sel.forEach((w, j) => bg.set(x.subarray(w * W, (w + 1) * W), j * W));
+    }
+    let nfft = 4096; while (nfft * 4 <= bg.length && nfft < 262144) nfft *= 2;
+    if (bg.length < nfft) return null;
+    const P = welch(bg, fs, {nfft, win: 'hann', overlap: 0.5, scale: 'psd', maxSeg: 64}), y = P.y, df = P.df, fmax = Math.min(2000, fs * 0.45), kmax = Math.min(y.length - 4, Math.floor(fmax / df));
+    const R = Math.max(30, Math.round(5 / df)), prom = new Float64Array(y.length), pk = [];
+    for (let k = Math.max(3, Math.ceil(4 / df)); k <= kmax; k++) {
+      let isMax = true; for (let j = k - 3; j <= k + 3; j++) if (j !== k && y[j] > y[k]) { isMax = false; break; } if (!isMax) continue;
+      const v = []; for (let j = Math.max(1, k - R); j <= Math.min(y.length - 1, k + R); j++) if (Math.abs(j - k) > 3) v.push(y[j]); v.sort((a, b) => a - b);
+      const p = 10 * Math.log10(y[k] / (v[v.length >> 1] + 1e-300)); if (p >= 8) { prom[k] = p; pk.push(k); }
+    }
+    if (!pk.length) return null;
+    const near = (f, tol) => { let b = -1; for (const k of pk) if (Math.abs(k * df - f) <= tol && (b < 0 || prom[k] > prom[b])) b = k; return b; };
+    const refine = k => { const a = y[k - 1], b = y[k], c = y[k + 1], d = a - 2 * b + c; return (k + (d < 0 ? 0.5 * (a - c) / d : 0)) * df; };
+    const seeds = pk.filter(k => prom[k] >= 15).sort((a, b) => prom[b] - prom[a]).slice(0, 8); let best = null;
+    for (const s of seeds) for (let d = 1; d <= 3; d++) {
+      const f0 = refine(s) / d; if (f0 < 4) continue;
+      const hits = [], ks = []; let miss = 0, score = 0;
+      for (let h = 1; h <= 20 && h * f0 <= fmax; h++) {
+        const k = near(h * f0, Math.max(2 * df, 0.004 * h * f0));
+        if (k >= 0) { hits.push(h); ks.push(k); score += prom[k]; miss = 0; } else if (h === 1 || ++miss >= 2) break;
+      }
+      if (!hits.includes(1)) continue;
+      if (hits.length < 2 && prom[ks[0]] < 20) continue;
+      if (!best || score > best.score) best = {f0, hits, ks, score};
+    }
+    if (!best) return null;
+    let sw = 0, sf = 0; best.ks.forEach((k, i) => { sw += prom[k]; sf += prom[k] * refine(k) / best.hits[i]; }); let f0 = sf / sw;
+    const mains = [50, 60].find(m => Math.abs(f0 - m) < Math.max(0.5, df)); f0 = mains || Math.round(f0 * 100) / 100;
+    return {f0, nh: best.hits[best.hits.length - 1], hits: best.hits, prom: prom[best.ks[0]], mains: !!mains};
+  }
   // Otomatik parazit analizi: DC/eğilim, şebeke uğultusu (50/60 Hz + harmonikler), düşük frekans gürültüsü,
   // tık/pop, sessiz bölümden gürültü profili. Çıktı: {plan, log, noise:[a,b)|null}
   function autoClean(x, fs) {
@@ -361,18 +402,13 @@ const DSP = (() => {
     const nfft = Math.min(8192, nextPow2(n) >> (n < 16384 ? 1 : 0)); if (nfft < 256) return res;
     const P = welch(plan.dc === 'lin' ? dl : x, fs, {nfft, win: 'hann', overlap: 0.5, scale: 'psd', maxSeg: 600}), f = P.f, y = P.y, df = P.df, nyq = fs / 2;
     const med = (a, b) => { const c = Array.from(y.slice(Math.max(0, a), Math.min(y.length, b))).sort((p, q) => p - q); return c.length ? c[c.length >> 1] : 0; };
-    // şebeke uğultusu
-    let best = null;
-    for (const f0 of [50, 60]) {
-      let nh = 0, hits = [];
-      for (let h = 1; h <= 10 && h * f0 < nyq * 0.95; h++) {
-        const c = Math.round(h * f0 / df); let pk = 0; for (let i = c - 2; i <= c + 2; i++) if (y[i] > pk) pk = y[i];
-        const base = (med(c - 40, c - 6) + med(c + 6, c + 40)) / 2 + 1e-300, db = 10 * Math.log10(pk / base);
-        if (db >= 10) { hits.push(h); nh = h; }
-      }
-      if (hits.length && hits.includes(1) || hits.length >= 2) if (!best || hits.length > best.hits.length) best = {f0, hits, nh};
-    }
-    if (best) { let c = 0; while (best.hits.includes(c + 1)) c++; best.nh = Math.max(1, c); plan.notch = best.f0; plan.nh = best.nh; log.push(`Şebeke uğultusu: ${best.f0} Hz ve harmonikleri (${best.hits.join(', ')}. harmonik) → notch`); } else log.push('Şebeke uğultusu bulunmadı');
+    // tonal parazit (şebeke 50/60 Hz ya da herhangi bir temel frekans + harmonikleri): yalnız arka planda (en sessiz
+    // pencerelerde) aranır; böylece yalnızca olay sırasında görünen gerçek sinyal tonları parazit sayılmaz
+    const tn = tonalFamily(plan.dc === 'lin' ? dl : x, fs);
+    if (tn) {
+      plan.notch = tn.f0; plan.nh = tn.nh; plan.nq = 30;
+      log.push(`${tn.mains ? 'Şebeke uğultusu' : 'Tonal parazit'}: ${tn.f0} Hz ve harmonikleri (${tn.hits.join(', ')}. harmonik, arka plandan ${tn.prom.toFixed(0)} dB yüksek) → notch ×${tn.nh}`);
+    } else log.push('Şebeke uğultusu / tonal parazit bulunmadı');
     // düşük frekans gürültüsü
     const fc = Math.min(20, nyq / 20), ref = med(Math.round(Math.min(200, nyq / 4) / df), Math.round(Math.min(2000, nyq / 2) / df));
     let lowPow = 0, lc = 0; for (let i = 1; i < y.length && f[i] < fc; i++) { lowPow += y[i]; lc++; }
@@ -401,8 +437,14 @@ const DSP = (() => {
       const rms = [], clipW = []; for (let w = 0; w < nw; w++) { let s = 0, c = 0; for (let i = w * W; i < (w + 1) * W; i++) { s += z[i] * z[i]; if (Math.abs(x[i]) >= mx * 0.999) c++; } rms.push(Math.sqrt(s / W)); clipW.push(c > 0); }
       const ok = rms.map((r, i) => i).filter(i => !clipW[i]); const sorted = ok.map(i => rms[i]).sort((a, b) => a - b);
       if (sorted.length >= 4) {
-        const q = sorted[0], top = sorted[Math.floor(sorted.length * 0.9)], range = 20 * Math.log10(top / (q + 1e-300));
-        if (range >= 3 && q > 0) { const wi = ok.find(i => rms[i] === q); res.noise = [wi * W, (wi + 1) * W]; plan.dn = true; plan.dnDb = Math.min(18, Math.max(8, Math.round(range))); log.push(`Sessiz bölüm bulundu (${(wi * W / fs).toFixed(3)}–${((wi + 1) * W / fs).toFixed(3)} s, dinamik fark ${range.toFixed(1)} dB) → spektral gürültü azaltma ${plan.dnDb} dB`); }
+        const q = sorted[0], top = sorted[Math.max(0, sorted.length - 1 - Math.floor(sorted.length * 0.02))], range = 20 * Math.log10(top / (q + 1e-300));
+        if (range >= 3 && q > 0) {
+          // en sessiz pencereyi içeren ve ondan en çok 3 dB yüksek pencerelerden oluşan en uzun kesintisiz bölüm (en çok 30 s):
+          // tek kısa pencere gürültüyü olduğundan düşük gösterip arka planda kalıntı bırakır
+          const lim = q * 1.413, good = i => !clipW[i] && rms[i] <= lim; let bs = -1, be = -1;
+          for (let i = 0; i < nw;) { if (!good(i)) { i++; continue; } let e = i; while (e < nw && good(e)) e++; if (e - i > be - bs) { bs = i; be = e; } i = e; }
+          const maxW = Math.max(1, Math.floor(30 * fs / W)); if (be - bs > maxW) { const c = (bs + be) >> 1; bs = c - (maxW >> 1); be = bs + maxW; }
+          const wi = bs; res.noise = [bs * W, be * W]; plan.dn = true; plan.dnDb = Math.min(25, Math.max(10, Math.round(range))); log.push(`Sessiz bölüm bulundu (${(bs * W / fs).toFixed(3)}–${(be * W / fs).toFixed(3)} s, dinamik fark ${range.toFixed(1)} dB) → spektral gürültü azaltma ${plan.dnDb} dB`); }
         else minStat(`Belirgin sessiz bölüm yok (dinamik fark ${range.toFixed(1)} dB)`, range);
       } else minStat('Sessiz bölüm analizi için yeterli temiz pencere yok', 0);
     } else minStat('Kayıt kısa', 0);

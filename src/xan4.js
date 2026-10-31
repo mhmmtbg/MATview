@@ -45,6 +45,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.11', d: 'Akustik temizlemede tonal parazit ve dip gürültü, grafikte oynatma çubuğu', items: [
+    'Akustik otomatik temizleme: yalnız 50/60 Hz değil, arka planda sürekli duran herhangi bir tonal parazit (ör. 22 Hz ve harmonikleri) ince çözünürlüklü spektrumla bulunur ve harmonikleriyle birlikte notch ile çıkarılır; şebeke harmoniklerinin yanlış eşleşmesi giderildi.',
+    'Akustik: sessiz bölüm kısa olaylı kayıtlarda da doğru ölçülür (dinamik fark en yüksek pencerelere göre), gürültü profili tek pencere yerine en uzun sessiz bölümden alınır, azaltma 25 dB\'e kadar; spektral azaltma karar yönlendirmeli Wiener kazancıyla çalışır — arka planda kalan dip gürültü ve müzikal kalıntı belirgin biçimde azalır.',
+    'Akustik: oynatma sırasında çalan kanalın alt grafiğinin hemen altında geri/ileri sarma, duraklatma, konum çubuğu ve durdur düğmeli şerit.',
+    'Telemetri: Çözülen Veriler başlığındaki seçenekler panelin sağ kenarına sabitlendi (sığmazsa alt satıra geçer, taşmaz); tablo panelden darsa işlem düğmeleri yine sağ kenarda kalır.']},
   {v: '2.10', d: 'Akustik oynatmada sarma ve kalibre WAV', items: [
     'Akustik: oynatma sırasında ⏪/⏩ ile seçilebilir adımla (1/5/10/30 s) geri/ileri sarma, ❚❚/▶ duraklat-devam, konum çubuğu ve "geçen / toplam s" göstergesi; Shift+← / Shift+→ / Shift+Boşluk kısayolları. Duraklatılmışken sarınca konum değişir, ses kapalı kalır.',
     'Akustik: "WAV kaydet (kalibre, 32-bit float)" — örnekler ölçeklenmeden (ör. Pa) yazılır; dosya yeniden açıldığında mutlak seviye ve dB SPL korunur.']},

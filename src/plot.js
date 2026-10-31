@@ -147,10 +147,12 @@ class Plot {
     const {T, B, gap} = this.margins(), mv = this.maxVisible || 5;
     const rh = rows.map(r => this.cellH ? this.cellH : Math.max(0, ...r.map(a => a.hpx || 0))), rw = rows.map(r => Math.max(...r.map(a => a.hw || 1)));
     const fixed = rh.reduce((a, b) => a + b, 0), nf = rh.filter(v => !v).length; let tw = 0; rw.forEach((w, i) => { if (!rh[i]) tw += w; });
-    const slots = Math.min(n, mv), availV = Math.max(60, hv - T - B - gap * (slots - 1)), unit = availV / slots, flex = Math.max(60 * nf, availV - fixed);
+    const slots = Math.min(n, mv), availV = Math.max(60, hv - T - B - gap * (slots - 1) - this.xtraPx()), unit = availV / slots, flex = Math.max(60 * nf, availV - fixed);
     return rows.map((r, i) => rh[i] ? Math.max(50, rh[i]) : Math.max(50, n <= mv ? flex * rw[i] / (tw || 1) : unit * rw[i]));
   }
-  contentH(hv, W) { if (!this.axes.length) return hv; const {T, B, gap} = this.margins(), hs = this.heights(hv, W); return T + B + gap * (hs.length - 1) + hs.reduce((a, b) => a + b, 0); }
+  contentH(hv, W) { if (!this.axes.length) return hv; const {T, B, gap} = this.margins(), hs = this.heights(hv, W); return T + B + gap * (hs.length - 1) + hs.reduce((a, b) => a + b, 0) + this.xtraPx(); }
+  // xtra = {ax, px}: bu alt grafiğin satırının altına (eksen yazılarından sonra) boş şerit — ör. ses oynatma çubuğu
+  xtraPx() { return this.xtra && this.axes.includes(this.xtra.ax) ? this.xtra.px : 0; }
   // içerik yüksekliği değiştiyse tuvali yeniden boyutlandır (alt grafik eklendi / kaldırıldı / elle boyutlandı)
   fitContent() { const p = this.cv.parentElement; if (!p || !this.Hv) return false; const need = Math.max(p.clientHeight, Math.ceil(this.contentH(p.clientHeight, p.clientWidth))); if (need !== this.H || p.clientWidth !== this.W) { this.resize(); return true; } return false; }
   // ---------- yerleşim ----------
@@ -160,7 +162,7 @@ class Plot {
     let boxW = W / cols; if (this.cellW) boxW = Math.min(boxW, this.cellW + L + R);
     const off = cols > 1 || this.cellW ? Math.max(0, (W - cols * boxW) / 2) : 0;   // ızgara ortalanır
     let y = T;
-    rows.forEach((row, ri) => { row.forEach((ax, c) => { const full = Math.max(50, boxW - L - R); ax.rect = {x: off + c * boxW + L, y, w: Math.max(50, full * Math.min(1, Math.max(0.2, ax.wfrac || 1))), h: hs[ri]}; ax.row = ri; ax.col = c; }); y += hs[ri] + gap; });
+    rows.forEach((row, ri) => { row.forEach((ax, c) => { const full = Math.max(50, boxW - L - R); ax.rect = {x: off + c * boxW + L, y, w: Math.max(50, full * Math.min(1, Math.max(0.2, ax.wfrac || 1))), h: hs[ri]}; ax.row = ri; ax.col = c; }); y += hs[ri] + gap + (this.xtra && row.includes(this.xtra.ax) ? this.xtra.px : 0); });
   }
   bounds() {
     let lo = Infinity, hi = -Infinity;

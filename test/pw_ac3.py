@@ -29,7 +29,16 @@ async def main():
         ok(abs(await pg.evaluate('S.plot.playhead') - 20) < 0.05, 'oynatma imleci grafikte')
         await pg.click('#acPP'); await pg.wait_for_timeout(500); ok(await pg.evaluate('acPos()') > 20.2, 'devam')
         await pg.keyboard.press('Shift+ArrowRight'); ok(await pg.evaluate('acPos()') > 30, 'Shift+→')
+        # grafikteki oynatma çubuğu: çalan alt grafiğin altında, eksen yazılarıyla ve sonraki alt grafikle çakışmaz
+        g = await pg.evaluate("(()=>{const b=S.plot._acBar,r=S.audio.ax.rect,cv=S.plot.cv.getBoundingClientRect(),bb=b.getBoundingClientRect();return {conn:b.isConnected,top:bb.top-cv.top,bot:r.y+r.h,left:bb.left-cv.left,rx:r.x,H:S.plot.H,bh:bb.height,txt:b.querySelector('.acb-pos').textContent}})()")
+        print('çubuk', g); ok(g['conn'] and g['top'] >= g['bot'] + 30 and abs(g['left'] - g['rx']) < 2 and g['top'] + g['bh'] <= g['H'], 'grafik çubuğu konumu')
+        ok('/' in g['txt'], 'grafik çubuğu zamanı')
+        await pg.click('.acbar .acb-pp'); ok(await pg.evaluate('S.audio.paused'), 'grafik çubuğundan duraklat'); await pg.click('.acbar .acb-fwd'); p5 = await pg.evaluate('acPos()')
+        await pg.click('.acbar .acb-back'); ok(abs(await pg.evaluate('acPos()') - p5 + 10) < 1e-3 or await pg.evaluate('acPos()') == 0, 'grafik çubuğundan geri sar')
+        await pg.click('.acbar .acb-pp')
         await pg.click('button:has-text("■ Durdur")'); ok(await pg.is_disabled('#acPP') and await pg.text_content('#acPos') == '–', 'durdur')
+        ok(await pg.evaluate("!S.plot.xtra && !(S.plot._acBar && S.plot._acBar.isConnected)"), 'durdurunca grafik çubuğu kalkar')
+        await pg.screenshot(path='/tmp/ac3.png')
         async with pg.expect_download() as d: await pg.click('button:has-text("kalibre, 32-bit float")')
         path = await (await d.value).path(); raw = open(path, 'rb').read()
         import struct

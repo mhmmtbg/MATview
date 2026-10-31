@@ -580,6 +580,13 @@ main.tl-main > #lvRawCard { flex: none; }
 .tl-cols .tl-cb { display: flex; gap: 6px; flex-wrap: wrap; }
 .tl-cols .note { font-size: 11.5px; color: var(--muted); }
 .tl-data #lvGeneral:empty { display: none; }
+/* başlık: sol grup sarılabilir, sağdaki seçenekler her zaman panelin sağ kenarında (sığmazsa alt satıra, yine sağa) */
+.tl-dh { flex-wrap: wrap !important; row-gap: 6px; }
+.tl-dh .subtabs { flex: 0 1 auto !important; flex-wrap: wrap !important; min-width: 0; }
+.tl-dhr { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: 0 1 auto; min-width: 0; justify-content: flex-end; }
+.tl-dhr .hint { flex: 0 1 auto; min-width: 0; }
+/* tablo panelden darsa son (işlem) sütunu kalan genişliği alır: düğmeler sağ kenarda kalır */
+.tl-data .lv-table { min-width: 100%; }
 .tl-data .lv-wrap { flex: 1; max-height: none; min-height: 120px; border: none; border-radius: 0 0 var(--radius) var(--radius); }
 /* işlem düğmeleri sağda sabit: tablo yatay kaydırılsa da görünür */
 .lv-table td.act { position: sticky; right: 0; z-index: 1; border-left: 1px solid var(--line2); }
@@ -716,11 +723,13 @@ main.tl-main > #lvRawCard { flex: none; }
       <div class="unit-chips" id="lvUnits"></div>
       <button class="btn sm" type="button" id="tlPinBtn" aria-pressed="false" title="Grafikte (MATView Zaman sekmesinde ya da kamera penceresinde) açık olan parametreleri tablonun en üstüne sabitle">Grafiktekiler üstte</button>
       <span class="grow"></span>
+      <div class="tl-dhr">
       <span id="lvWorkInfo" class="hint" style="margin:0"></span>
       <input class="inp w-m" id="lvFilter" type="search" placeholder="Birim / etiket / değişken ara">
       <button class="btn sm" type="button" id="tlColsBtn" title="Tabloda gösterilecek sütunlar; seçimi kaydedip her açılışta bu görünümle başlayın">Sütunlar ▾</button>
       <button class="btn sm" type="button" id="tlMoreBtn" title="Template çalışma kopyası işlemleri">Template ▾</button>
       <button class="btn sm tl-help" type="button" title="Satırları soldaki ⋮⋮ tutamağıyla, sütunları başlıklarından sürükleyerek taşıyın. Sütun genişliği: başlığın sağ kenarını sürükleyin, çift tık içeriğe sığdırır. Başlığa sağ tık: sütunu gizle. Etiket düğmelerinden birden fazlası seçilerek tablo süzülür. Satır sonundaki grafik düğmesi parametreyi MATView Zaman sekmesinde canlı çizer; kamera düğmesi videoyu açılır pencerede oynatır. Değişiklikler yalnız çalışma kopyasını etkiler; asıl template için Template ▾ › Orijinalin Üzerine Yaz.">?</button>
+      </div>
       <div class="tl-menu hidden" id="tlMore" role="menu">
         <button class="btn sm" type="button" id="lvAddRow">+ Satır Ekle</button>
         <button class="btn sm" type="button" id="lvRevert">Orijinale Dön</button>
@@ -6375,7 +6384,7 @@ function renderTable() {
     items.forEach(function (it) { (chartedId(liveTab, it.id) ? pin : rest).push(it); });
     if (pin.length && rest.length) { pin.forEach(function (it) { it.pin = true; }); items = pin.concat([{ id: -1, sep: true, h: 4 }], rest); rowIndex = new Map(); items.forEach(function (it, j) { if (!it.sub && !it.sep && !rowIndex.has(it.id)) rowIndex.set(it.id, j); }); }
   }
-  var h = '<table class="lv-table" style="width:' + tw + 'px"><colgroup><col style="width:104px">' + cols.map(function (cd) { return '<col data-col="' + cd.key + '" style="width:' + colW(cd.key) + 'px">'; }).join('') + '<col style="width:108px"></colgroup><thead><tr><th class="fix">#</th>';
+  var h = '<table class="lv-table" style="width:' + tw + 'px"><colgroup><col style="width:104px">' + cols.map(function (cd) { return '<col data-col="' + cd.key + '" style="width:' + colW(cd.key) + 'px">'; }).join('') + '<col style="min-width:108px"></colgroup><thead><tr><th class="fix">#</th>';
   cols.forEach(function (cd) { h += '<th class="mv" draggable="true" data-col="' + cd.key + '" title="' + esc(cd.label) + ' — sürükleyerek taşıyın, sağ tıklayarak gizleyin">' + esc(cd.label) + '<span class="rz" title="Sürükleyerek genişliği değiştirin, çift tıklayarak içeriğe sığdırın"></span></th>'; });
   h += '<th></th></tr></thead><tbody><tr class="vsp"><td colspan="' + ncols + '"></td></tr><tr class="vsp"><td colspan="' + ncols + '"></td></tr></tbody></table>';
   if (!w.ids.length) h += '<div class="lv-empty">Template\'te satır yok. <b>Satır Ekle</b> ile başlayın.</div>';

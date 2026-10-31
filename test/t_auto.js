@@ -29,3 +29,17 @@ for (let i = 0; i < n2; i++) { const t = i / fs2; const L = lv.find(l => t >= l[
 const ls = DSP.levelSegments(xx, fs2, {step: 3, minDur: 1}); console.log(ls.segs.map(s => `${s.level}dB ${(s.i0 / fs2).toFixed(1)}-${(s.i1 / fs2).toFixed(1)}s`).join(' | '));
 assert.deepStrictEqual(ls.segs.map(s => s.level), [-9, -6, -3, 0]);
 console.log('seviye OK');
+// şebeke dışı tonal parazit (ör. 23 Hz + harmonikleri) arka planda, olay yalnız sonda: tonal aile bulunur, arka plan bastırılır
+{
+  const F = 8000, N = F * 40, w = new Float64Array(N);
+  for (let i = 0; i < N; i++) { const t = i / F; let v = 0.0003 * gauss(); for (let h = 1; h <= 6; h++) v += (h === 1 ? 0.002 : 0.0003 / h) * Math.sin(2 * Math.PI * 23 * h * t + h);
+    if (t > 34) v += 0.02 * gauss() * (1 + Math.sin(2 * Math.PI * 3 * t)); w[i] = v; }
+  const r = DSP.autoClean(w, F); console.log(r.log.join('\n')); const p = r.plan;
+  assert.ok(Math.abs(p.notch - 23) < 0.1 && p.nh >= 4, 'tonal aile ' + p.notch + ' ' + p.nh); assert.ok(p.dn && p.dnDb >= 20 && r.noise && r.noise[1] / F <= 34, 'sessiz bölüm');
+  let y = Float64Array.from(w); y = DSP.filtfilt(DSP.design('notch', {f1: p.notch, Q: p.nq, harmonics: p.nh}, F), y);
+  y = DSP.spectralDenoise(y, y.slice(r.noise[0], r.noise[1]), {nfft: 2048, reduceDb: p.dnDb, alpha: p.dnA});
+  const rms = (z, a, b) => { let q = 0; for (let i = a; i < b; i++) q += z[i] * z[i]; return Math.sqrt(q / (b - a)); };
+  const bg = 20 * Math.log10(rms(y, F, 30 * F) / rms(w, F, 30 * F)), ev = 20 * Math.log10(rms(y, 35 * F, 39 * F) / rms(w, 35 * F, 39 * F));
+  console.log('tonal: arka plan', bg.toFixed(1), 'dB, olay', ev.toFixed(1), 'dB'); assert.ok(bg < -18 && ev > -1.5, 'tonal temizleme');
+}
+console.log('t_auto tonal OK');
