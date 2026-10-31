@@ -551,6 +551,22 @@ main.tl-main > #lvRawCard { flex: none; }
 .tl-dh .subtabs button.active { border-color: var(--line); }
 .tl-dh .unit-chips { flex: 1 1 140px; min-width: 60px; margin: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: 1px; }
 .tl-dh .uchip { padding: 1px 9px; font-size: 11.5px; white-space: nowrap; flex: none; }
+.tl-dh .unit-chips { flex: none !important; overflow: visible !important; }
+.tl-ufilter { position: absolute; top: 100%; z-index: 21; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; width: 300px; max-height: 70vh; display: flex; flex-direction: column; gap: 6px; }
+#tlUf .inp { flex: none; width: 100%; min-width: 0; height: 28px; }
+.tl-ufilter .ul { overflow: auto; max-height: 52vh; border: 1px solid var(--line2); border-radius: var(--radius); }
+.tl-ufilter label { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--line2); font-size: 12.5px; cursor: pointer; }
+.tl-ufilter label:last-child { border-bottom: none; }
+.tl-ufilter label .n { margin-left: auto; color: var(--faint); font-variant-numeric: tabular-nums; font-size: 11.5px; }
+.tl-ufilter .row { display: flex; gap: 6px; justify-content: space-between; }
+#tlPinBtn[aria-pressed=true], .ufbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme=dark] #tlPinBtn[aria-pressed=true], :root[data-theme=dark] .ufbtn.on { color: #0b0d10; }
+.tl-frame { font-variant-numeric: tabular-nums; }
+.tl-frame.paused { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); font-size: 12.5px; }
+.lv-table tr.pinrow td { background: var(--accent-soft); }
+.lv-table tr.pinsep td { height: 4px; padding: 0; background: var(--accent); }
+.tl-xls .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.tl-xls .inp { width: 140px; }
 .tl-dh .grow { flex: 1 1 0; min-width: 0; }
 .tl-dh .hint { white-space: nowrap; font-size: 11.5px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tl-dh .grow { display: none; }
@@ -627,6 +643,8 @@ main.tl-main > #lvRawCard { flex: none; }
               <input class="inp mono" id="lvFrNum" data-nav type="number" min="1" step="1" title="Gitmek istediğiniz çerçeve numarasını yazıp Enter'a basın">
               <span class="fi" id="lvFrInfo">–</span>
             </div>
+  <span class="badge mute tl-frame" id="tlFrameBadge" title="Oynatılan / duraklatılan çerçeve">Çerçeve –</span>
+  <button class="btn sm" type="button" id="tlFrameXls" title="Bir çerçevenin çözülen değerlerini Excel'e aktar (varsayılan: şu anki çerçeve)">⤓ Excel</button>
   <span class="sep"></span>
   <button class="btn sm" id="btnRunMv" type="button" title="Kaydın tamamını çözer ve tüm parametreleri MATView'e kanal olarak yükler (çizim, spektrum, kod). Dosya yazılmaz.">Çöz ve MATView'de aç</button>
   <button class="btn sm" id="btnRun" type="button" title="Kaydın tamamını çözer; CSV / MAT / ham veri / video dosyalarını çıktı klasörüne (veya ZIP'e) yazar">Çöz ve dosyalara yaz</button>
@@ -696,6 +714,7 @@ main.tl-main > #lvRawCard { flex: none; }
       <h2>Çözülen Veriler</h2><span id="lvWorkBadge" class="badge mute"></span>
       <div class="subtabs" id="lvSubtabs"></div>
       <div class="unit-chips" id="lvUnits"></div>
+      <button class="btn sm" type="button" id="tlPinBtn" aria-pressed="false" title="Grafikte (MATView Zaman sekmesinde ya da kamera penceresinde) açık olan parametreleri tablonun en üstüne sabitle">Grafiktekiler üstte</button>
       <span class="grow"></span>
       <span id="lvWorkInfo" class="hint" style="margin:0"></span>
       <input class="inp w-m" id="lvFilter" type="search" placeholder="Birim / etiket / değişken ara">
@@ -706,7 +725,8 @@ main.tl-main > #lvRawCard { flex: none; }
         <button class="btn sm" type="button" id="lvAddRow">+ Satır Ekle</button>
         <button class="btn sm" type="button" id="lvRevert">Orijinale Dön</button>
         <button class="btn sm" type="button" id="lvSaveOrig">Orijinalin Üzerine Yaz</button>
-        <button class="btn sm" type="button" id="lvExport">Excel'e Aktar</button>
+        <button class="btn sm" type="button" id="tlFrameXls2">Çerçeve verilerini Excel'e aktar…</button>
+        <button class="btn sm" type="button" id="lvExport">Template'i Excel'e aktar</button>
       </div>
     </div>
     <div id="lvGeneral"></div>
@@ -5342,7 +5362,7 @@ function updateRunButton() {
   $('#btnStop').disabled = !running;
   $('#btnAddFile').disabled = running; $('#btnClearFiles').disabled = running; $('#btnSortFiles').disabled = running || files.length < 2;
 }
-function setState(label, cls) { var b = $('#runState'); b.textContent = label; b.className = 'badge ' + cls; var pg = $('#tlProg'); if (pg) pg.classList.toggle('hidden', label === 'Hazır'); }
+function setState(label, cls) { var b = $('#runState'); b.textContent = label; b.className = 'badge ' + cls; var pg = $('#tlProg'); if (pg) pg.classList.toggle('hidden', label === 'Hazır'); b.classList.toggle('hidden', label === 'Hazır'); }
 function setProgress(frac, phase) {
   var pct = Math.max(0, Math.min(100, frac * 100));
   $('#pBar').style.width = pct.toFixed(1) + '%';
@@ -5570,7 +5590,7 @@ window.TPUI = {
 
 /* ---------- başlangıç ---------- */
 $('#verLabel').textContent = 'v' + TP.VERSION; $('#verLabel2').textContent = 'telemetryParser v' + TP.VERSION + ' tabanlı';
-revalidate(); renderFiles(); renderSummary(); renderLog(); resetStats(0); $('#tlProg').classList.add('hidden');
+revalidate(); renderFiles(); renderSummary(); renderLog(); resetStats(0); $('#tlProg').classList.add('hidden'); $('#runState').classList.add('hidden');
 if (FS_OK) idbGet('outDir').then(function (d) { if (d) { outDir = d; renderOutDir(); renderSummary(); } }).catch(function () {});
 uiLog('BİLGİ', 'Telemetri Çözümleyici v' + TP.VERSION + ' hazır. ' + (FS_OK ? 'Çıktılar seçilen klasöre yazılacak.' : 'Bu tarayıcıda çıktılar ZIP olarak indirilecek.'));
 })();
@@ -5958,6 +5978,16 @@ function updateSimNav(force) {
   if ((force || !navDrag) && +sl.value !== v) sl.value = v;
   if ((force || doc !== num) && num.value !== String(v)) num.value = v;
   setText('lvFrInfo', '/ ' + fmtInt(simIx.n) + (k < 0 ? '' : ' · %' + Math.floor((k + 1) / simIx.n * 100)));
+  frameBadge(k);
+}
+// oynatılan / duraklatılan çerçeve: üst çubukta her zaman görünür (duraklatınca vurgulu)
+function frameBadge(k) {
+  var b = $('#tlFrameBadge'); if (!b) return;
+  var n = simIx && simIx.n ? simIx.n : 0, on = conn && conn.sim, pz = on && paused;
+  var t = !n ? 'Çerçeve –' : (pz ? '❚❚ ' : on ? '▶ ' : '') + 'Çerçeve ' + (k >= 0 ? fmtInt(k + 1) : '–') + ' / ' + fmtInt(n);
+  if (b.textContent !== t) b.textContent = t;
+  b.className = 'badge tl-frame ' + (pz ? 'paused' : on ? 'ok' : 'mute'); b.title = pz ? 'Duraklatıldı: şu an gösterilen çerçeve' : 'Oynatılan çerçeve';
+  b.dataset.k = k;
 }
 // tek çerçeveye git (0'dan): akış duraklatılır, çerçeve okunup çözülür, devam edilince sonrasından oynar
 async function seekFrame(k) {
@@ -6012,6 +6042,7 @@ function setPaused(p) {
   updateSimNav(true);
 }
 function renderPause() {
+  try { frameBadge(simCur); } catch (e) {}
   var b = $('#lvPause');
   b.disabled = connState !== 'connected';
   b.textContent = paused ? '▶ Devam Et' : '❚❚ Duraklat';
@@ -6269,7 +6300,9 @@ var ICON_CHART_ADD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 var ICON_VIDEO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>';
 var ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 function defOf(id) { var c = liveComp[liveTab], inf = c && c.info[id]; return inf && (inf.useDef || inf.def); }
+function chartedId(i, id) { var pre = i + ':' + id + ':'; for (var k in chartKeys) if (k.indexOf(pre) === 0) return true; return vfigs.some(function (f) { return f.i === i && f.id === id; }); }
 function rowHtml(it) {
+  if (it.sep) return '<tr class="pinsep"><td colspan="' + vt.ncols + '" title="Üstte: grafikte açık parametreler"></td></tr>';
   var w = work[liveTab], id = it.id;
   if (it.sub) {
     var d = defOf(id), per = perRowOf(id), h = '<tr class="sub" data-sub="' + id + '"><td colspan="' + vt.ncols + '">' +
@@ -6284,7 +6317,7 @@ function rowHtml(it) {
       '<td colspan="' + vt.cols.length + '"><div class="sname">Sayfa <input class="ci" data-c="1" value="' + esc(row[1]) + '" spellcheck="false" title="Excel\'e aktarırken çalışma sayfasının adı"></div></td>' +
       '<td class="act"><button class="btn icon" type="button" data-act="ins" title="Sayfanın başına satır ekle">' + ICON_PLUS + '</button><button class="btn icon" type="button" data-act="del" title="Sayfa ayırıcısını kaldır (satırlar önceki sayfaya katılır)">' + ICON_X + '</button></td></tr>';
   }
-  var s = '<tr data-id="' + id + '"><td class="fix"><span class="drag" title="Sürükleyerek taşıyın">⋮⋮</span><span class="rn">' + (it.k + 1) + '</span><span class="stt"></span>' +
+  var s = '<tr data-id="' + id + '"' + (it.pin ? ' class="pinrow" data-pin="1"' : '') + '><td class="fix"><span class="drag" title="Sürükleyerek taşıyın">⋮⋮</span><span class="rn">' + (it.k + 1) + '</span><span class="stt"></span>' +
     (it.n > 1 ? '<button class="exp" type="button" data-act="exp" title="Tüm değerleri göster">' + (ex ? '▾' : '▸') + '</button>' : '') + '</td>';
   for (var q = 0; q < vt.cols.length; q++) {
     var cd = vt.cols[q];
@@ -6337,6 +6370,11 @@ function renderTable() {
     items.push({ id: id, k: k, n: n, sub: false, h: ROW_H });
     if (n > 1 && expanded[liveTab + ':' + id]) items.push({ id: id, k: k, n: n, sub: true, h: estimateSubH(n, perRowOf(id)) });
   });
+  if (S().live.pinCharted) {   // grafikte açık parametreler en üste (alt satırlarıyla birlikte)
+    var pin = [], rest = [];
+    items.forEach(function (it) { (chartedId(liveTab, it.id) ? pin : rest).push(it); });
+    if (pin.length && rest.length) { pin.forEach(function (it) { it.pin = true; }); items = pin.concat([{ id: -1, sep: true, h: 4 }], rest); rowIndex = new Map(); items.forEach(function (it, j) { if (!it.sub && !it.sep && !rowIndex.has(it.id)) rowIndex.set(it.id, j); }); }
+  }
   var h = '<table class="lv-table" style="width:' + tw + 'px"><colgroup><col style="width:104px">' + cols.map(function (cd) { return '<col data-col="' + cd.key + '" style="width:' + colW(cd.key) + 'px">'; }).join('') + '<col style="width:108px"></colgroup><thead><tr><th class="fix">#</th>';
   cols.forEach(function (cd) { h += '<th class="mv" draggable="true" data-col="' + cd.key + '" title="' + esc(cd.label) + ' — sürükleyerek taşıyın, sağ tıklayarak gizleyin">' + esc(cd.label) + '<span class="rz" title="Sürükleyerek genişliği değiştirin, çift tıklayarak içeriğe sığdırın"></span></th>'; });
   h += '<th></th></tr></thead><tbody><tr class="vsp"><td colspan="' + ncols + '"></td></tr><tr class="vsp"><td colspan="' + ncols + '"></td></tr></tbody></table>';
@@ -6354,6 +6392,7 @@ function removeRange(a, b) {
     var node = vt.nodes.get(i); if (!node) continue;
     node.remove(); vt.nodes.delete(i);
     var it = vt.items[i];
+    if (it.sep) continue;
     if (it.sub) subRefs.delete(it.id); else rowRefs.delete(it.id);
   }
 }
@@ -6367,6 +6406,7 @@ function insertRange(a, b, before) {
   list.forEach(function (tr, j) {
     var it = vt.items[a + j];
     vt.nodes.set(a + j, tr);
+    if (it.sep) { frag.appendChild(tr); return; }
     if (it.sub) subRefs.set(it.id, { tr: tr, chips: Array.prototype.slice.call(tr.querySelectorAll('.cv')), hexes: Array.prototype.slice.call(tr.querySelectorAll('.cx')), btns: Array.prototype.slice.call(tr.querySelectorAll('[data-act=chartk]')) });
     else {
       var ref = { tr: tr, v: {}, stt: tr.querySelector('.stt'), cache: {}, chartBtn: tr.querySelector('[data-act=chart]') };
@@ -6465,7 +6505,7 @@ function updateRowStatus() {
       if (inf.errors.length) { cls = 'bad'; st = 'err'; title = inf.errors.join('\n') + (inf.fallback ? '\n→ Son geçerli tanımla çözülmeye devam ediliyor.' : ''); }
       else if (inf.warnings.length) { cls = 'warnrow'; st = 'warn'; title = inf.warnings.join('\n'); }
     }
-    ref.tr.className = (ref.tr.dataset.mark ? 'sheetrow ' : '') + cls;
+    ref.tr.className = (ref.tr.dataset.mark ? 'sheetrow ' : '') + (ref.tr.dataset.pin ? 'pinrow ' : '') + cls;
     ref.stt.className = 'stt' + (st ? ' ' + st : '');
     ref.stt.textContent = st ? '!' : '';
     ref.stt.title = title;
@@ -6676,6 +6716,9 @@ $('#lvExport').onclick = function () {
   U.download(base + '_' + U.stamp() + '.xlsx', TP.writeXlsx(w.rows, 'Template', [12, 12, 9, 14, 12, 14, 22, 12, 10, 13, 19, 13]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 };
 $('#lvFilter').addEventListener('input', function () { filterText = this.value.trim(); $('#lvWrap').scrollTop = 0; renderTable(); });
+function pinRender() { var b = $('#tlPinBtn'); if (b) b.setAttribute('aria-pressed', String(!!S().live.pinCharted)); }
+$('#tlPinBtn').onclick = function () { S().live.pinCharted = !S().live.pinCharted; U.save(); pinRender(); $('#lvWrap').scrollTop = 0; renderTable(); };
+pinRender();
 
 /* ---------- grafikler ---------- */
 var CSSV = null;
@@ -6709,7 +6752,8 @@ function fsVisible(fs) { return fs === FS_LIVE ? visible : !!fs.visible; }
 function setFigList(fs, arr) { fs.list.length = 0; Array.prototype.push.apply(fs.list, arr); }
 function chartWin() { return Math.max(1, +S().live.chartSeconds || 10) * 1000; }
 function sigKey(i, id, k) { return i + ':' + id + ':' + k; }
-function refKey(key, d) { var n = (chartKeys[key] || 0) + d; if (n > 0) chartKeys[key] = n; else delete chartKeys[key]; }
+function refKey(key, d) { var had = !!chartKeys[key], n = (chartKeys[key] || 0) + d; if (n > 0) chartKeys[key] = n; else delete chartKeys[key]; if (had !== !!chartKeys[key] && S().live.pinCharted && visible) pinSoon(); }
+var pinT = 0; function pinSoon() { clearTimeout(pinT); pinT = setTimeout(function () { renderTable(); }, 120); }
 function seriesRef(c, s, d) { if (!c.fs.static) refKey(s.key, d); }
 function freeFigNum(fs) { var used = {}; figsOf(fs || FS_LIVE).forEach(function (c) { used[c.num] = 1; }); for (var n = 1; used[n]; n++); return n; }
 function chartsChanged(fs) {
@@ -8004,11 +8048,33 @@ function renderUnitChips() {
   for (var i = 1; i < w.rows.length; i++) { if (TP.isSheetMark(w.rows[i])) continue; var u = w.rows[i][11] || w.rows[i][0]; counts.set(u, (counts.get(u) || 0) + 1); total++; }
   var sel = unitSel[liveTab] || (unitSel[liveTab] = new Set());
   sel.forEach(function (u) { if (!counts.has(u)) sel.delete(u); });
-  var h = '<button type="button" class="uchip all' + (sel.size ? '' : ' on') + '" data-u="">Tüm etiketler<span class="n">' + total + '</span></button>';
-  counts.forEach(function (n, u) { h += '<button type="button" class="uchip' + (sel.has(u) ? ' on' : '') + '" data-u="' + esc(u) + '">' + (u ? esc(u) : '<i>(etiketsiz)</i>') + '<span class="n">' + n + '</span></button>'; });
-  box.innerHTML = h;
+  // etiket süzgeci açılır menü: düğmede seçim özeti; menüde arama + çoklu seçim
+  var lbl = !sel.size ? 'Tüm etiketler' : sel.size === 1 ? Array.from(sel)[0] || '(etiketsiz)' : sel.size + ' etiket';
+  box.innerHTML = '<button type="button" class="btn sm ufbtn' + (sel.size ? ' on' : '') + '" id="tlUfBtn" title="Etiket / birime göre süz (çoklu seçim)">Filtre: ' + esc(lbl) + ' ▾</button>';
+  ufCounts = { counts: counts, total: total };
+  var pnl = $('#tlUf'); if (pnl) ufDraw(pnl);
 }
+var ufCounts = null;
+function ufDraw(p) {
+  var sel = unitSel[liveTab] || (unitSel[liveTab] = new Set()), q = (p._q || '').toLowerCase(), h = '';
+  h += '<input class="inp" type="search" placeholder="Etiket ara" value="' + esc(p._q || '') + '" data-uq>';
+  h += '<div class="row"><button class="btn sm" type="button" data-ua="all">Tümü (süzgeci kaldır)</button><button class="btn sm" type="button" data-ua="vis">Görünenleri seç</button></div><div class="ul">';
+  ufCounts.counts.forEach(function (n, u) { if (q && String(u).toLowerCase().indexOf(q) < 0) return; h += '<label><input type="checkbox" data-uu="' + esc(u) + '"' + (sel.has(u) ? ' checked' : '') + '>' + (u ? esc(u) : '<i>(etiketsiz)</i>') + '<span class="n">' + n + '</span></label>'; });
+  p.innerHTML = h + '</div>';
+  var qi = p.querySelector('[data-uq]'); qi.oninput = function () { p._q = this.value; var pos = this.selectionStart; ufDraw(p); var q2 = p.querySelector('[data-uq]'); q2.focus(); q2.setSelectionRange(pos, pos); };
+}
+function ufOpen() {
+  var old = $('#tlUf'); if (old) { old.remove(); return; }
+  var p = document.createElement('div'); p.id = 'tlUf'; p.className = 'tl-ufilter'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', 'Etiket süzgeci');
+  var b = $('#tlUfBtn'), hd = $('#tlData .tl-dh'), br = b.getBoundingClientRect(), hr = hd.getBoundingClientRect(); p.style.left = Math.max(0, br.left - hr.left) + 'px';
+  hd.appendChild(p); ufDraw(p); p.querySelector('[data-uq]').focus();
+  p.addEventListener('change', function (e) { var u = e.target.dataset.uu; if (u == null) return; var sel = unitSel[liveTab] || (unitSel[liveTab] = new Set()); if (e.target.checked) sel.add(u); else sel.delete(u); $('#lvWrap').scrollTop = 0; renderTable(); });
+  p.addEventListener('click', function (e) { var a = e.target.dataset.ua; if (!a) return; var sel = unitSel[liveTab] || (unitSel[liveTab] = new Set()); if (a === 'all') sel.clear(); else { var q = (p._q || '').toLowerCase(); ufCounts.counts.forEach(function (n, u) { if (!q || String(u).toLowerCase().indexOf(q) >= 0) sel.add(u); }); } $('#lvWrap').scrollTop = 0; renderTable(); });
+}
+document.addEventListener('mousedown', function (e) { if (!e.target.closest('#tlUf, #tlUfBtn')) { var p = $('#tlUf'); if (p) p.remove(); } });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { var p = $('#tlUf'); if (p) p.remove(); } });
 $('#lvUnits').addEventListener('click', function (e) {
+  if (e.target.closest('#tlUfBtn')) { ufOpen(); return; }
   var b = e.target.closest('.uchip'); if (!b) return;
   var sel = unitSel[liveTab] || (unitSel[liveTab] = new Set()), u = b.dataset.u;
   if (b.classList.contains('all')) sel.clear();
@@ -8397,6 +8463,50 @@ if (MVH) {
   };
 }
 var liveSubs = {};
+/* ---------- seçilen çerçevenin çözülen değerleri → Excel ----------
+   Kayıt çok büyük olabildiği için tüm çerçeveler değil, yalnız seçilen çerçeve aktarılır: o çerçeveye gidilir (oynatma
+   duraklar), çözülür ve o çerçevede güncellenen değerler çerçeve tipi başına bir sayfaya yazılır. */
+function xlsVal(v) { return typeof v === 'bigint' ? (v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= -BigInt(Number.MAX_SAFE_INTEGER) ? Number(v) : v.toString()) : (v == null ? '' : v); }
+async function frameToXls(k) {
+  var host = window.parent !== window && window.parent.MATViewTLM;
+  if (!host || !host.writeXlsx) { U.uiLog('HATA', 'Excel yazıcısı bulunamadı'); return; }
+  var t0 = Date.now() - 1; await seekFrame(k);
+  for (var g = 0; g < 200 && (seekBusy || simCur !== k); g++) await new Promise(function (r) { setTimeout(r, 25); });
+  if (simCur !== k) { U.showModal("Çerçeveyi Excel'e aktar", '<div class="notice err">Çerçeveye gidilemedi.</div>'); return; }
+  onTick();   // çözüm ekran yenilemesinde yapılır: seçilen çerçeve hemen çözülsün
+  var sheets = [], names = simFiles.map(function (f) { return f.name; }).join(', ');
+  S().frameTypes.forEach(function (ft, i) {
+    var w = work[i], st = liveState[i], c = liveComp[i]; if (!w || !w.rows || !st || !c) return;
+    var rows = [], any = false;
+    w.ids.forEach(function (id, j) {
+      var row = w.rows[j + 1]; if (!row || TP.isSheetMark(row)) return;
+      var s0 = st.get(id); if (!s0) return;
+      var inf = c.info[id], d = inf && (inf.useDef || inf.def), n = s0.val.length, first = true;
+      for (var e = 0; e < n; e++) {
+        if (!(s0.t[e] >= t0) || s0.val[e] === undefined) continue;
+        any = true;
+        rows.push([j + 1, row[0] || '', row[11] || row[0] || '', row[2] || '', row[3] || '', n > 1 ? valueLabel(d, e) : '', xlsVal(s0.val[e]), xlsVal(s0.raw[e]), first ? (s0.hex || '') : '']);
+        first = false;
+      }
+    });
+    if (!any) return;
+    sheets.push({ name: (ft.name || ('Çerçeve ' + i)).replace(/[\[\]:*?\/\\]/g, '_').slice(0, 31), rows: [['Kayıt', names], ['Çerçeve', (k + 1) + ' / ' + simIx.n], ['Çerçeve tipi', ft.name + ' (' + ft.id + ')'], ['Dışa aktarma', new Date().toLocaleString('tr-TR')], [], ['#', 'Birim', 'Etiket', 'Değişken', 'Tip', 'Eleman', 'Sonuç', 'Ham', 'Hex']].concat(rows) });
+  });
+  if (!sheets.length) { U.showModal("Çerçeveyi Excel'e aktar", '<div class="notice warn">Çerçeve ' + (k + 1) + ' içinde çözülen değer bulunamadı (çerçeve tipine template yüklü mü?).</div>'); return; }
+  var base = (simFiles[0] ? simFiles[0].name.replace(/\.(bin|binary)$/i, '') : 'kayit') + '_cerceve' + (k + 1) + '.xlsx';
+  var blob = await host.writeXlsx(sheets); await host.saveFile(base, blob);
+  U.uiLog('TAMAM', base + ": çerçeve " + (k + 1) + " değerleri Excel'e aktarıldı (" + sheets.map(function (x) { return x.name + ' ' + (x.rows.length - 6) + ' değer'; }).join(', ') + ')');
+}
+function frameXlsDialog() {
+  if (!simIx || !simIx.n) { U.showModal("Çerçeveyi Excel'e aktar", '<div class="notice warn">Önce kayıt dosyası seçin; çerçeveler sayıldıktan sonra bir çerçeve seçilebilir.</div>'); return; }
+  var cur = simCur >= 0 ? simCur : (conn && conn.sim ? Math.max(0, frameAtPos(conn.pos())) : 0);
+  U.showModal("Çerçeveyi Excel'e aktar", '<div class="tl-xls"><p class="hint" style="margin-top:0">Kayıt büyük olabileceği için yalnız seçilen çerçevenin çözülen değerleri aktarılır (çerçeve tipi başına bir sayfa: birim, etiket, değişken, tip, eleman, sonuç, ham, hex). Oynatma o çerçevede duraklar.</p>' +
+    '<div class="row"><label for="tlXlsN">Çerçeve</label><input class="inp mono" id="tlXlsN" type="number" min="1" max="' + simIx.n + '" step="1" value="' + (cur + 1) + '"><span class="hint" style="margin:0">/ ' + fmtInt(simIx.n) + ' · şu an: ' + (cur + 1) + '</span></div></div>',
+    [{ label: "Excel'e aktar", primary: true, close: true, onClick: function () { var v = Math.round(+$('#tlXlsN').value); if (!(v >= 1 && v <= simIx.n)) { U.uiLog('UYARI', 'Geçersiz çerçeve numarası'); return; } frameToXls(v - 1); } }]);
+  setTimeout(function () { var i = $('#tlXlsN'); if (i) { i.focus(); i.select(); i.onkeydown = function (e) { if (e.key === 'Enter') { var bt = $('#modalFoot .btn.primary'); if (bt) bt.click(); } }; } }, 30);
+}
+$('#tlFrameXls').onclick = frameXlsDialog; $('#tlFrameXls2').onclick = frameXlsDialog;
+window.TPLive.frameToXls = frameToXls;
 window.TPLive.liveSub = function (sig) { if (!liveSubs[sig.key]) { refKey(sig.key, 1); liveSubs[sig.key] = 1; } else liveSubs[sig.key]++; var t = chartTitle(sig), w = work[sig.i], k = w ? w.ids.indexOf(sig.id) : -1, row = k >= 0 ? w.rows[k + 1] : null; try { updateRowStatus(); buildChips(); } catch (e) {} return { name: t.name, ft: t.ft, unit: row ? (row[0] || '') : '' }; };
 window.TPLive.liveUnsub = function (key) { if (!liveSubs[key]) return; if (--liveSubs[key] <= 0) { delete liveSubs[key]; refKey(key, -1); try { updateRowStatus(); buildChips(); } catch (e) {} } };
 // sinceT'den sonraki örnekler; gen: oynatma oturumu (yeniden bağlanınca değişir, zaman sıfırlanır)
