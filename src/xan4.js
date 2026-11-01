@@ -45,6 +45,14 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.13', d: 'Konuşma ve olay odaklı akustik iyileştirme, kamera sarma ve video kurtarma', items: [
+    'Akustik gürültü azaltma: OM-LSA + MCRA — gürültü kayıt boyunca izlenir (değişen gürültüde de aynı bastırma), her zaman-frekans hücresi için konuşma olasılığı; sessiz bölüm varsa alt sınır olarak kullanılır. Wiener (sabit profil) seçenek olarak kalır.',
+    'Olay koruma (varsayılan açık): darbe, kopma (ör. cıvata), çarpma gibi geniş bantlı ani olaylarda kazanç anlık açılır ve gürültü tahmini dondurulur; tık temizleme sönümü olan olaylara dokunmaz.',
+    'Çıtırtı bastırma: sık, kısa geniş bant patlamalar (iletim / elektronik çıtırtısı) yalnız arka planda ve 300 Hz üstünde arka plan seviyesine indirilir; perdeli konuşma, uzun ya da güçlü olaylar korunur. Otomatik temizleme saniyede ≥ 5 patlamada açar.',
+    'Konuşma ve olaylar kartı: konuşma bulucu (bant SNR, spektral düzlük, hece dalgalanması) ve darbe olay bulucu; bölümler grafikte yeşil / kırmızı işaretlenir, listeden gidilir, oynatma çubuğunda ⇤ ⇥ ile atlanır.',
+    'Ön ayarlar (Temiz dinleme / Konuşma odaklı), konuşma bandı (100–5000 Hz), ünsüz vurgusu (3 kHz), dinlemeye özel seviye dengeleme, perdeyi koruyarak yavaşlatma (WSOLA) ve bölüm dışını kısma.',
+    'Kamera penceresi: kayıttan oynatmada geri / ileri sarma (1–30 s), oynat / duraklat ve konum çubuğu.',
+    'Video: kayıp paketli (bozuk) kareler çözücüye verilmez; kayıptan sonra bir sonraki IDR ya da I kareden devam edilir (yoksa ~3 s sonra kareler yine verilir), çözücü hata verirse ya da takılırsa kendiliğinden yeniden kurulur. MP4 kaydı bozuk karede kesilmez: bozuk kare ve sonraki bozuk görüntü atlanır, kayıt sonuna kadar sürer, süre korunur.']},
   {v: '2.12', d: 'Kaba kuantalı akustik kanallar', items: [
     'Akustik otomatik temizleme: az sayıda ayrık seviyeden oluşan (ADC çözünürlüğü sınırındaki) kanallar tanınır ve uyarılır; kuantalama adımı "Kuantalama adımı" alanına yazılır, gürültü tabanı en az adım²/12 alınır (dijital sessiz bölümden sıfır gürültü profili çıkmaz), 1 adımlık geçişler tık ya da kırpılma sayılmaz, yavaş kayma yüksek geçirenle alınır.',
     'Silinen / NaN örnekler ortalama yerine komşular arasında doğrusal doldurulur (eğilimli kayıtlarda basamak ve tık oluşmaz).',

@@ -107,6 +107,18 @@ async def main():
         await f.locator('button[title="Videoyu oynat"]').first.click(); await pg.wait_for_timeout(1500)
         vw = await f.evaluate("(() => { const w = document.querySelector('#lvChartsCard'); return [getComputedStyle(w).position, !w.classList.contains('hidden'), !!w.querySelector('[data-v=snap]'), !!w.querySelector('[data-v=mp4]')]; })()"); print('kamera', vw)
         ok(vw == ['fixed', True, True, True], 'kamera açılır penceresi / seçenekleri yok')
+        # kamera penceresinde kayıt konumu: ileri / geri sarma ve konum çubuğu
+        nv = await f.evaluate("(() => { const n = document.querySelector('#lvChartsCard .vnav'); return n ? [n.classList.contains('off'), +n.querySelector('.vseek').max, n.querySelector('.vpos').textContent] : null; })()"); print('kamera konum', nv)
+        ok(nv and not nv[0] and nv[1] > 1 and '/' in nv[2], 'kamera konum çubuğu yok / kapalı')
+        await f.click('#lvChartsCard [data-v=vplay]'); await pg.wait_for_timeout(300)
+        await f.select_option('#lvChartsCard .vstep', '1'); k0 = await f.evaluate("+document.querySelector('#lvChartsCard .vseek').value")
+        await f.click('#lvChartsCard [data-v=vfwd]'); await pg.wait_for_timeout(600); k1 = await f.evaluate("+document.querySelector('#lvChartsCard .vseek').value")
+        print('ileri sar', k0, k1); ok(k1 - k0 == 100, 'kamera ileri sarma (duraklatılmış, 1 s = 100 çerçeve)')
+        await f.click('#lvChartsCard [data-v=vback]'); await pg.wait_for_timeout(600); k2 = await f.evaluate("+document.querySelector('#lvChartsCard .vseek').value")
+        ok(k2 == k1 - 100, 'kamera geri sarma')
+        await f.evaluate("(() => { const s = document.querySelector('#lvChartsCard .vseek'); s.value = 300; s.dispatchEvent(new Event('input')); s.dispatchEvent(new Event('change')); })()"); await pg.wait_for_timeout(700)
+        ok(abs(await f.evaluate("+document.querySelector('#lvFrSlider').value") - 300) <= 30, 'kamera konum çubuğu ile gezinme')
+        await f.click('#lvChartsCard [data-v=vplay]'); await pg.wait_for_timeout(500)
         saved = []
         await pg.evaluate("window.__sv = []; MATViewTLM.saveFile = async (n, b) => { window.__sv.push([n, b.size, b.type]); return true; }; 0")
         await f.click('#lvChartsCard [data-v=snap]'); await pg.wait_for_timeout(500)
