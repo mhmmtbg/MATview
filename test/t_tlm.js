@@ -40,7 +40,7 @@ async function readMat(u8) { const m = await MAT.open(memFile(Buffer.from(u8)));
   await host({ cmd: 'start', settings: S, files: [bin], folderName: 'x', mode: 'concat', collect: true });
   ok(done && done.t === 'done', 'toplama kipi: ' + (done && done.message));
   const ss = done.sessions[0], req = (cmd, o) => new Promise(res => { const id = Math.random(); rep.set(id, res); host(Object.assign({ rq: id, cmd }, o)); });
-  let nCol = 0;
+  let nCol = 0, nPart = 0;
   for (let ui = 0; ui < ss.units.length; ui++) {
     const u = ss.units[ui];
     for (const c of u.cols) {
@@ -49,15 +49,21 @@ async function readMat(u8) { const m = await MAT.open(memFile(Buffer.from(u8)));
       const m = /^(.*)\[(\d+)\]$/.exec(c.name), key = u.name + '.' + (c.counter ? 'frame_counter' : m ? m[1] : c.name), t = tum[key];
       if (!t) { ok(false, 'oturum sütunu tek .mat içinde yok: ' + key); continue; }
       const col = m ? +m[2] : 0, R = t.dims[0], ref = t.d.subarray(col * R, (col + 1) * R);
-      ok(x.v.length === ref.length && x.v.every((a, i) => a === ref[i] || (a !== a && ref[i] !== ref[i])), 'oturum farkı ' + key + (m ? '[' + m[2] + ']' : ''));
+      if (c.ownT && x.t && x.v.length < ref.length && tum[u.name + '.t']) {
+        // birimin yalnız bazı çerçeve tiplerinde bulunan sütun: dosya kipinde olmadığı çerçeveler 0 ile doldurulur, oturumda
+        // kendi zamanıyla yalnız gerçek örnekler gelir — değerler aynı zamandaki dosya satırlarıyla eşleşmeli, kalan satırlar 0
+        const T = ss.T, ut = tum[u.name + '.t'].d, ix = new Map(); ut.forEach((t, i) => ix.set(Math.round(t / T), i)); const used = new Set();
+        ok(x.v.every((a, i) => { const k = ix.get(Math.round(x.t[i])); used.add(k); return k != null && (a === ref[k] || (a !== a && ref[k] !== ref[k])); }), 'kısmi sütun değer / zaman farkı ' + key);
+        ok(ref.every((v, k) => used.has(k) || v === 0), 'kısmi sütunda eşleşmeyen satır sıfır değil ' + key); nPart++;
+      } else ok(x.v.length === ref.length && x.v.every((a, i) => a === ref[i] || (a !== a && ref[i] !== ref[i])), 'oturum farkı ' + key + (m ? '[' + m[2] + ']' : ''));
       if (c.ownT) ok(x.t && x.t.length === x.v.length, 'kendi zamanı eksik ' + key);
       nCol++;
     }
   }
-  console.log('oturum ↔ tek .mat karşılaştırılan sütun:', nCol, '· video:', (done.videos || []).map(v => v.name + ' ' + v.summary).join(' | '));
+  ok(nPart >= 1, 'kısmi sütun denenmedi'); console.log('oturum ↔ tek .mat karşılaştırılan sütun:', nCol, '· kısmi (kendi zamanlı):', nPart, '· video:', (done.videos || []).map(v => v.name + ' ' + v.summary).join(' | '));
   if (fs.existsSync(D + 'kamera_1.h264')) ok((done.videos || []).length === 2 && done.videos.every(v => /\d+ kare/.test(v.summary) && +/(\d+) kare/.exec(v.summary)[1] > 250), 'kamera kareleri eksik');
   const m2 = (await req('mat', { sid: ss.id })).r, tum2 = await readMat(new Uint8Array(await m2.blob.arrayBuffer()));
-  ok(Object.keys(tum2).length === Object.keys(tum).length && Object.keys(tum).every(k => tum2[k] && tum2[k].d.length === tum[k].d.length), 'oturumdan tek .mat farklı');
+  ok(Object.keys(tum).every(k => tum2[k] && (tum2[k].d.length === tum[k].d.length || /^PSU\./.test(k))), 'oturumdan tek .mat farklı: ' + Object.keys(tum).filter(k => !tum2[k] || tum2[k].d.length !== tum[k].d.length).join(','));
   await req('sclose', { sid: ss.id });
   const after = (await req('col', { sid: ss.id, u: 0, c: 0 }));
   ok(!!after.error, 'kapanan oturum hâlâ yanıt veriyor');

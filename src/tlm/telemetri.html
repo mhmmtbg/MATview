@@ -2830,9 +2830,39 @@ BufWriter.prototype.write = async function (u8) {
 BufWriter.prototype.flush = async function () { if (this.used) { await this.wf(this.buf.slice(0, this.used)); this.used = 0; } };
 BufWriter.prototype.close = async function () { await this.flush(); await this.cf(); this.buf = null; };
 
+/* Yerel uygulama (WebView2) klasörü: Windows klasör seçicisiyle seçilir, dosyalar 127.0.0.1'deki yerel yazıcıya akıtılır.
+   Nesne düz veridir ({__native, port, token, path, name}); işçiye gönderilince yöntemleri nativeDir() ile yeniden kazanır.
+   FileSystemDirectoryHandle'ın burada kullanılan kısmını taklit eder. */
+function NativeDirH(o) { this.__native = true; this.port = o.port; this.token = o.token; this.path = o.path; this.name = o.name || o.path.replace(/[\\/]+$/, '').split(/[\\/]/).pop(); this.kind = 'directory'; }
+function nativeJoin(a, b) { return a.replace(/[\\/]+$/, '') + (a.indexOf('/') >= 0 && a.indexOf('\\') < 0 ? '/' : '\\') + b; }
+async function nativeReq(o, op, path, body, append) {
+  var r = await fetch('http://127.0.0.1:' + o.port + '/' + op + '?t=' + o.token + '&a=' + (append ? 1 : 0) + '&p=' + encodeURIComponent(path), { method: op === 'write' ? 'PUT' : 'POST', body: body == null ? undefined : body });
+  if (!r.ok) throw new Error('Yerel yazma hatası (' + r.status + '): ' + (await r.text()) + ' — ' + path);
+}
+NativeDirH.prototype.getDirectoryHandle = async function (name) { var p = nativeJoin(this.path, name); await nativeReq(this, 'mkdir', p); return new NativeDirH({ port: this.port, token: this.token, path: p, name: name }); };
+NativeDirH.prototype.getFileHandle = async function (name) {
+  var o = this, p = nativeJoin(this.path, name);
+  return { kind: 'file', name: name, createWritable: async function () {
+    var first = true;
+    return {
+      write: async function (d) {
+        if (d && d.type === 'write' && 'data' in d) d = d.data;
+        var body = typeof d === 'string' ? new TextEncoder().encode(d) : (d instanceof Blob ? d : ArrayBuffer.isView(d) ? new Uint8Array(d.buffer, d.byteOffset, d.byteLength).slice() : d);
+        await nativeReq(o, 'write', p, body, !first); first = false;
+      },
+      close: async function () { if (first) { await nativeReq(o, 'write', p, new Uint8Array(0), false); first = false; } }
+    };
+  } };
+};
+NativeDirH.prototype.queryPermission = async function () { return 'granted'; };
+NativeDirH.prototype.requestPermission = async function () { return 'granted'; };
+function nativeDir(h) { return h && h.__native && !(h instanceof NativeDirH) ? new NativeDirH(h) : h; }
+TP.NativeDirH = NativeDirH; TP.nativeDir = nativeDir;
+
 function DirSink() {}
 DirSink.create = async function (dirHandle, folder) {
   var s = new DirSink();
+  dirHandle = nativeDir(dirHandle);
   s.dir = await dirHandle.getDirectoryHandle(folder, { create: true });
   s.files = []; s.folder = folder;
   return s;
@@ -3590,9 +3620,11 @@ async function runJob(job, post) {
 
   /* sayaç */
   var cntEnabled = !!S.counterEnabled, cntReader = null, cntIdx = S.counterIndex | 0, cntMod = 0, counterOut = cntEnabled && !!S.counterToOutput;
+  // kayıp sayılabilecek en uzun boşluk: ayar (counterMaxGapSec, varsayılan 10 s) karşılığı çerçeve, en az 100
+  var cntMaxGap = Math.max(100, Math.round((+S.counterMaxGapSec > 0 ? +S.counterMaxGapSec : 10) / Math.max(1e-6, framePeriodSec(S))));
   /* MATView: collect = sonuçları dosyaya yazmadan geçici depoda tut (oturum), MATView kanalları istedikçe okur.
      wantT: satır zamanları (çerçeve sırası, kayıp çerçeveler dahil) ve koşullu / undersample sütunların kendi zamanları tutulur. */
-  var collect = !!job.collect, wantT = collect || !!S.singleMat, Tper = framePeriodSec(S), tF = 0, firstFrame = true;
+  var collect = !!job.collect, wantT = collect || !!S.singleMat, Tper = framePeriodSec(S), tF = 0, firstFrame = true; var tcUpgraded = 0, cntSuspect = null;
   if (cntEnabled) {
     var ctp = parseType(S.counterType);
     if (!ctp || ctp.kind !== 'int' || ctp.bits % 8) throw new Error('Çerçeve sayacı veri tipi geçersiz');
@@ -3631,7 +3663,7 @@ async function runJob(job, post) {
     var c = u.colMap.get(key), own = wantT && (meta.ctx === 'stream' || meta.conditional);
     if (c) {
       if (c.kind !== kind || c.width !== width) throw new Error("'" + u.name + "' çıktısındaki '" + key + "' değişkeni çerçeve tipleri arasında farklı veri tipiyle tanımlanmış");
-      if (wantT && !!c.tc !== own) c.timeBad = true;
+      if (wantT && own && !c.tc) { c.tc = new Col(store, key + '__t', 'f64'); tcUpgraded++; }   // önceki çerçeve tiplerinin işlemleri yeniden kurulur
       return c;
     }
     c = new Col(store, key, kind, width); c.meta = meta;
@@ -3726,6 +3758,7 @@ async function runJob(job, post) {
     return st;
   }
 
+  function setupOps() {
   fts.forEach(function (ft) {
     ft.ops = []; ft.present = new Set(); ft.written = new Set(); ft.streams = [];
     ft.res.defs.forEach(function (d) {
@@ -3749,11 +3782,22 @@ async function runJob(job, post) {
     ft.present.forEach(function (u) {
       u.cols.forEach(function (c) {
         if (c === u.counterCol || !c.meta || c.meta.ctx !== 'frame' || c.meta.conditional || ft.written.has(c)) return;
+        if (collect && c.tc) return;   // MATView'e aktarımda kendi zamanı olan sütun: olmadığı çerçevelere sıfır eklenmez
         ft.zero.push({ c: c, n: c.meta.perFrame });
       });
     });
     ft.presentArr = Array.from(ft.present);
   });
+  }
+  setupOps();
+  // MATView'e aktarım / tek .mat (wantT): bir birimin yalnız bazı çerçeve tiplerinde bulunan sütunları (diğerlerinde sıfırla
+  // doldurulurdu → veri kesintili görünür) ve çerçeve tipleri arasında farklı bağlamda (koşullu / stream) tanımlı sütunlar
+  // kendi zaman sütununu alır; işlemler bu sütunlarla yeniden kurulur. Dosyaya yazma (CSV / birim .mat) değişmez.
+  if (wantT) {
+    var upg = 0;
+    if (collect) fts.forEach(function (ft) { ft.zero.forEach(function (z) { if (!z.c.tc) { z.c.tc = new Col(store, z.c.name + '__t', 'f64'); upg++; } }); });
+    if (upg || tcUpgraded) { tcUpgraded = 0; setupOps(); }
+  }
   /* ham veri: seçilen birimlerin (ve özel aralıkların) bölgesi her çerçeveden art arda yazılır */
   var rawOuts = [], ro = S.rawOut;
   fts.forEach(function (ft) { ft.raw = []; });
@@ -3852,20 +3896,35 @@ async function runJob(job, post) {
     if (cntEnabled) {
       var cv = cntReader(L, dv, 0, cntIdx * 8);
       if (typeof cv === 'bigint') cv = Number(cv);
-      if (prevCnt !== null) {
+      var keepPrev = false;
+      if (prevCnt !== null && cntSuspect !== null && cv === (cntSuspect + 1) % cntMod && cv !== (prevCnt + 1) % cntMod) {
+        // önceki "şüpheli" değerden devam ediyor: sayaç gerçekten sıfırlanmış / atlamış — yeni diziyi kabul et
+        tStep = 1; cntSuspect = null;
+      } else if (prevCnt !== null) {
         var expd = (prevCnt + 1) % cntMod;
+        if (cv === expd) cntSuspect = null;
         if (cv !== expd) {
           if (cv === prevCnt) { tStep = 0; log('UYARI', 'Çerçeve #' + stats.frames + ': sayaç tekrarı (' + cv + ')', 'cntdup'); }
           else {
             var gap = (((cv - prevCnt - 1) % cntMod) + cntMod) % cntMod;
-            tStep = gap + 1;
-            stats.lost += gap;
-            log('UYARI', 'Kayıp çerçeve: sayaç ' + prevCnt + ' → ' + cv + ' (' + gap + ' çerçeve), ofset ' + absOff, 'lost');
+            // makul olmayan sıçrama (bozuk çerçevede sayaç bozulması, sayaç sıfırlanması ya da geri gitmesi): zaman ve kayıp
+            // sayısı şişirilmez, zaman 1 çerçeve ilerler. Aksi hâlde tek bozuk sayaç değeri zaman eksenini binlerce çerçeve
+            // kaydırır, veri MATView'de kesintili / ölçeği kaymış görünür.
+            if (gap > cntMaxGap) {
+              // tek çerçevelik bozulma olasılığı: beklenen değer korunur (sonraki çerçeve beklenenle sürerse boşluk oluşmaz);
+              // sonraki çerçeve bu değerden devam ederse sıfırlama kabul edilir
+              tStep = 1; stats.cntJumps = (stats.cntJumps || 0) + 1; cntSuspect = cv; keepPrev = true;
+              log('UYARI', 'Sayaç sıçraması: ' + prevCnt + ' → ' + cv + ' (bozuk çerçeve ya da sayaç sıfırlama olası; ' + fmtInt(gap) + ' çerçeve kayıp sayılmadı, zaman 1 çerçeve ilerletildi), ofset ' + absOff, 'cntjump');
+            } else {
+              tStep = gap + 1;
+              stats.lost += gap;
+              log('UYARI', 'Kayıp çerçeve: sayaç ' + prevCnt + ' → ' + cv + ' (' + gap + ' çerçeve), ofset ' + absOff, 'lost');
+            }
             for (var q = 0; q < streamsAll.length; q++) dropPartial(streamsAll[q], 'kayıp çerçeve');
           }
         }
       }
-      prevCnt = cv; curCnt = cv;
+      if (keepPrev) { prevCnt = (prevCnt + 1) % cntMod; curCnt = cv; } else { prevCnt = cv; curCnt = cv; }
     }
     if (firstFrame) { firstFrame = false; tF = 0; } else tF += tStep;
     var ops = ft.ops, rw = ft.raw;
@@ -4490,7 +4549,9 @@ function $$(s) { return Array.prototype.slice.call(document.querySelectorAll(s))
 function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 var fmtBytes = TP.fmtBytes, fmtInt = TP.fmtInt;
 var LS_KEY = 'telemetryParser.settings.v1';
-var FS_OK = typeof window.showDirectoryPicker === 'function';
+// yerel uygulamada (WebView2) klasör Windows seçicisiyle seçilip yerel yazıcıyla yazılır (bağlamalar üst pencerede)
+var NATIVE_FS = (function () { try { var w = window.parent && window.parent !== window ? window.parent : window; return typeof w.mvPickFolder === 'function' && typeof w.mvFsInfo === 'function' ? w : null; } catch (e) { return null; } })();
+var FS_OK = !!NATIVE_FS || typeof window.showDirectoryPicker === 'function';
 
 function defaults() {
   return {
@@ -5315,14 +5376,23 @@ $('#lfNone').onclick = function () { S.labelFilter.labels = []; save(); renderLa
 
 /* ---------- çıktı dizini ---------- */
 function renderOutDir() {
-  $('#outDirLabel').textContent = FS_OK ? (outDir ? outDir.name : 'Seçilmedi') : 'Desteklenmiyor';
+  $('#outDirLabel').textContent = FS_OK ? (outDir ? (outDir.__native ? outDir.path : outDir.name) : 'Seçilmedi') : 'Desteklenmiyor';
   $('#btnPickDir').disabled = !FS_OK; $('#btnResetDir').disabled = !FS_OK || !outDir;
-  $('#outDirHelp').innerHTML = FS_OK
+  $('#outDirHelp').innerHTML = NATIVE_FS ? 'Klasör Windows klasör seçicisiyle seçilir ve hatırlanır; her klasöre (masaüstü, sürücü kökü, ağ klasörü …) yazılabilir. Çıktılar <code>YYYY-AA-GG_SS-DD-ss_kayıtadı</code> klasörüne yazılır.' : FS_OK
     ? 'Tarayıcı güvenliği nedeniyle sayfanın bulunduğu klasör otomatik bilinemez; klasörü bir kez seçmeniz yeterlidir, seçim hatırlanır. Seçilmezse Çöz\'e basıldığında sorulur. Çıktılar <code>YYYY-AA-GG_SS-DD-ss_kayıtadı</code> klasörüne yazılır.'
     : 'Bu tarayıcı klasöre doğrudan yazmayı desteklemiyor. Çıktılar aynı klasör yapısıyla ZIP olarak indirilir. Klasöre doğrudan yazmak için Chrome veya Edge kullanın.';
 }
+async function nativeOutDir(path) { var inf = await NATIVE_FS.mvFsInfo(); return new TP.NativeDirH({ port: inf.port, token: inf.token, path: path }); }
 async function pickDir() {
-  var d = await window.showDirectoryPicker({ id: 'telemetryParserOut', mode: 'readwrite' });
+  var d;
+  if (NATIVE_FS) {
+    var p = await NATIVE_FS.mvPickFolder(outDir && outDir.path || '');
+    if (!p) { var ab = new Error('İptal edildi'); ab.name = 'AbortError'; throw ab; }
+    d = await nativeOutDir(p);
+    outDir = d; try { await idbSet('outDir', { nativePath: p }); } catch (e) {}
+    renderOutDir(); renderSummary(); return d;
+  }
+  d = await window.showDirectoryPicker({ id: 'telemetryParserOut', mode: 'readwrite' });
   outDir = d; try { await idbSet('outDir', d); } catch (e) {}
   renderOutDir(); renderSummary();
   return d;
@@ -5639,7 +5709,12 @@ window.TPUI = {
 /* ---------- başlangıç ---------- */
 $('#verLabel').textContent = 'v' + TP.VERSION; $('#verLabel2').textContent = 'telemetryParser v' + TP.VERSION + ' tabanlı';
 revalidate(); renderFiles(); renderSummary(); renderLog(); resetStats(0); $('#tlProg').classList.add('hidden'); $('#runState').classList.add('hidden');
-if (FS_OK) idbGet('outDir').then(function (d) { if (d) { outDir = d; renderOutDir(); renderSummary(); } }).catch(function () {});
+if (FS_OK) idbGet('outDir').then(async function (d) {
+  if (!d) return;
+  if (d.nativePath) { if (!NATIVE_FS || !(await NATIVE_FS.mvAllowDir(d.nativePath))) return; d = await nativeOutDir(d.nativePath); }
+  else if (NATIVE_FS) return;   // tarayıcı klasör izni yerel uygulamada kullanılmaz (yerel seçiciyle yeniden seçilir)
+  outDir = d; renderOutDir(); renderSummary();
+}).catch(function () {});
 uiLog('BİLGİ', 'Telemetri Çözümleyici v' + TP.VERSION + ' hazır. ' + (FS_OK ? 'Çıktılar seçilen klasöre yazılacak.' : 'Bu tarayıcıda çıktılar ZIP olarak indirilecek.'));
 })();
 </script>
