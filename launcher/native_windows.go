@@ -110,6 +110,18 @@ func runNative(u, dir string) (ok bool) {
 		full = on
 		return full
 	})
+	// çıktı klasörü: Windows klasör seçici + yerel yazıcı (tarayıcının "sistem dosyası" engeline takılmaz)
+	if fsb := startFsBridge(); fsb != nil {
+		w.Bind("mvFsInfo", func() map[string]interface{} { return map[string]interface{}{"port": fsb.port, "token": fsb.token} })
+		w.Bind("mvPickFolder", func(start string) string {
+			p := pickFolder(hwnd, start, "Çıktı klasörünü seçin")
+			if p != "" && !fsb.allow(p) {
+				return ""
+			}
+			return p
+		})
+		w.Bind("mvAllowDir", func(p string) bool { return fsb.allow(p) })
+	}
 	w.Init("window.__MATVIEW_NATIVE__ = true;")
 	w.SetTitle("MATView")
 	w.Navigate(u)

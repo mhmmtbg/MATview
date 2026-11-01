@@ -45,6 +45,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.14', d: 'Telemetri: zaman ekseni düzeltmeleri, yerel çıktı klasörü', items: [
+    'Çöz ve MATView\'de aç: tek bir çerçevede bozulan çerçeve sayacı artık zaman eksenini binlerce çerçeve kaydırmıyor (önce 65 bin çerçevelik sahte boşluk oluşabiliyordu). Makul olmayan sıçramada (varsayılan > 10 s) zaman 1 çerçeve ilerler, kayıp sayılmaz; sonraki çerçeve beklenenle sürerse boşluk oluşmaz, yeni değerden sürerse sayaç sıfırlaması kabul edilir.',
+    'Çöz ve MATView\'de aç: bir birimin yalnız bazı çerçeve tiplerinde bulunan parametreleri artık diğer çerçevelerde 0 ile doldurulmuyor (veri kesintili görünüyordu); kendi zaman ekseniyle yalnız gerçek örnekler gelir. Çerçeve tipleri arasında farklı bağlamda tanımlı parametreler de doğru zamanı alır. Dosyaya yazılan CSV / .mat değişmez.',
+    'Çöz ve dosyalara yaz (yerel uygulama): çıktı klasörü Windows klasör seçicisiyle seçilir ve dosyalar yerel yazıcıyla yazılır — tarayıcının "bu klasör sistem dosyası içeriyor" engeli (sürücü kökü, kullanıcı klasörü vb.) artık çıkmaz; seçim hatırlanır.']},
   {v: '2.13', d: 'Konuşma ve olay odaklı akustik iyileştirme, kamera sarma ve video kurtarma', items: [
     'Akustik gürültü azaltma: OM-LSA + MCRA — gürültü kayıt boyunca izlenir (değişen gürültüde de aynı bastırma), her zaman-frekans hücresi için konuşma olasılığı; sessiz bölüm varsa alt sınır olarak kullanılır. Wiener (sabit profil) seçenek olarak kalır.',
     'Olay koruma (varsayılan açık): darbe, kopma (ör. cıvata), çarpma gibi geniş bantlı ani olaylarda kazanç anlık açılır ve gürültü tahmini dondurulur; tık temizleme sönümü olan olaylara dokunmaz.',
