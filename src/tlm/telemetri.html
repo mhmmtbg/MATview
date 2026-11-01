@@ -423,6 +423,12 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .vfig canvas { cursor: grab; }
 .vfig canvas:active { cursor: grabbing; }
 .vfig .verr { margin: 6px 8px 0; font-size: 12px; }
+.vfig .vnav { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-top: 1px solid var(--line2); }
+.vfig .vnav .btn.icon { width: 30px; flex: none; font-size: 12px; }
+.vfig .vnav .vstep { height: 26px; width: auto; flex: none; padding: 0 4px; font-size: 12px; }
+.vfig .vnav .vseek { flex: 1; min-width: 60px; }
+.vfig .vnav .vpos { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; min-width: 11ch; text-align: right; color: var(--muted); }
+.vfig .vnav.off .vseek { opacity: .5; }
 .btn.icon.ghost { visibility: hidden; }
 #tabVideo { grid-template-columns: 1fr; }
 /* .mat görüntüleyici */
@@ -2435,8 +2441,8 @@ function VideoDepack(opt) {
   this.pend = []; this.pendBytes = 0;
   this.buf = new Uint8Array(1 << 16); this.len = 0; this.pos = 0; this.cuts = [];
   this.mode = opt.mode || null;
-  this.lastSeq = null; this.au = null; this.fu = null;
-  this.st = { chunks: 0, bytes: 0, records: 0, exact: 0, good: 0, fixed: 0, badRec: 0, packets: 0, lostPackets: 0, droppedNal: 0, aus: 0, keys: 0, fill: 0, junk: 0 };
+  this.lastSeq = null; this.au = null; this.fu = null; this.gap = false;
+  this.st = { brokenAu: 0, chunks: 0, bytes: 0, records: 0, exact: 0, good: 0, fixed: 0, badRec: 0, packets: 0, lostPackets: 0, droppedNal: 0, aus: 0, keys: 0, fill: 0, junk: 0 };
 }
 VideoDepack.prototype.push = function (u8) {
   this.st.chunks++; this.st.bytes += u8.length;
@@ -2535,7 +2541,7 @@ VideoDepack.prototype._rtp = function (p) {
     var g = (seq - this.lastSeq - 1) & 0xffff;
     if (g < 0x8000) this.st.lostPackets += g;
     if (this.fu) { this.fu = null; this.st.droppedNal++; }
-    if (this.au) this.au.broken = true;
+    if (this.au) this.au.broken = true; else this.gap = true;   // kare içinde kayıp: kare bozuk; kareler arasında: sonraki kare kayıptan sonra
   }
   this.lastSeq = seq;
   if (this.au && this.au.ts !== ts) this._emit();
@@ -2550,7 +2556,7 @@ VideoDepack.prototype._rtp = function (p) {
       if (this.fu) this.st.droppedNal++;
       this.fu = { parts: [new Uint8Array([(pl[0] & 0xe0) | (fh & 0x1f)]), pl.slice(2)], n: 1 + pl.length - 2 };
     } else if (this.fu) { this.fu.parts.push(pl.slice(2)); this.fu.n += pl.length - 2; }
-    else this.st.droppedNal++;
+    else { this.st.droppedNal++; if (this.au) this.au.broken = true; else this.gap = true; }
     if (this.fu && (fh & 0x40)) {
       var out = new Uint8Array(this.fu.n), o = 0;
       this.fu.parts.forEach(function (x) { out.set(x, o); o += x.length; });
@@ -2560,7 +2566,8 @@ VideoDepack.prototype._rtp = function (p) {
   if (mk) this._emit();
 };
 VideoDepack.prototype._nal = function (nal, ts) {
-  if (!this.au) this.au = { ts: ts, nals: [], key: false, broken: false };
+  if (!this.au) { this.au = { ts: ts, nals: [], key: false, intra: false, broken: false, afterLoss: this.gap }; this.gap = false; }
+  if (!nal.length || (nal[0] & 0x80)) { this.au.broken = true; return; }   // forbidden_zero_bit: bozuk NAL
   var t = nal[0] & 0x1f;
   if (t === 5) this.au.key = true;
   this.au.nals.push(nal);
@@ -2568,9 +2575,26 @@ VideoDepack.prototype._nal = function (nal, ts) {
 VideoDepack.prototype._emit = function () {
   var au = this.au; this.au = null;
   if (!au || !au.nals.length) return;
-  this.st.aus++; if (au.key) this.st.keys++;
+  au.intra = au.key || h264Intra(au.nals);
+  this.st.aus++; if (au.key) this.st.keys++; if (au.broken) this.st.brokenAu++;
   this.onAU(au);
 };
+// karedeki tüm dilimler I (ya da SI) ise kare tek başına çözülebilir (IDR olmayan I kare): kayıptan sonra kurtarma noktası
+function h264Intra(nals) {
+  var any = false;
+  for (var k = 0; k < nals.length; k++) {
+    var x = nals[k], t = x[0] & 0x1f; if (t !== 1 && t !== 5) continue; any = true; if (t === 5) continue;
+    var st = h264SliceType(x); if (st !== 2 && st !== 4) return false;
+  }
+  return any;
+}
+function h264SliceType(nal) {
+  var b = h264Rbsp(nal.length > 24 ? nal.subarray(0, 24) : nal), pos = 0;
+  function bit() { var v = (b[pos >> 3] >> (7 - (pos & 7))) & 1; pos++; return v; }
+  function ue() { var z = 0; while (pos < b.length * 8 && !bit()) z++; if (z > 20) return -1; var v = 0; for (var i = 0; i < z; i++) v = v * 2 + bit(); return Math.pow(2, z) - 1 + v; }
+  ue(); var st = ue(); return st < 0 ? -1 : st % 5;
+}
+TP.h264Intra = h264Intra;
 // düz H.264: başlangıç kodlarıyla NAL'lara ayrılır; kare sınırı AUD, parametre setleri veya first_mb_in_slice=0 ile bulunur
 VideoDepack.prototype._annexb = function (fin) {
   var b = this.buf, i = this.pos, s = -1;
@@ -2682,8 +2706,22 @@ function Mp4Writer(store, opt) {
   opt = opt || {};
   this.rs = new RawStream(store); this.sps = null; this.pps = null; this.info = null;
   this.sizes = []; this.ts = []; this.keys = []; this.skipped = 0; this.fps = opt.fps || 30; this.useTs = opt.useTs !== false;
+  this.repair = opt.repair !== false; this.recover = false; this.held = []; this.dropped = 0; this.lossEvents = 0;
 }
+// Bozuk kare (kayıp paket / eksik parça) hiç yazılmaz; kayıptan sonra kareler bir sonraki kendi başına çözülebilir
+// kareye (IDR ya da I) kadar bekletilir: varsa bekletilenler atılır (bozuk görüntü yerine kısa donma), ~3 s içinde
+// gelmezse bekletilenler yazılır (akış I kare içermiyorsa kayıt yine de devam eder). Kayıt bozuk karede kesilmez.
 Mp4Writer.prototype.add = function (au) {
+  if (!this.repair) return this._add(au);
+  if (au.broken) { this.dropped++; if (!this.recover) this.lossEvents++; this.recover = this.sizes.length > 0; this.held = []; return; }
+  if (au.afterLoss && this.sizes.length) { if (!this.recover) this.lossEvents++; this.recover = true; this.held = []; }
+  if (this.recover) {
+    if (au.key || au.intra) { this.dropped += this.held.length; this.held = []; this.recover = false; }
+    else { this.held.push(au); if (this.held.length > 90) { var h = this.held; this.held = []; this.recover = false; for (var i = 0; i < h.length; i++) this._add(h[i]); } return; }
+  }
+  this._add(au);
+};
+Mp4Writer.prototype._add = function (au) {
   var nals = [], n = 0, self = this;
   au.nals.forEach(function (x) {
     var t = x[0] & 0x1f;
@@ -2694,20 +2732,21 @@ Mp4Writer.prototype.add = function (au) {
   });
   var hasPic = nals.some(function (x) { var t = x[0] & 0x1f; return t >= 1 && t <= 5; });
   if (!hasPic) return;
-  if (!this.sizes.length && !(au.key && this.sps && this.pps)) { this.skipped++; return; }
+  if (!this.sizes.length && !((au.key || au.intra) && this.sps && this.pps)) { this.skipped++; return; }
   var out = new Uint8Array(n), o = 0;
   nals.forEach(function (x) { out[o] = x.length >>> 24; out[o + 1] = (x.length >> 16) & 255; out[o + 2] = (x.length >> 8) & 255; out[o + 3] = x.length & 255; out.set(x, o + 4); o += 4 + x.length; });
   this.rs.put(out);
-  this.sizes.push(n); this.ts.push(au.ts); this.keys.push(au.key);
+  this.sizes.push(n); this.ts.push(au.ts); this.keys.push(!!(au.key || au.intra));
 };
 Mp4Writer.prototype.durations = function () {
   var n = this.sizes.length, def = Math.round(90000 / this.fps), d = new Array(n);
   if (!this.useTs) { for (var i = 0; i < n; i++) d[i] = def; return d; }
   var diffs = [];
   for (var j = 0; j + 1 < n; j++) { var x = (this.ts[j + 1] - this.ts[j]) >>> 0; d[j] = x; if (x > 0 && x < 90000 * 2) diffs.push(x); }
+  var lim = 90000 * 60;   // atılan kareler süreyi kısaltmasın: kayıp boşluğu (en çok 60 s) önceki kareye eklenir
   diffs.sort(function (a, b) { return a - b; });
   var med = diffs.length ? diffs[diffs.length >> 1] : def;
-  for (var k = 0; k < n; k++) if (!(d[k] > 0 && d[k] < 90000 * 2)) d[k] = med;
+  for (var k = 0; k < n; k++) if (!(d[k] > 0 && d[k] < lim)) d[k] = med;
   return d;
 };
 Mp4Writer.prototype.duration = function () { return this.durations().reduce(function (a, b) { return a + b; }, 0) / 90000; };
@@ -6019,6 +6058,7 @@ async function seekFrame(k) {
       var o = simIx.off[q], FL = simIx.frameLen, bytes = new Uint8Array(await simBlob.slice(o, o + FL).arrayBuffer());
       if (!conn) break;
       resetScanner();
+      vfigs.forEach(vfSeekReset);
       scrubbing = true;
       try { scanner.push(bytes, true); } catch (e) { U.uiLog('HATA', 'Çerçeve çözülemedi: ' + e.message); }
       finally { scrubbing = false; }
@@ -6998,7 +7038,7 @@ function vfReset(f) {
   f.dec = null; f.frame = null; f.sps = null; f.pps = null; f.needKey = true; f.vinfo = null; f.err = '';
   f.nAU = 0; f.nOut = 0; f.dropped = 0; f.meter = []; f.chunks = 0;
   f.dp = new TP.VideoDepack({ onAU: function (au) { vfAU(f, au); } });
-  f.mw = null; f.mwBytes = 0;
+  f.mw = null; f.mwBytes = 0; f.bad = 0; f.resets = 0; f.wait = 0; f.lastOut = 0; f.everDec = false; f.fresh = false;
 }
 function closeVfig(f, noRender) {
   closePop(f);
@@ -7029,31 +7069,47 @@ function vfAU(f, au) {
   vfRec(f, au);
   for (var k = 0; k < au.nals.length; k++) { var t = au.nals[k][0] & 0x1f; if (t === 7) f.sps = au.nals[k]; else if (t === 8) f.pps = au.nals[k]; }
   if (typeof VideoDecoder === 'undefined') { f.err = 'Bu tarayıcı video çözmeyi desteklemiyor (WebCodecs gerekli: Chrome veya Edge).'; return; }
+  // bozuk kare (kayıp paket / eksik parça) çözücüye verilmez; kayıptan sonra bir sonraki kendi başına çözülebilir kare (IDR ya da I) beklenir.
+  // Akışta böyle kare yoksa ~3 s sonra kareler yine verilir: çözücü eksik referansı gizler ve görüntü kendiliğinden toparlanır.
+  if (au.broken) { f.bad++; f.needKey = true; f.wait = 0; return; }
+  if (au.afterLoss) { f.needKey = true; f.wait = 0; }
+  var rp = au.key || au.intra;
   if (!f.dec) {
-    if (!au.key || !f.sps || !f.pps) return;
+    if (!f.sps || !f.pps) return;
+    // çözücü hata verip kapandıysa: IDR, I kare ya da uzun beklemeden sonra herhangi bir kare ile yeniden başlatılır
+    if (!rp && !(f.everDec && ++f.wait > 90)) return;
     var inf; try { inf = TP.parseSps(f.sps); } catch (e) { return; }
     f.vinfo = inf;
     var dec = new VideoDecoder({
-      output: function (fr) { vfOut(f, fr); },
-      error: function (e) { f.err = 'Çözücü hatası: ' + (e && e.message || e) + ' — sonraki anahtar karede yeniden başlatılıyor'; if (f.dec === dec) { f.dec = null; f.needKey = true; } }
+      output: function (fr) { f.lastOut = f.nAU; vfOut(f, fr); },
+      error: function (e) { f.err = 'Çözücü hatası: ' + (e && e.message || e) + ' — sonraki kurtarma karesinde yeniden başlatılıyor'; f.resets++; if (f.dec === dec) { f.dec = null; f.needKey = true; f.wait = 0; } }
     });
     try { dec.configure({ codec: inf.codec, codedWidth: inf.width, codedHeight: inf.height, optimizeForLatency: true }); }
     catch (e) { f.err = 'Çözücü başlatılamadı (' + inf.codec + '): ' + e.message; try { dec.close(); } catch (x) { } return; }
-    f.dec = dec; f.needKey = true; f.err = '';
+    f.dec = dec; f.fresh = true; f.needKey = false; f.wait = 0; f.lastOut = f.nAU; f.err = '';
   }
   if (f.dec.state !== 'configured') return;
-  if (f.needKey && !au.key) return;
-  // gecikme birikirse anahtar kareye kadar kareler atlanır: görüntü canlı akıştan geri kalmaz
-  if (!au.key && f.dec.decodeQueueSize > 12) { f.needKey = true; f.dropped++; return; }
+  if (f.needKey && !rp) { if (++f.wait <= 90) return; f.needKey = false; }
+  if (rp) f.needKey = false;
+  // kare veriliyor ama çıktı gelmiyorsa (çözücü takıldı) çözücü yeniden kurulur
+  if (f.nAU - f.lastOut > 150 && f.dec.decodeQueueSize === 0) { try { f.dec.close(); } catch (e) { } f.dec = null; f.resets++; f.needKey = true; f.wait = 0; return; }
+  // gecikme birikirse kurtarma karesine kadar kareler atlanır: görüntü canlı akıştan geri kalmaz
+  if (!rp && f.dec.decodeQueueSize > 12) { f.needKey = true; f.dropped++; return; }
   var list = au.nals;
-  if (au.key && !list.some(function (x) { return (x[0] & 0x1f) === 7; })) list = [f.sps, f.pps].concat(list);
+  if ((rp || f.fresh) && !list.some(function (x) { return (x[0] & 0x1f) === 7; })) list = [f.sps, f.pps].concat(list);
   var n = 0; list.forEach(function (x) { n += 4 + x.length; });
   var data = new Uint8Array(n), o = 0;
   list.forEach(function (x) { data[o + 3] = 1; data.set(x, o + 4); o += 4 + x.length; });
   try {
-    f.dec.decode(new EncodedVideoChunk({ type: au.key ? 'key' : 'delta', timestamp: f.nAU * 33333, data: data }));
-    if (au.key) f.needKey = false;
-  } catch (e) { f.err = 'Çözücü hatası: ' + e.message; f.needKey = true; }
+    // yeni kurulan çözücünün ilk karesi anahtar kare olarak verilir (IDR olmayan I kare ya da uzun beklemeden sonra P kare de olabilir)
+    f.dec.decode(new EncodedVideoChunk({ type: au.key || f.fresh ? 'key' : 'delta', timestamp: f.nAU * 33333, data: data }));
+    f.fresh = false; f.everDec = true;
+  } catch (e) { f.err = 'Çözücü hatası: ' + e.message; f.needKey = true; f.wait = 0; try { f.dec.close(); } catch (x) { } f.dec = null; f.resets++; }
+}
+// gezinme sonrası akış başka yerden gelir: ayrıştırıcı sıfırlanır, çözücü kurtarma karesi bekler, MP4 kaydı kayıp gibi devam eder
+function vfSeekReset(f) {
+  f.dp = new TP.VideoDepack({ onAU: function (au) { vfAU(f, au); } });
+  f.needKey = true; f.wait = 0; if (f.mw) { f.mw.recover = f.mw.sizes.length > 0; f.mw.held = []; }
 }
 function vfOut(f, fr) {
   if (f.paused || vfigs.indexOf(f) < 0) { fr.close(); return; }
@@ -7090,10 +7146,13 @@ function vfInfo(f, now) {
   a.push(f.nOut + ' kare');
   if (st.lostPackets) a.push(st.lostPackets + ' kayıp RTP');
   if (f.dropped) a.push(f.dropped + ' atlanan');
+  if (f.bad) a.push(f.bad + ' bozuk kare atlandı');
+  if (f.resets) a.push(f.resets + ' çözücü yeniden başlatma');
   var t = a.join(' · ');
   if (f.infoEl.textContent !== t) f.infoEl.textContent = t;
   f.errEl.textContent = f.err || ''; f.errEl.classList.toggle('hidden', !f.err);
   if (!f.frame) vfDraw(f);
+  vfNavUpd(f);
 }
 // açık video penceresi kareleri MP4 için bellekte biriktirir (en çok ~400 MB); MP4 indir o ana kadarki kaydı verir
 function VMem() { this.parts = []; }
@@ -7113,7 +7172,7 @@ function vfSave(name, blob, type) { var host = window.parent !== window && windo
 async function vfMp4(f) {
   if (!f.mw || !f.mw.sizes.length) { U.showModal('MP4', '<div class="notice warn">Henüz kaydedilecek kare yok (ilk anahtar kare bekleniyor). Oynatma sürerken tekrar deneyin.</div>'); return; }
   var b = await f.mw.toBlob(), name = vfFileName(f, 'mp4'); vfSave(name, b, 'video/mp4');
-  U.uiLog('BİLGİ', name + ': ' + f.mw.sizes.length + ' kare MP4 olarak kaydedildi');
+  U.uiLog('BİLGİ', name + ': ' + f.mw.sizes.length + ' kare MP4 olarak kaydedildi' + (f.mw.lossEvents ? ' (' + f.mw.lossEvents + ' veri kaybı noktasında ' + f.mw.dropped + ' bozuk kare atlandı, kayıt kesilmeden devam etti)' : ''));
 }
 function vfSnap(f) {
   var fr = f.frame, c = document.createElement('canvas');
@@ -7134,7 +7193,11 @@ function vfigHtml(f) {
     '<span class="frz badge warn' + (f.paused ? '' : ' hidden') + '">Durduruldu</span><span class="cv vinfo"></span>' +
     '<button class="btn icon sm" type="button" data-close title="Kapat">' + CHART_ICONS.close + '</button></div>' +
     '<div class="verr notice warn hidden"></div>' +
-    '<div class="cbody"><canvas tabindex="0"></canvas></div><span class="crz" title="Sürükleyerek boyutlandırın, çift tıklayarak varsayılana döndürün"></span></div>';
+    '<div class="cbody"><canvas tabindex="0"></canvas></div>' +
+    '<div class="vnav" title="Kayıttan oynatmada konum">' + b('vback', 'Geri sar', '⏪') + b('vplay', 'Oynat / duraklat (kayıt)', '❚❚') + b('vfwd', 'İleri sar', '⏩') +
+    '<select class="inp vstep" title="Sarma adımı"><option value="1">1 s</option><option value="5" selected>5 s</option><option value="10">10 s</option><option value="30">30 s</option></select>' +
+    '<input type="range" class="vseek" min="1" max="1" step="1" value="1" aria-label="Kayıt konumu"><span class="vpos mono">–</span></div>' +
+    '<span class="crz" title="Sürükleyerek boyutlandırın, çift tıklayarak varsayılana döndürün"></span></div>';
 }
 function vfTogglePause(f) {
   f.paused = !f.paused;
@@ -7159,10 +7222,43 @@ function vfButton(f, b) {
   else if (v === 'home') { f.z = 1; f.px = 0; f.py = 0; vfDraw(f); }
   else if (v === 'snap') vfSnap(f);
   else if (v === 'mp4') vfMp4(f);
+  else if (v === 'vback' || v === 'vfwd') vfSkip(f, v === 'vfwd' ? 1 : -1);
+  else if (v === 'vplay') { if (connState === 'connected') setPaused(!paused); else if (simOn()) setPaused(false); }
+}
+// kamera penceresindeki konum çubuğu: dosyadan oynatmanın çerçeve konumunu gösterir / değiştirir (canlı bağlantıda kapalı)
+function simFps() { var p = +(S().live.sim && S().live.sim.periodMs) || 10; return 1000 / Math.max(0.1, p); }
+function vfSkip(f, dir) {
+  if (!simOn() || !simIx || !simIx.n) return;
+  var st = f.el ? +f.el.querySelector('.vstep').value || 5 : 5, k = simCur;
+  if (conn && conn.sim && !paused) k = frameAtPos(conn.pos());
+  var was = !paused && connState === 'connected';
+  seekFrame(Math.max(0, k) + dir * Math.round(st * simFps())).then(function () { if (was && paused) setPaused(false); });
+}
+function vfNavUpd(f) {
+  if (!f.el) return; var nav = f.el.querySelector('.vnav'); if (!nav) return;
+  var on = !!(simOn() && simIx && simIx.n), sl = nav.querySelector('.vseek');
+  nav.classList.toggle('off', !on);
+  nav.querySelectorAll('button,input,select').forEach(function (e) { e.disabled = !on; });
+  var pb = nav.querySelector('[data-v=vplay]'), pt = connState === 'connected' && !paused ? '❚❚' : '▶'; if (pb.textContent !== pt) pb.textContent = pt;
+  var el = nav.querySelector('.vpos');
+  if (!on) { if (el.textContent !== 'yalnız kayıttan oynatmada') el.textContent = 'yalnız kayıttan oynatmada'; return; }
+  var k = simCur; if (conn && conn.sim && !paused) k = frameAtPos(conn.pos());
+  var N = simIx.n, fps = simFps(), cur = Math.max(1, k + 1);
+  if (+sl.max !== N) sl.max = N; if (!f.navDrag && +sl.value !== cur) sl.value = cur;
+  var ft = function (x) { var m = Math.floor(x / 60), sc = x - m * 60; return m + ':' + (sc < 10 ? '0' : '') + sc.toFixed(1); };
+  var t = ft(cur / fps) + ' / ' + ft(N / fps); if (el.textContent !== t) el.textContent = t;
 }
 function bindVfig(f) {
   var cv = f.canvas;
   f.infoEl = f.el.querySelector('.vinfo'); f.errEl = f.el.querySelector('.verr');
+  var vs = f.el.querySelector('.vseek');
+  if (vs) {
+    vs.addEventListener('pointerdown', function () { f.navDrag = true; });
+    vs.addEventListener('input', function () { f.navDrag = true; if (simOn()) seekFrame(+vs.value - 1); });
+    vs.addEventListener('change', function () { f.navDrag = false; });
+    vs.addEventListener('pointerup', function () { f.navDrag = false; });
+  }
+  vfNavUpd(f);
   cv.addEventListener('wheel', function (e) { e.preventDefault(); var r = cv.getBoundingClientRect(); vfZoom(f, e.deltaY < 0 ? 1.25 : 0.8, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
   cv.addEventListener('dblclick', function () { f.z = 1; f.px = 0; f.py = 0; vfDraw(f); });
   cv.addEventListener('pointerdown', function (e) {

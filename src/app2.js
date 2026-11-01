@@ -349,14 +349,27 @@ function buildAcoustic() {
     h('div', {class: 'fr chk'}, h('label', {for: 'acLpOn'}, 'Alçak geçiren (Hz)'), numIn('acLp', 10000), h('input', {type: 'checkbox', id: 'acLpOn'})),
     h('div', {class: 'fr chk'}, h('label', {for: 'acNOn'}, 'Notch f0 (Hz)'), numIn('acNf', 50), h('input', {type: 'checkbox', id: 'acNOn'})),
     fr('  Q / harmonik', numIn('acNq', 30), numIn('acNh', 3, {min: 1, step: 1})),
+    h('div', {class: 'fr chk', title: 'Darbe, kopma (ör. cıvata), çarpma gibi gerçek olaylar gürültü sayılmaz: tık / çıtırtı temizleme sönümü olan ya da güçlü olaylara dokunmaz, gürültü azaltma olay boyunca açılır.'}, h('label', {for: 'acProt'}, 'Olayları koru (darbe, kopma, çarpma)'), h('input', {type: 'checkbox', id: 'acProt', checked: true})),
     h('div', {class: 'fr chk'}, h('label', {for: 'acClOn'}, 'Tık / pop temizle'), h('input', {type: 'checkbox', id: 'acClOn'})),
     fr('  Pencere / σ', numIn('acClK', 5, {min: 1, step: 1}), numIn('acClS', 8)),
+    h('div', {class: 'fr chk', title: 'Sık ve çok kısa (≤ 5 ms) geniş bant patlamaları (iletim / elektronik çıtırtısı) arka plan seviyesine indirir; yalnız 300 Hz üstü etkilenir.'}, h('label', {for: 'acCrOn'}, 'Çıtırtı bastır (eşik dB)'), numIn('acCrDb', 8), h('input', {type: 'checkbox', id: 'acCrOn'})),
     h('div', {class: 'fr chk'}, h('label', {for: 'acDnOn'}, 'Spektral gürültü azaltma'), h('input', {type: 'checkbox', id: 'acDnOn'})),
-    fr('  Azaltma (dB)', numIn('acDnDb', 15), numIn('acDnA', 2)),
+    fr('  Yöntem', selIn('acDnM', [['omlsa', 'OM-LSA (değişen gürültüyü izler)'], ['wiener', 'Wiener (sabit profil)']], 'omlsa')),
+    fr('  Azaltma (dB) / α', numIn('acDnDb', 15, {title: 'En çok bastırma (OM-LSA: konuşma olmayan hücrelerde kazanç tabanı)'}), numIn('acDnA', 2, {title: 'Yalnız Wiener: aşırı çıkarma katsayısı'})),
     fr('  Gürültü aralığı (s)', numIn('acN0', ''), numIn('acN1', '')),
     fr('  Kuantalama adımı', numIn('acQ', '', {min: 0, placeholder: 'yok', title: 'Sinyal kaba kuantalıysa (az sayıda ayrık seviye) ADC adımı: gürültü tabanı en az adım²/12 alınır. Otomatik temizleme doldurur.'})),
-    h('div', {class: 'btns'}, btn('Görünen aralığı gürültü yap', setNoiseFromView), btn('Aralığı kaldır', () => { S.plot.bands = []; $('#acN0').value = ''; $('#acN1').value = ''; S.plot.invalidate(); })),
-    h('div', {class: 'note'}, 'Gürültü aralığı: yalnızca arka plan gürültüsünün olduğu sessiz bir bölüm seçin. Spektral azaltma bu bölümün ortalama spektrumunu çıkarır.')));
+    h('div', {class: 'btns'}, btn('Görünen aralığı gürültü yap', setNoiseFromView), btn('Aralığı kaldır', () => { S.acNoise = null; $('#acN0').value = ''; $('#acN1').value = ''; acBands(); })),
+    h('div', {class: 'note'}, 'Gürültü aralığı: yalnızca arka plan gürültüsünün olduğu sessiz bir bölüm seçin. Wiener bu bölümün ortalama spektrumunu çıkarır; OM-LSA gürültüyü kayıt boyunca izler ve bu bölümü alt sınır olarak kullanır.')));
+  r.append(card('Konuşma ve olaylar',
+    fr('Ön ayar', selIn('acPreset', [['', '—'], ['clean', 'Temiz dinleme'], ['speech', 'Konuşma odaklı']], ''), h('button', {id: 'acPresetBtn', onclick: acPresetApply}, 'Uygula')),
+    h('div', {class: 'fr chk', title: '100 Hz altı (uğultu, gövde titreşimi) ve 5 kHz üstü (tıslama) kesilir; konuşmanın anlaşılırlığını taşıyan bant kalır'}, h('label', {for: 'acSpOn'}, 'Konuşma bandı (100–5000 Hz)'), h('input', {type: 'checkbox', id: 'acSpOn'})),
+    h('div', {class: 'fr chk', title: 'Ünsüzlerin (s, ş, t, k…) bulunduğu ~3 kHz çevresi yükseltilir'}, h('label', {for: 'acEqOn'}, 'Ünsüz vurgusu (+dB, 3 kHz)'), numIn('acEqDb', 4), h('input', {type: 'checkbox', id: 'acEqOn'})),
+    h('div', {class: 'fr chk', title: 'Yalnız dinlerken: kısık konuşma yükseltilir, yüksek sesler sınırlanır; eşik altı (gürültü) yükseltilmez. Kanal / kalibre WAV etkilenmez.'}, h('label', {for: 'acAgc'}, 'Seviye dengeleme (dinleme)'), h('input', {type: 'checkbox', id: 'acAgc'})),
+    h('div', {class: 'fr chk', title: 'Hız çarpanı 1 değilken sesi inceltip kalınlaştırmadan yavaşlatır / hızlandırır (WSOLA)'}, h('label', {for: 'acPitch'}, 'Yavaşlatırken perdeyi koru'), h('input', {type: 'checkbox', id: 'acPitch', checked: true})),
+    h('div', {class: 'fr chk', title: 'Yalnız dinlerken: bulunan konuşma / olay bölümleri dışı 20 dB kısılır'}, h('label', {for: 'acMute'}, 'Bölüm dışını kıs (dinleme)'), h('input', {type: 'checkbox', id: 'acMute'})),
+    h('div', {class: 'btns'}, btn('Konuşma ve olayları bul', acFindMarks, 'primary'), btn('İşaretleri kaldır', () => { S.acMarks = null; acMarksUI(); acBands(); })),
+    h('div', {id: 'acMarks', class: 'acmarks'}),
+    h('div', {class: 'note'}, 'Konuşma: 300–3400 Hz bandında gürültü tabanının üstünde, perdeli ve hece hızında dalgalanan bölümler (yeşil). Olay: geniş bantlı ani darbeler — kopma, çarpma, kırılma (kırmızı). Listeden seçerek o noktaya gidin; oynatma çubuğundaki ⇤ ⇥ ile bölümler arasında atlayın.')));
   r.append(card('Dinle ve kaydet',
     h('div', {class: 'btns', style: 'margin-top:0'}, btn('▶ Orijinal', () => acPlay(false), 'primary'), btn('▶ Temizlenmiş', () => acPlay(true), 'primary'), btn('■ Durdur', acStop)),
     h('div', {class: 'actr', id: 'acTr'},
@@ -381,19 +394,20 @@ async function acAuto(add) {
     const x = DSP.segment(ch.data, ch.del, a, b), r = DSP.autoClean(x, ch.fs), p = r.plan;
     $('#acDc').value = p.dc; $('#acHpOn').checked = !!p.hp; if (p.hp) $('#acHp').value = p.hp; $('#acLpOn').checked = !!p.lp; if (p.lp) $('#acLp').value = p.lp;
     $('#acNOn').checked = !!p.notch; if (p.notch) { $('#acNf').value = p.notch; $('#acNq').value = p.nq; $('#acNh').value = p.nh; }
-    if (p.dnMode === 'min') { $('#acN0').value = ''; $('#acN1').value = ''; S.plot.bands = []; S.plot.invalidate(); }
+    if (p.dnMode === 'min') { $('#acN0').value = ''; $('#acN1').value = ''; S.acNoise = null; acBands(); }
+    $('#acProt').checked = p.protect !== false; $('#acCrOn').checked = !!p.crackle; $('#acCrDb').value = p.crDb || 8; $('#acDnM').value = p.dnM || 'omlsa';
     $('#acQ').value = p.q ? +p.q.toPrecision(6) : ''; $('#acClOn').checked = p.click; $('#acClK').value = p.ck; $('#acClS').value = p.cs; $('#acDnOn').checked = p.dn; $('#acDnDb').value = p.dnDb; $('#acDnA').value = p.dnA;
-    if (r.noise) { const t0 = ch.t(a + r.noise[0]), t1 = ch.t(a + r.noise[1]); $('#acN0').value = +t0.toPrecision(8); $('#acN1').value = +t1.toPrecision(8); S.plot.bands = [{x0: t0, x1: t1, color: '#2aa198'}]; S.plot.invalidate(); }
+    if (r.noise) { const t0 = ch.t(a + r.noise[0]), t1 = ch.t(a + r.noise[1]); $('#acN0').value = +t0.toPrecision(8); $('#acN1').value = +t1.toPrecision(8); S.acNoise = [t0, t1]; acBands(); }
     $('#acLog').textContent = 'OTOMATİK ANALİZ\n' + r.log.join('\n');
     if (add) await acAddClean();
   });
 }
-function setNoiseFromView() { const ax = activeAxes(); if (!ax) return; $('#acN0').value = +ax.xlim[0].toPrecision(8); $('#acN1').value = +ax.xlim[1].toPrecision(8); S.plot.bands = [{x0: ax.xlim[0], x1: ax.xlim[1], color: '#2aa198'}]; S.plot.invalidate(); toast('Gürültü aralığı atandı'); }
+function setNoiseFromView() { const ax = activeAxes(); if (!ax) return; $('#acN0').value = +ax.xlim[0].toPrecision(8); $('#acN1').value = +ax.xlim[1].toPrecision(8); S.acNoise = [ax.xlim[0], ax.xlim[1]]; acBands(); toast('Gürültü aralığı atandı'); }
 function acGetSeg() {
   const tr = activeTrace(), ax = activeAxes(); if (!tr) throw new Error('Önce bir iz seçin (tercihen akustik, as…)');
   return {tr, ax};
 }
-function opts() { return {dc: sv('acDc'), hp: ck('acHpOn') ? num('acHp') : 0, lp: ck('acLpOn') ? num('acLp') : 0, notch: ck('acNOn') ? num('acNf') : 0, nq: num('acNq'), nh: num('acNh') | 0, click: ck('acClOn'), ck: num('acClK') | 0, cs: num('acClS'), dn: ck('acDnOn'), dnDb: num('acDnDb'), dnA: num('acDnA'), q: num('acQ') > 0 ? num('acQ') : 0}; }
+function opts() { return {dc: sv('acDc'), hp: ck('acHpOn') ? num('acHp') : 0, lp: ck('acLpOn') ? num('acLp') : 0, notch: ck('acNOn') ? num('acNf') : 0, nq: num('acNq'), nh: num('acNh') | 0, click: ck('acClOn'), ck: num('acClK') | 0, cs: num('acClS'), dn: ck('acDnOn'), dnDb: num('acDnDb'), dnA: num('acDnA'), q: num('acQ') > 0 ? num('acQ') : 0, protect: ck('acProt'), crackle: ck('acCrOn'), crDb: num('acCrDb') || 8, dnM: sv('acDnM'), sp: ck('acSpOn'), eq: ck('acEqOn') ? num('acEqDb') || 0 : 0}; }
 async function preChain(x, fs, o, log) {
   let y = x;
   if (o.dc === 'mean') { let m = 0; for (const v of y) m += v; m /= y.length; y = y.map(v => v - m); } else if (o.dc === 'lin') y = DSP.detrendLinear(y);
@@ -409,8 +423,19 @@ async function acPrepare(clean) {
   let x = DSP.segment(ch.data, ch.del, a, b), log = [];
   if (!clean) { let m = 0; for (const v of x) m += v; m /= x.length; return {y: x.map(v => v - m), fs, a, b, ch, log, raw: x, ax}; }
   const o = opts(); let y = await preChain(x, fs, o);
-  if (o.click) { const r = DSP.declick(y, o.ck, o.cs, 2); y = r.y; log.push(`Tık temizleme: ${r.events} olay, ${fmtCnt(r.count)} örnek düzeltildi`); }
-  if (o.dn) {
+  if (o.click) { const r = DSP.declick(y, o.ck, o.cs, 2, o.protect ? Math.round(fs * 0.002) : 0); y = r.y; log.push(`Tık temizleme: ${r.events} olay, ${fmtCnt(r.count)} örnek düzeltildi` + (r.kept ? `, ${r.kept} darbe olayı korundu` : '')); }
+  const pre = y;   // gürültü profili için (çıtırtı dahil arka plan)
+  if (o.crackle) { const r = await DSPW.run('decrackle', [y, fs, {thrDb: o.crDb, keepDb: o.protect ? 30 : 200}]); y = r.y; log.push(`Çıtırtı bastırma: ${fmtCnt(r.bursts)} kısa patlama (saniyede ${r.rate.toFixed(0)})` + (o.protect && r.kept ? `, ${fmtCnt(r.kept)} uzun / güçlü olay korundu` : '')); }
+  if (o.dn && o.dnM !== 'wiener') {
+    const n0 = num('acN0'), n1 = num('acN1'), N = DSP.omlsaN(fs); let floor = null;
+    if (n1 > n0) {
+      const na = Math.max(0, Math.floor(ch.timeIdx(n0))) - a, nb = Math.min(ch.n, Math.ceil(ch.timeIdx(n1))) - a;
+      if (na >= 0 && nb <= pre.length && nb - na >= N) floor = DSP.noiseProfile(pre.subarray(na, nb), N);
+      else { const nz = await preChain(DSP.segment(ch.data, ch.del, na + a, nb + a), fs, o); if (nz.length >= N) floor = DSP.noiseProfile(nz, N); }
+    }
+    const r = await DSPW.run('omlsa', [y, fs, {gminDb: -Math.abs(o.dnDb || 15), noiseFloor: floor, minVar: o.q * o.q / 12, protect: o.protect, floorScale: o.sp ? 0.5 : 1}]);
+    y = r.y; log.push(`OM-LSA: en çok ${Math.abs(o.dnDb || 15)} dB, gürültü kayıt boyunca izlendi` + (floor ? ' (sessiz bölüm alt sınır)' : '') + (o.protect ? `; ${r.events.length} darbe olayında kazanç açık tutuldu` : ''));
+  } else if (o.dn) {
     const n0 = num('acN0'), n1 = num('acN1');
     if (n1 > n0) {
       const na = Math.max(0, Math.floor(ch.timeIdx(n0))), nb = Math.min(ch.n, Math.ceil(ch.timeIdx(n1)));
@@ -419,6 +444,8 @@ async function acPrepare(clean) {
       const Pn = await DSPW.run('noiseFloorMinStat', [y, 2048, 0.1]); y = await DSPW.run('spectralDenoise', [y, null, {nfft: 2048, reduceDb: o.dnDb, alpha: o.dnA, noisePower: Pn, minVar: o.q * o.q / 12}], y === x ? [] : [y]); log.push('Gürültü profili: sinyalden otomatik tahmin (frekans başına en düşük %10 çerçeve)');
     }
   }
+  if (o.sp) { y = await DSPW.run('filtfilt', [DSP.design('bp', {order: 4, f1: Math.min(100, fs * 0.1), f2: Math.min(5000, fs * 0.45)}, fs), y], y === x ? [] : [y]); log.push('Konuşma bandı: 100–' + Math.round(Math.min(5000, fs * 0.45)) + ' Hz'); }
+  if (o.eq && 3000 < fs * 0.45) { y = await DSPW.run('filtfilt', [DSP.design('peak', {f1: 3000, gain: o.eq / 2, Q: 0.8}, fs), y], y === x ? [] : [y]); log.push('Ünsüz vurgusu: +' + o.eq + ' dB (3 kHz)'); }
   return {y, fs, a, b, ch, log, raw: x, ax};
 }
 function acStop() { const A = S.audio; if (A) { try { A.src && A.src.stop(); } catch (e) {} A.stopped = true; A.buf = null; } S.plot.playhead = null; S.plot.xtra = null; S.plot.invalidate(); acTrUI(); }
@@ -433,7 +460,7 @@ function acBarSync(P, ov) {
     bar = P._acBar = h('div', {class: 'acbar', onpointerdown: e => e.stopPropagation(), onwheel: e => e.stopPropagation()},
       b('acb-back', 'Geri sar (Shift+←)', () => acSkip(-1), '⏪'), b('acb-pp', 'Duraklat / devam (Shift+Boşluk)', acTogglePause, '❚❚'), b('acb-fwd', 'İleri sar (Shift+→)', () => acSkip(1), '⏩'),
       h('input', {type: 'range', class: 'acb-seek', min: 0, max: 1000, step: 1, value: 0, title: 'Sürükleyerek konuma git', 'aria-label': 'Oynatma konumu', oninput: e => { const A = S.audio; if (A && A.buf) acSeekTo(+e.target.value / 1000 * A.dur, true); }}),
-      h('span', {class: 'acb-pos'}), h('span', {class: 'acb-nm'}), b('acb-x', 'Durdur', acStop, '■'));
+      h('span', {class: 'acb-pos'}), h('span', {class: 'acb-nm'}), b('acb-prev', 'Önceki konuşma / olay', () => acJumpMark(-1), '⇤'), b('acb-next', 'Sonraki konuşma / olay', () => acJumpMark(1), '⇥'), b('acb-x', 'Durdur', acStop, '■'));
   }
   if (!bar.isConnected || bar.parentElement !== ov) ov.append(bar);
   const r = A.ax.rect, last = A.ax.row === P.axes[P.axes.length - 1].row;
@@ -483,17 +510,72 @@ async function acPlay(clean) {
   await busy(clean ? 'Temizleniyor…' : 'Hazırlanıyor…', async () => {
     const p = await acPrepare(clean); $('#acLog').textContent = p.log.join('\n');
     let y = p.y, fs = p.fs, dec = 1; while (fs / dec > 96000) dec++; if (dec > 1) { const o = new Float64Array(Math.floor(y.length / dec)); for (let i = 0; i < o.length; i++) o[i] = y[i * dec]; y = o; fs /= dec; }
-    let speed = Math.max(0.05, num('acSpeed') || 1); if (fs * speed < 8000) { speed = Math.ceil(8000 / fs); $('#acSpeed').value = speed; toast('Hız çarpanı ×' + speed + ' olarak ayarlandı (örnekleme çok düşük)'); }
-    const rate = Math.round(fs * speed);
+    let speed = Math.max(0.05, num('acSpeed') || 1), forced = false; if (fs * speed < 8000) { speed = Math.ceil(8000 / fs); forced = true; $('#acSpeed').value = speed; toast('Hız çarpanı ×' + speed + ' olarak ayarlandı (örnekleme çok düşük)'); }
+    const dur = y.length / fs, extra = [];
+    // yalnız dinleme: bölüm dışını kıs, seviye dengeleme, perdeyi koruyarak hız (kanal ve WAV'lar etkilenmez)
+    if (ck('acMute') && S.acMarks && (S.acMarks.speech.length || S.acMarks.events.length)) {
+      const t0 = p.ch.t(p.a), g = new Float64Array(y.length).fill(0.1), rp = Math.max(1, Math.round(fs * 0.02));
+      for (const m of S.acMarks.speech.concat(S.acMarks.events)) { const i0 = Math.max(0, Math.round((m.t0 - t0) * fs) - rp), i1 = Math.min(y.length, Math.round((m.t1 - t0) * fs) + rp); for (let i = i0; i < i1; i++) g[i] = 1; }
+      let c = 0.1; const k = 1 / rp; y = Float64Array.from(y, (v, i) => { c += (g[i] - c) * k; return v * c; }); extra.push('bölüm dışı −20 dB');
+    }
+    if (ck('acAgc')) { y = await DSPW.run('levelAgc', [y, fs, {}]); extra.push('seviye dengeleme'); }
+    let rate = Math.round(fs * speed);
+    if (ck('acPitch') && !forced && Math.abs(speed - 1) > 1e-3 && fs >= 3000) { y = await DSPW.run('wsola', [y, fs, speed]); rate = Math.round(fs); extra.push('perde korunarak ×' + fmtNum(speed, 3)); }
+    if (extra.length) $('#acLog').textContent += (p.log.length ? '\n' : '') + 'Dinleme: ' + extra.join(', ');
     const ctx = (S.audio && S.audio.ctx) || new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') await ctx.resume();
     const buf = ctx.createBuffer(1, y.length, rate), d = buf.getChannelData(0);
     const sm = []; const st = Math.max(1, Math.floor(y.length / 20000)); for (let i = 0; i < y.length; i += st) sm.push(Math.abs(y[i])); sm.sort((u, v) => u - v); const pk = sm[Math.floor(sm.length * 0.999)] || 1;
     const nrm = 0.9 / pk, fade = Math.min(Math.floor(rate * 0.01), y.length >> 2);
     for (let i = 0; i < y.length; i++) { let v = y[i] * nrm; v = v > 1 ? 1 : v < -1 ? -1 : v; if (i < fade) v *= i / fade; else if (i > y.length - fade) v *= (y.length - i) / fade; d[i] = v; }
     const gain = ctx.createGain(); gain.gain.value = +sv('acVol'); gain.connect(ctx.destination);
-    S.audio = {ctx, buf, gain, src: null, ax: p.ax, clean, t0: p.ch.t(p.a), speed, dur: y.length / fs, loop: ck('acLoop'), offset: 0, paused: false, stopped: false, start: ctx.currentTime};
+    S.audio = {ctx, buf, gain, src: null, ax: p.ax, clean, t0: p.ch.t(p.a), speed, dur, loop: ck('acLoop'), offset: 0, paused: false, stopped: false, start: ctx.currentTime};
     acStartAt(0);
   });
+}
+// ---- konuşma / olay işaretleri ----
+function acBands() {
+  const keep = (S.plot.bands || []).filter(b => !b.ac), out = [];
+  if (S.acNoise) out.push({x0: S.acNoise[0], x1: S.acNoise[1], color: '#2aa198', ac: 'noise'});
+  if (S.acMarks) { for (const m of S.acMarks.speech) out.push({x0: m.t0, x1: m.t1, color: '#2e9e44', ac: 'sp'}); for (const m of S.acMarks.events) out.push({x0: m.t0, x1: Math.max(m.t1, m.t0 + 0.01), color: '#d62728', ac: 'ev'}); }
+  S.plot.bands = keep.concat(out); S.plot.invalidate();
+}
+function acPresetApply() {
+  const v = sv('acPreset'); if (!v) return;
+  const set = (id, on) => { const e = $('#' + id); if (e) e.checked = on; };
+  set('acDnOn', true); $('#acDnM').value = 'omlsa'; set('acProt', true);
+  if (v === 'speech') { $('#acDnDb').value = 15; set('acSpOn', true); set('acEqOn', true); set('acAgc', true); toast('Konuşma odaklı: OM-LSA 15 dB, konuşma bandı, ünsüz vurgusu, seviye dengeleme'); }
+  else { $('#acDnDb').value = 25; set('acSpOn', false); set('acEqOn', false); set('acAgc', false); toast('Temiz dinleme: OM-LSA 25 dB, tam bant'); }
+}
+async function acFindMarks() {
+  await busy('Konuşma ve olaylar aranıyor…', async () => {
+    const p = await acPrepare(true), t0 = p.ch.t(p.a), fs = p.fs;
+    let base = p.raw; { let m = 0; for (const v of base) m += v; m /= base.length; base = base.map(v => v - m); }
+    const ev = await DSPW.run('transientEvents', [base, fs, {thrDb: 12}]);
+    const sp = await DSPW.run('speechSegments', [p.y, fs, {events: ev}]);
+    S.acMarks = {ch: p.ch, speech: sp.map(s => ({t0: t0 + s.i0 / fs, t1: t0 + s.i1 / fs, snr: s.snr})), events: ev.map(e => ({t0: t0 + e.i0 / fs, t1: t0 + e.i1 / fs, tp: t0 + e.ip / fs, db: e.db, peak: e.peak}))};
+    acMarksUI(); acBands();
+    $('#acLog').textContent = p.log.join('\n') + (p.log.length ? '\n' : '') + `Bulunan: ${sp.length} konuşma bölümü, ${ev.length} darbe olayı`;
+  });
+}
+function acMarkList() { const M = S.acMarks; if (!M) return []; return M.speech.map(m => Object.assign({k: 'sp'}, m)).concat(M.events.map(m => Object.assign({k: 'ev'}, m))).sort((a, b) => a.t0 - b.t0); }
+function acMarksUI() {
+  const box = $('#acMarks'); if (!box) return; box.replaceChildren();
+  const L = acMarkList(); if (!S.acMarks) return;
+  if (!L.length) { box.append(h('div', {class: 'muted'}, 'Konuşma ya da darbe olayı bulunamadı')); return; }
+  box.append(h('div', {class: 'muted'}, `${S.acMarks.speech.length} konuşma · ${S.acMarks.events.length} olay`));
+  for (const m of L.slice(0, 300)) box.append(h('button', {class: 'acmk ' + m.k, title: 'Bu noktaya git' + (S.audio && S.audio.buf ? ' (çalarken oradan sürdürür)' : ''), onclick: () => acGoMark(m)},
+    h('span', {class: 'dot'}), `${fmtNum(m.t0, 5)} s`, h('span', {class: 'muted'}, m.k === 'sp' ? ` konuşma · ${fmtNum(m.t1 - m.t0, 3)} s · ${m.snr.toFixed(0)} dB` : ` olay · +${m.db.toFixed(0)} dB · ${fmtNum((m.t1 - m.t0) * 1000, 3)} ms`)));
+}
+function acGoMark(m) {
+  const A = S.audio;
+  if (A && A.buf && !A.stopped) { acSeekTo(Math.max(0, m.t0 - 0.3 - A.t0), false); return; }
+  const ax = activeAxes(); if (!ax) return; const w = Math.max((m.t1 - m.t0) * 3, 0.5), c = (m.t0 + m.t1) / 2; ax.xlim = [c - w / 2, c + w / 2]; S.plot.invalidate();
+}
+function acJumpMark(dir) {
+  const A = S.audio, L = acMarkList(); if (!A || !A.buf || !L.length) { toast('Önce "Konuşma ve olayları bul"'); return; }
+  const t = A.t0 + acPos(); let m = null;
+  if (dir > 0) m = L.find(x => x.t0 > t + 0.35); else for (const x of L) if (x.t0 < t - 0.5) m = x;
+  if (m) acSeekTo(Math.max(0, m.t0 - 0.3 - A.t0), true); else toast(dir > 0 ? 'Sonrasında bölüm yok' : 'Öncesinde bölüm yok');
 }
 // Shift+← / Shift+→ sar, Shift+Boşluk duraklat (yalnız ses çalarken; giriş kutularında değil)
 window.addEventListener('keydown', e => {
@@ -531,7 +613,7 @@ async function acAutoRun() {
   await busy('Temizleniyor…', async () => {
     const o = await acPrepare(false), c = await acPrepare(true), m = acDrawCompare(o, c), p = opts();
     const ch = c.ch, d = addDerived(ch.name + '_temiz', c.y, ch, c.a, c.a === 0 && c.b === ch.n); await addDerivedToPlot(d, activeAxes()); switchView('spec');
-    const lines = [$('#acLog').textContent, '', 'UYGULANAN: ' + [p.dc !== 'none' ? 'DC' : '', p.hp ? 'HP ' + p.hp + ' Hz' : '', p.lp ? 'LP ' + p.lp + ' Hz' : '', p.notch ? 'Notch ' + p.notch + ' Hz×' + p.nh : '', p.click ? 'tık temizleme' : '', p.dn ? 'spektral azaltma ' + p.dnDb + ' dB' : ''].filter(Boolean).join(', '),
+    const lines = [$('#acLog').textContent, '', 'UYGULANAN: ' + [p.dc !== 'none' ? 'DC' : '', p.hp ? 'HP ' + p.hp + ' Hz' : '', p.lp ? 'LP ' + p.lp + ' Hz' : '', p.notch ? 'Notch ' + p.notch + ' Hz×' + p.nh : '', p.click ? 'tık temizleme' : '', p.crackle ? 'çıtırtı bastırma' : '', p.dn ? (p.dnM === 'wiener' ? 'Wiener ' : 'OM-LSA ') + p.dnDb + ' dB' : '', p.protect ? 'olay koruma' : ''].filter(Boolean).join(', '),
       ...c.log, 'ETKİ (ölçülen):', `  Toplam RMS: ${m.rmsO.toPrecision(4)} → ${m.rmsC.toPrecision(4)} (${(100 * (m.rmsC / m.rmsO - 1)).toFixed(1)} %)`, `  Gürültü tabanı (medyan PSD): ${m.floorDb.toFixed(1)} dB`];
     if (p.notch) { let mx = -Infinity; for (let i = 0; i < m.wo.f.length; i++) if (Math.abs(m.wo.f[i] - p.notch) < 1.5) mx = Math.max(mx, 10 * Math.log10(m.wc.y[i] / m.wo.y[i])); if (isFinite(mx)) lines.push(`  ${p.notch} Hz tepesi: ${mx.toFixed(1)} dB`); }
     if (Math.abs(m.floorDb) < 0.5 && !p.notch && !p.click) lines.push('  Belirgin bir etki yok: kayıtta giderilebilecek parazit bulunamadı (kırpılma varsa filtreyle düzeltilemez).');

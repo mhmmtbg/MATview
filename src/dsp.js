@@ -162,6 +162,7 @@ const DSP = (() => {
     if (type === 'hp') return butter('hp', o, p.f1, fs);
     if (type === 'bp') return butter('hp', o, p.f1, fs).concat(butter('lp', o, p.f2, fs));
     if (type === 'notch') { const s = []; const n = p.harmonics || 1; for (let h = 1; h <= n; h++) { const f = p.f1 * h; if (f < fs * 0.49) s.push(rbj('notch', f, p.Q || 30, fs)); } return s; }
+    if (type === 'peak') { const w0 = 2 * Math.PI * p.f1 / fs, cw = Math.cos(w0), al = Math.sin(w0) / (2 * (p.Q || 1)), A = Math.pow(10, (p.gain || 0) / 40), a0 = 1 + al / A; return [[(1 + al * A) / a0, -2 * cw / a0, (1 - al * A) / a0, -2 * cw / a0, (1 - al / A) / a0]]; }
     if (type === 'bs') { const f0 = Math.sqrt(p.f1 * p.f2), Q = f0 / (p.f2 - p.f1); const s = []; for (let i = 0; i < Math.max(1, Math.floor(o / 2)); i++) s.push(rbj('notch', f0, Q, fs)); return s; }
     throw new Error('Bilinmeyen filtre');
   }
@@ -224,9 +225,21 @@ const DSP = (() => {
     const n = x.length, d = new Float64Array(Math.max(0, n - 1)); for (let i = 1; i < n; i++) d[i - 1] = Math.abs(x[i] - x[i - 1]);
     if (!d.length) return 0; const s = d.slice().sort(); return 6 * 1.4826 * s[s.length >> 1] / Math.SQRT2;
   }
-  function declick(x, k, nsig, grow) {
-    const flags = hampelFlags(x, k, nsig, null, clickMin(x));
+  // protect (örnek sayısı, ör. 2 ms): fiziksel darbeler (ör. cıvata kopması) korunur — yalnız birkaç örneklik, ardından
+  // çınlama / sönüm gelmeyen yalıtık sıçramalar (sensör / iletim tıkı) düzeltilir.
+  function declick(x, k, nsig, grow, protect) {
+    let flags = hampelFlags(x, k, nsig, null, clickMin(x)), kept = 0;
     const n = x.length, bad = new Uint8Array(n);
+    if (protect > 0 && flags.length) {
+      const P = Math.max(4, protect | 0), keep = [], rmsAt = (a, b) => { a = Math.max(0, a); b = Math.min(n, b); let q = 0; for (let i = a; i < b; i++) q += x[i] * x[i]; return b > a ? Math.sqrt(q / (b - a)) : 0; };
+      for (let u = 0; u < flags.length;) {
+        let v = u; while (v + 1 < flags.length && flags[v + 1] - flags[v] <= 2) v++;
+        const i0 = flags[u], i1 = flags[v] + 1, before = rmsAt(i0 - 3 - 4 * P, i0 - 3), after = rmsAt(i1 + 3, i1 + 3 + 4 * P);
+        if (i1 - i0 <= 4 && after <= 2.5 * before + 1e-300) for (let q = u; q <= v; q++) keep.push(flags[q]); else kept++;
+        u = v + 1;
+      }
+      flags = keep;
+    }
     for (const i of flags) for (let j = Math.max(0, i - grow); j <= Math.min(n - 1, i + grow); j++) bad[j] = 1;
     const o = Float64Array.from(x); let cnt = 0;
     for (let i = 0; i < n; ) {
@@ -236,7 +249,7 @@ const DSP = (() => {
       for (let m = i; m < j; m++) o[m] = a + (b - a) * (m - i + 1) / (j - i + 1);
       cnt += j - i; i = j;
     }
-    return {y: o, count: cnt, events: flags.length};
+    return {y: o, count: cnt, events: flags.length, kept};
   }
   // Sessiz bölüm yokken gürültü tabanı: her frekans için en düşük %pct çerçeve gücü (minimum istatistik).
   // Gauss gürültüde güç üstel dağılımlıdır: pct. yüzdelik = -ln(1-pct)·ortalama → ortalamaya çevrilir.
@@ -355,6 +368,226 @@ const DSP = (() => {
     for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, y[i])) * 32767, true);
     return new Blob([buf], {type: 'audio/wav'});
   }
+  // ---------- Konuşma / olay odaklı akustik iyileştirme ----------
+  function expint1(v) {   // E1(v), v > 0 (Abramowitz–Stegun 5.1.53 / 5.1.56)
+    if (v <= 0) return 50; if (v > 60) return 0;
+    if (v <= 1) return -Math.log(v) - 0.57721566 + v * (0.99999193 + v * (-0.24991055 + v * (0.05519968 + v * (-0.00976004 + v * 0.00107857))));
+    return Math.exp(-v) / v * (v * v + 2.334733 * v + 0.250621) / (v * v + 3.330657 * v + 1.681534);
+  }
+  // OM-LSA + MCRA (Cohen & Berdugo 2001): gürültü kayıt boyunca izlenir (yerel minimuma göre konuşma varlığı, değişken
+  // yumuşatma), her zaman-frekans hücresi için konuşma olasılığı p hesaplanır, kazanç G = G_H1^p · Gmin^(1−p).
+  // opt: gminDb (−25), noisePower (başlangıç profili), minVar (kuantalama tabanı), protect (olay koruma, varsayılan açık),
+  // ddAlpha (0.92). Olay koruma: geniş bantlı ani enerji sıçramasında (darbe, kopma, çarpma) kazanç ~120 ms boyunca anlık
+  // SNR'ye göre açılır ve gürültü tahmini dondurulur; kısa olaylar bastırılmaz, gürültü sanılmaz. Dönüş: {y, events, noisePower}
+  function omlsa(x, fs, opt) {
+    opt = opt || {};
+    let N = 256; while (N < fs * 0.032 && N < 4096) N *= 2;
+    const hop = N / 4, nb = N / 2 + 1, w = window('hann', N), n = x.length, hopMs = hop / fs * 1000;
+    const ad = Math.pow(0.95, hopMs / 8), as = Math.pow(0.8, hopMs / 8), ap = Math.pow(0.2, hopMs / 8), aDD = opt.ddAlpha ?? 0.92, beta = Math.pow(0.7, hopMs / 8);
+    const L = Math.max(8, Math.round(800 / hopMs)), delta = 5, gmin = Math.pow(10, (opt.gminDb ?? -25) / 20), qmax = 0.95, hold = Math.round(120 / hopMs);
+    let sw = 0; for (let i = 0; i < N; i++) sw += w[i] * w[i]; const pf = (opt.minVar || 0) * sw;
+    const re = new Float64Array(N), im = new Float64Array(N), Y2 = new Float64Array(nb), lam = new Float64Array(nb), S = new Float64Array(nb), Smin = new Float64Array(nb), Stmp = new Float64Array(nb);
+    const pp = new Float64Array(nb), xiPrev = new Float64Array(nb), zeta = new Float64Array(nb), G = new Float64Array(nb), Sf = new Float64Array(nb), xi = new Float64Array(nb), gam = new Float64Array(nb), Gs = new Float64Array(nb);
+    const pad = new Float64Array(n + 2 * N); pad.set(x, N);
+    const out = new Float64Array(n + 2 * N), norm = new Float64Array(n + 2 * N), nfr = Math.floor((pad.length - N) / hop) + 1;
+    if (opt.noisePower) lam.set(opt.noisePower);
+    else lam.set(noiseFloorMinStat(x.length >= N * 8 ? x : Float64Array.from({length: N * 8}, (_, i) => x[i % x.length] || 0), N, 0.2));
+    // noiseFloor: sessiz bölümden ölçülen profil (|FFT|², N noktalı Hann) — izlenen gürültü hiçbir zaman bunun altına inmez;
+    // çıtırtılı / dürtülü arka planda MCRA'nın minimuma dayalı tahmini gürültüyü düşük gösterir, profil tabanı bunu önler
+    const nfl = opt.noiseFloor ? Float64Array.from(opt.noiseFloor, v => v * (opt.floorScale ?? 1)) : null;
+    for (let k = 0; k < nb; k++) { if (nfl && lam[k] < nfl[k]) lam[k] = nfl[k]; if (lam[k] < pf) lam[k] = pf; S[k] = Smin[k] = Stmp[k] = lam[k]; xiPrev[k] = 1; G[k] = 1; }
+    const lo = Math.max(1, Math.round(100 / fs * N)), hi = Math.min(nb - 1, Math.round(Math.min(8000, fs * 0.45) / fs * N));
+    const zl = 0.1, zh = Math.pow(10, -0.5), lz = Math.log10(zh / zl), pmap = z => z <= zl ? 0 : z >= zh ? 1 : Math.log10(z / zl) / lz;
+    let evHold = 0, prevE = 0, evOn = -1; const events = [], cz = new Float64Array(nb + 1);
+    for (let f = 0; f < nfr; f++) {
+      const st = f * hop;
+      for (let i = 0; i < N; i++) { re[i] = pad[st + i] * w[i]; im[i] = 0; } fft(re, im, false);
+      for (let k = 0; k < nb; k++) Y2[k] = re[k] * re[k] + im[k] * im[k];
+      // MCRA: zaman-frekansta yumuşatılmış güç, yerel minimum, konuşma varlığı → değişken yumuşatmalı gürültü
+      for (let k = 0; k < nb; k++) Sf[k] = 0.25 * Y2[Math.max(0, k - 1)] + 0.5 * Y2[k] + 0.25 * Y2[Math.min(nb - 1, k + 1)];
+      for (let k = 0; k < nb; k++) { S[k] = as * S[k] + (1 - as) * Sf[k]; if (S[k] < Smin[k]) Smin[k] = S[k]; if (S[k] < Stmp[k]) Stmp[k] = S[k]; }
+      if (f % L === L - 1) for (let k = 0; k < nb; k++) { Smin[k] = Math.min(Stmp[k], S[k]); Stmp[k] = S[k]; }
+      // olay: bandın genelinde enerji önceki çerçevelerin ve gürültünün çok üstüne ani sıçrar
+      let E = 0, En = 0, hot = 0; for (let k = lo; k <= hi; k++) { E += Y2[k]; En += lam[k]; if (Y2[k] > 10 * lam[k]) hot++; }
+      if (opt.protect !== false && E > 6 * (prevE + 1e-300) && E > 30 * En && hot > 0.3 * (hi - lo + 1)) { if (!evHold && evOn < 0) evOn = Math.max(0, st - N); evHold = hold; }
+      prevE = 0.6 * prevE + 0.4 * E;
+      for (let k = 0; k < nb; k++) {
+        pp[k] = ap * pp[k] + (1 - ap) * (S[k] > delta * Smin[k] ? 1 : 0);
+        if (!evHold) { const a = ad + (1 - ad) * pp[k]; lam[k] = a * lam[k] + (1 - a) * Y2[k]; if (lam[k] < pf) lam[k] = pf; if (nfl && lam[k] < nfl[k]) lam[k] = nfl[k]; }
+      }
+      for (let k = 0; k < nb; k++) { gam[k] = Y2[k] / (lam[k] + 1e-300); xi[k] = Math.max(1e-3, aDD * G[k] * G[k] * xiPrev[k] + (1 - aDD) * Math.max(gam[k] - 1, 0)); zeta[k] = beta * zeta[k] + (1 - beta) * xi[k]; cz[k + 1] = cz[k] + zeta[k]; }
+      let zf = 0; for (let k = lo; k <= hi; k++) zf += zeta[k]; const Pf = pmap(zf / (hi - lo + 1));
+      const avg = (c, r) => { const a = Math.max(0, c - r), b = Math.min(nb - 1, c + r); return (cz[b + 1] - cz[a]) / (b - a + 1); };
+      for (let k = 0; k < nb; k++) {
+        const q = Math.min(qmax, 1 - pmap(avg(k, 1)) * pmap(avg(k, 15)) * Pf), v = gam[k] * xi[k] / (1 + xi[k]);
+        const gh1 = Math.min(1, xi[k] / (1 + xi[k]) * Math.exp(0.5 * expint1(Math.max(v, 1e-6))));
+        const p = 1 / (1 + q / (1 - q) * (1 + xi[k]) * Math.exp(-Math.min(v, 50)));
+        let g = Math.pow(gh1, p) * Math.pow(gmin, 1 - p);
+        if (evHold) g = Math.max(g, 1 - 1 / Math.max(gam[k], 1));   // olay sırasında anlık Wiener: gecikmesiz açılır
+        G[k] = Math.max(gmin, Math.min(1, g)); xiPrev[k] = gam[k];
+      }
+      // konuşma olasılığı düşük bölgede kazanç frekansta hafif yumuşatılır ("müzikal" kalıntı azalır)
+      for (let k = 0; k < nb; k++) Gs[k] = k > 0 && k < nb - 1 && pp[k] < 0.5 && !evHold ? (G[k - 1] + 2 * G[k] + G[k + 1]) / 4 : G[k];
+      for (let k = 0; k < nb; k++) { re[k] *= Gs[k]; im[k] *= Gs[k]; if (k > 0 && k < nb - 1) { re[N - k] = re[k]; im[N - k] = -im[k]; } }
+      fft(re, im, true);
+      for (let i = 0; i < N; i++) { out[st + i] += re[i] / N * w[i]; norm[st + i] += w[i] * w[i]; }
+      if (evHold && !--evHold && evOn >= 0) { events.push([evOn, Math.min(n, st)]); evOn = -1; }
+    }
+    if (evOn >= 0) events.push([evOn, n]);
+    const y = new Float64Array(n); for (let i = 0; i < n; i++) { const t = i + N; y[i] = norm[t] > 1e-9 ? out[t] / norm[t] : x[i]; }
+    return {y, events, noisePower: lam, nfft: N};
+  }
+  // Ani olay (darbe) bulucu: 2 ms'lik enerji zarfı arka planın (önceki 0,4 s'nin medyanı) en az thrDb üstüne ani
+  // çıkarsa olay başlar; zarf arka planın 2 katına inince (ya da 1 s sonra) biter. Dönüş: [{i0, i1, ip, peak, db}]
+  function transientEvents(x, fs, opt) {
+    opt = opt || {}; const W = Math.max(8, Math.round(fs * 0.002)), nf = Math.floor(x.length / W), thr = Math.pow(10, (opt.thrDb ?? 12) / 10), e = new Float64Array(nf);
+    let m = 0; for (let i = 0; i < x.length; i++) m += x[i]; m /= Math.max(1, x.length);
+    for (let j = 0; j < nf; j++) { let q = 0; for (let i = j * W; i < (j + 1) * W; i++) { const v = x[i] - m; q += v * v; } e[j] = q / W; }
+    const B = Math.max(20, Math.round(0.4 / 0.002)), bg = new Float64Array(nf), tmp = [];
+    for (let j = 0; j < nf; j += 10) { tmp.length = 0; for (let k = Math.max(0, j - B); k < j; k++) tmp.push(e[k]); if (!tmp.length) for (let k = j; k < Math.min(nf, j + B); k++) tmp.push(e[k]); tmp.sort((a, b) => a - b); const md = tmp[tmp.length >> 1] || 1e-300; for (let k = j; k < Math.min(nf, j + 10); k++) bg[k] = md; }
+    const ev = [], maxLen = Math.round(1 / 0.002);
+    for (let j = 1; j < nf; j++) {
+      const pre = Math.max(e[j - 1], j > 1 ? e[j - 2] : 0, j > 2 ? e[j - 3] : 0);
+      if (!(e[j] > thr * bg[j] && e[j] > 6 * pre + 1e-300)) continue;
+      // geniş bant / yüksek frekans payı: türev enerjisinin enerjiye oranı (ses perdeli konuşmada küçük, darbede büyük)
+      { let q = 0, d = 0; for (let i = j * W + 1; i < Math.min(x.length, (j + 3) * W); i++) { q += (x[i] - m) ** 2; d += (x[i] - x[i - 1]) ** 2; } if (fs / (2 * Math.PI) * Math.sqrt(d / (q + 1e-300)) < (opt.fc ?? 2700)) continue; }   // eşdeğer merkez frekansı (Hz)
+      const b0 = bg[j]; let k = j, pk = 0, ip = j * W;
+      while (k < nf && k - j < maxLen && e[k] > 2 * b0) { for (let i = k * W; i < (k + 1) * W; i++) { const a = Math.abs(x[i] - m); if (a > pk) { pk = a; ip = i; } } k++; }
+      const db = 10 * Math.log10(Math.max(...Array.from(e.subarray(j, Math.max(j + 1, k)))) / (b0 + 1e-300));
+      // çok kısa (< 4 ms) patlamalar ancak çok güçlüyse (≥ 25 dB) olay sayılır: tek tük çıtırtı olay listesini doldurmaz
+      if ((k - j) * W < fs * 0.004 && db < (opt.shortDb ?? 25)) { j = k; continue; }
+      ev.push({i0: j * W, i1: Math.min(x.length, k * W), ip, peak: pk, db});
+      j = k + Math.round(0.05 / 0.002);
+    }
+    return ev;
+  }
+  // Konuşma bulucu (rVAD-fast'tan esinlenir): 20 ms çerçevede 300–3400 Hz bant enerjisinin gürültü tabanına oranı (SNR) ve
+  // spektral düzlük (perdeli seste düşük). Kısa boşluklar birleştirilir, çok kısa parçalar atılır; darbe olayları konuşma sayılmaz.
+  // Dönüş: [{i0, i1, snr}]
+  function speechSegments(x, fs, opt) {
+    opt = opt || {}; let N = 256; while (N < fs * 0.02 && N < 4096) N *= 2;
+    const hop = Math.round(fs * 0.01), w = window('hann', N), nb = N / 2 + 1, re = new Float64Array(N), im = new Float64Array(N);
+    const k0 = Math.max(1, Math.round(300 / fs * N)), k1 = Math.min(nb - 1, Math.round(Math.min(3400, fs * 0.45) / fs * N)), nf = Math.max(0, Math.floor((x.length - N) / hop) + 1);
+    const E = new Float64Array(nf), F = new Float64Array(nf);
+    for (let f = 0; f < nf; f++) {
+      let m = 0; for (let i = 0; i < N; i++) m += x[f * hop + i]; m /= N;
+      for (let i = 0; i < N; i++) { re[i] = (x[f * hop + i] - m) * w[i]; im[i] = 0; } fft(re, im, false);
+      let s = 0, lg = 0; for (let k = k0; k <= k1; k++) { const p = re[k] * re[k] + im[k] * im[k] + 1e-300; s += p; lg += Math.log(p); }
+      const c = k1 - k0 + 1; E[f] = s / c; F[f] = Math.exp(lg / c) / (s / c);
+    }
+    // gürültü tabanı: 1,5 s'lik bloklarda en düşük %15 bant enerjisi (değişen gürültüyü izler)
+    const Bk = Math.max(30, Math.round(1.5 / 0.01)), floor = new Float64Array(nf);
+    for (let a = 0; a < nf; a += Bk) { const b = Math.min(nf, a + Bk), v = Array.from(E.subarray(Math.max(0, a - Bk), Math.min(nf, b + Bk))).sort((p, q) => p - q), fl = v[Math.floor(v.length * 0.15)] || 1e-300; for (let k = a; k < b; k++) floor[k] = fl; }
+    const thr = Math.pow(10, (opt.snrDb ?? 6) / 10), fmax = opt.flat ?? 0.3, sp = new Uint8Array(nf), ev = opt.events || [];
+    for (let f = 0; f < nf; f++) sp[f] = E[f] > thr * floor[f] && F[f] < fmax ? 1 : 0;
+    for (const e of ev) for (let f = Math.max(0, Math.floor(e.i0 / hop) - 2); f <= Math.min(nf - 1, Math.ceil(e.i1 / hop) + 12); f++) sp[f] = 0;   // darbe ve 120 ms sönümü
+    // 150 ms askı, 250 ms'den kısa boşlukları birleştir, 200 ms'den kısa parçaları at
+    const segs = []; let a = -1, last = -1;
+    for (let f = 0; f < nf; f++) if (sp[f]) { if (a < 0) a = f; else if (f - last > 25) { segs.push([a, last]); a = f; } last = f; }
+    if (a >= 0) segs.push([a, last]);
+    // konuşma hece hızında (≈2–8 Hz) dalgalanır: bant enerjisinin dB cinsinden oynaklığı düşük (durağan ton / uğultu) parçalar atılır
+    return segs.map(([s0, s1]) => [s0, Math.min(nf - 1, s1 + 15)]).filter(([s0, s1]) => s1 - s0 >= 20).map(([s0, s1]) => {
+      let q = 0, c = 0, m1 = 0, m2 = 0; for (let f = s0; f <= s1; f++) { q += E[f] / floor[f]; c++; const d = 10 * Math.log10(E[f] + 1e-300); m1 += d; m2 += d * d; }
+      const sd = Math.sqrt(Math.max(0, m2 / c - (m1 / c) ** 2));
+      return {i0: s0 * hop, i1: Math.min(x.length, s1 * hop + N), snr: 10 * Math.log10(q / Math.max(1, c)), mod: sd};
+    }).filter(g => g.mod >= (opt.modDb ?? 3) && g.snr >= (opt.snrDb ?? 6));
+  }
+  // Dinleme için seviye dengeleme: 10 ms RMS zarfı hedefe çekilir (kazanç en çok maxDb), gürültü tabanı yükseltilmez
+  // (zarf tabanın 4 katının altındaysa kazanç artmaz), hızlı düşüş / yavaş yükseliş, 5 ms ileri bakışlı tepe sınırlayıcı.
+  function levelAgc(x, fs, opt) {
+    opt = opt || {}; const n = x.length, W = Math.max(16, Math.round(fs * 0.01)), nw = Math.ceil(n / W), env = new Float64Array(nw);
+    for (let j = 0; j < nw; j++) { let q = 0, c = 0; for (let i = j * W; i < Math.min(n, (j + 1) * W); i++) { q += x[i] * x[i]; c++; } env[j] = Math.sqrt(q / Math.max(1, c)); }
+    const so = Array.from(env).sort((a, b) => a - b), floor = so[Math.floor(so.length * 0.1)] || 1e-12, top = so[Math.floor(so.length * 0.995)] || 1;
+    const target = opt.target || top * 0.5, gmax = Math.pow(10, (opt.maxDb ?? 24) / 20), g = new Float64Array(nw), gate = Math.max(floor * 4, top * Math.pow(10, -(opt.gateDb ?? 35) / 20));
+    const up = Math.exp(-W / fs / 0.3), dn = Math.exp(-W / fs / 0.005); let cur = 1;
+    for (let j = 0; j < nw; j++) {
+      const want = env[j] > gate ? Math.min(gmax, Math.max(1 / gmax, target / env[j])) : 1;   // eşik altı (gürültü / sessizlik) yükseltilmez
+      cur = want < cur ? dn * cur + (1 - dn) * want : up * cur + (1 - up) * want; g[j] = cur;
+    }
+    const y = new Float64Array(n); for (let i = 0; i < n; i++) { const p = i / W - 0.5, j = Math.max(0, Math.min(nw - 1, Math.floor(p))), f = Math.max(0, Math.min(1, p - j)), gg = g[j] * (1 - f) + g[Math.min(nw - 1, j + 1)] * f; y[i] = x[i] * gg; }
+    // tepe sınırlayıcı: 5 ms ileri bakış, |y| ≤ lim
+    let pk = 0; for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(y[i]));
+    const lim = opt.limit || target * 2.5; if (pk > lim) {
+      const L = Math.max(1, Math.round(fs * 0.005)), red = new Float64Array(n);
+      for (let i = 0; i < n; i++) { const a = Math.abs(y[i]); red[i] = a > lim ? lim / a : 1; }
+      const r2 = new Float64Array(n); let dq = []; // kayan minimum (ileri bakış L)
+      for (let i = n - 1; i >= 0; i--) { while (dq.length && red[dq[dq.length - 1]] >= red[i]) dq.pop(); dq.push(i); while (dq[0] > i + L) dq.shift(); r2[i] = red[dq[0]]; }
+      let s = 1; const rel = Math.exp(-1 / (fs * 0.05)); for (let i = 0; i < n; i++) { s = r2[i] < s ? r2[i] : rel * s + (1 - rel) * r2[i]; y[i] *= Math.min(s, r2[i]); }
+    }
+    return y;
+  }
+  // Perdeyi koruyarak hız değiştirme (WSOLA): 40 ms Hann pencereleri yarı örtüşmeyle eklenir, her pencere ±10 ms içinde
+  // önceki pencerenin doğal devamına en çok benzeyen konumdan alınır (önce kaba, sonra ince arama). speed < 1 yavaşlatır.
+  function wsola(x, fs, speed) {
+    if (!(speed > 0) || Math.abs(speed - 1) < 1e-3) return Float64Array.from(x);
+    const Wl = Math.max(64, Math.round(fs * 0.04) & ~1), Hs = Wl / 2, Ha = Hs * speed, D = Math.round(fs * 0.01), n = x.length;
+    const nOut = Math.floor(n / speed), y = new Float64Array(nOut + Wl), nw = new Float64Array(nOut + Wl), w = window('hann', Wl);
+    let prev = 0;
+    for (let k = 0; k * Hs < nOut; k++) {
+      const nom = Math.round(k * Ha); let best = Math.max(0, Math.min(n - Wl, nom));
+      if (k > 0) {
+        const nat = prev + Hs, a0 = Math.max(0, nom - D), a1 = Math.min(n - Wl, nom + D); let bc = -Infinity;
+        if (nat + Wl <= n && a1 >= a0) {
+          const corr = (d, st) => { let c = 0; for (let i = 0; i < Wl; i += st) c += x[nat + i] * x[d + i]; return c; };
+          for (let d = a0; d <= a1; d += 4) { const c = corr(d, 4); if (c > bc) { bc = c; best = d; } }
+          const b0 = best; bc = -Infinity; for (let d = Math.max(a0, b0 - 4); d <= Math.min(a1, b0 + 4); d++) { const c = corr(d, 1); if (c > bc) { bc = c; best = d; } }
+        }
+      }
+      const o = k * Hs; for (let i = 0; i < Wl && best + i < n; i++) { y[o + i] += x[best + i] * w[i]; nw[o + i] += w[i]; }
+      prev = best;
+    }
+    const out = new Float64Array(nOut); for (let i = 0; i < nOut; i++) out[i] = nw[i] > 1e-6 ? y[i] / nw[i] : 0;
+    return out;
+  }
+  // Çıtırtı bastırma: sık, çok kısa (≤ maxMs), orta şiddetli geniş bant patlamalar (iletim / elektronik çıtırtısı) 1 ms'lik
+  // zarfta yerel arka planın (200 ms medyan) thrDb üstünde bulunur ve yalnız 300 Hz üstü bileşeni arka plan seviyesine
+  // indirilir. Uzun süren, arkasından sönüm/çınlama gelen ya da çok güçlü (≥ keepDb) olaylar — cıvata kopması, çarpma,
+  // konuşma patlamaları — dokunulmadan kalır. Dönüş: {y, bursts, rate (1/s), kept}
+  function decrackle(x, fs, opt) {
+    opt = opt || {}; const n = x.length, W = Math.max(4, Math.round(fs * 0.001)), nf = Math.floor(n / W);
+    const hp = filtfilt(design('hp', {order: 4, f1: Math.min(300, fs * 0.2)}, fs), x), e = new Float64Array(nf);
+    for (let j = 0; j < nf; j++) { let q = 0; for (let i = j * W; i < (j + 1) * W; i++) q += hp[i] * hp[i]; e[j] = Math.sqrt(q / W); }
+    const B = 200, bg = new Float64Array(nf), tmp = [];
+    for (let j = 0; j < nf; j += 20) { tmp.length = 0; for (let k = Math.max(0, j - B / 2); k < Math.min(nf, j + B / 2); k++) tmp.push(e[k]); tmp.sort((a, b) => a - b); const md = tmp[tmp.length >> 1] || 1e-300; for (let k = j; k < Math.min(nf, j + 20); k++) bg[k] = md; }
+    const thr = Math.pow(10, (opt.thrDb ?? 8) / 20), keep = Math.pow(10, (opt.keepDb ?? 30) / 20), maxF = Math.max(1, Math.round(opt.maxMs ?? 12)), tail = 15;
+    // yalnız arka planda: yerel taban genel tabanın ~6 dB üstündeyse (konuşma / olay sürüyor) dokunulmaz — perdeli sesin
+    // gırtlak darbeleri ve hece başları çıtırtı sanılmaz
+    const sb = Array.from(bg).sort((p, q) => p - q), gfl = sb[Math.floor(sb.length * 0.2)] || 1e-300, act = (opt.actX ?? 4) * gfl;
+    // perdeli ses koruması: gırtlak darbeleri de kısa patlamalar gibidir ama 2,5–12,5 ms (80–400 Hz) aralıkla düzenli tekrarlar.
+    // |yüksek geçiren| zarfının 40 ms pencerede öz ilintisi bu gecikmelerde yüksekse (≥ 0,45) bölge ±30 ms korunur
+    const D4 = Math.max(1, Math.floor(fs / 4000)), m4 = Math.floor(n / D4), r4 = new Float64Array(m4);
+    for (let i = 0; i < m4; i++) { let q = 0; for (let u = i * D4; u < (i + 1) * D4; u++) q += Math.abs(hp[u]); r4[i] = q / D4; }
+    const f4 = fs / D4, Lw = Math.round(f4 * 0.04), l0 = Math.max(1, Math.floor(f4 / 400)), l1 = Math.ceil(f4 / 80), hopB = Math.max(1, Math.round(f4 * 0.01)), voiced = new Uint8Array(nf), seg = new Float64Array(Lw + l1);
+    let run = 0;
+    for (let c = 0; c + Lw + l1 < m4; c += hopB) {
+      let mu = 0; for (let i = 0; i < Lw + l1; i++) { seg[i] = r4[c + i]; mu += seg[i]; } mu /= Lw + l1; for (let i = 0; i < Lw + l1; i++) seg[i] -= mu;
+      let e0 = 0; for (let i = 0; i < Lw; i++) e0 += seg[i] * seg[i]; if (e0 <= 0) continue; let best = 0;
+      for (let l = l0; l <= l1; l++) { let cc = 0, el = 0; for (let i = 0; i < Lw; i++) { cc += seg[i] * seg[i + l]; el += seg[i + l] * seg[i + l]; } const r = cc / Math.sqrt(e0 * el + 1e-300); if (r > best) best = r; }
+      run = best >= (opt.voicedR ?? 0.5) ? run + 1 : 0;   // en az 3 ardışık blok (≥ 30 ms) düzenli: rastgele çıtırtı tek tük eşleşmez
+      if (run >= 3) { const a0 = Math.max(0, Math.floor(((c - 2 * hopB) * D4) / W) - 30), a1 = Math.min(nf, Math.ceil(((c + Lw + l1) * D4) / W) + 30); for (let j = a0; j < a1; j++) voiced[j] = 1; }
+    }
+    const g = new Float64Array(nf).fill(1); let bursts = 0, kept = 0;
+    for (let j = 0; j < nf;) {
+      if (!(e[j] > thr * bg[j]) || bg[j] > act || voiced[j]) { j++; continue; }
+      let k = j; while (k < nf && e[k] > thr * bg[j] * 0.7) k++;
+      let pk = 0; for (let u = j; u < k; u++) pk = Math.max(pk, e[u] / bg[j]);
+      const tl = Array.from(e.subarray(Math.min(nf, k + 2), Math.min(nf, k + 2 + tail))).sort((p, q) => p - q), after = tl.length ? tl[tl.length >> 1] : 0;   // medyan: komşu çıtırtılar sönüm sayılmaz
+      if (k - j <= maxF && pk < keep && after < 1.6 * bg[j]) { for (let u = Math.max(0, j - 1); u < Math.min(nf, k + 1); u++) g[u] = Math.min(g[u], Math.min(1, bg[j] / (e[u] + 1e-300))); bursts++; }
+      else kept++;
+      j = k;
+    }
+    // kazanç 1 ms'lik pencerelerden örneğe doğrusal geçişle; yalnız yüksek geçiren bileşen zayıflatılır (alçak frekanslar aynen kalır)
+    const y = Float64Array.from(x);
+    for (let i = 0; i < n; i++) { const p = i / W - 0.5, j = Math.max(0, Math.min(nf - 1, Math.floor(p))), f = Math.max(0, Math.min(1, p - j)), gg = g[j] * (1 - f) + g[Math.min(nf - 1, j + 1)] * f; if (gg < 1) y[i] -= (1 - gg) * hp[i]; }
+    return {y, bursts, kept, rate: bursts / Math.max(1e-9, n / fs)};
+  }
+  // Gürültü profili (ortalama |FFT|², N noktalı Hann, %75 örtüşme): omlsa noiseFloor / spectralDenoise noisePower için
+  function noiseProfile(x, N) {
+    const nb = N / 2 + 1, w = window('hann', N), re = new Float64Array(N), im = new Float64Array(N), P = new Float64Array(nb); let c = 0;
+    for (let st = 0; st + N <= x.length; st += N / 4) { for (let i = 0; i < N; i++) { re[i] = x[st + i] * w[i]; im[i] = 0; } fft(re, im, false); for (let k = 0; k < nb; k++) P[k] += re[k] * re[k] + im[k] * im[k]; c++; }
+    if (!c) throw new Error('Gürültü aralığı en az ' + N + ' örnek olmalı.'); for (let k = 0; k < nb; k++) P[k] /= c; return P;
+  }
+  function omlsaN(fs) { let N = 256; while (N < fs * 0.032 && N < 4096) N *= 2; return N; }
   // Kaba kuantalama tespiti: ayrık değer sayısı ≤ 256 ise adım = ardışık ayrık değer farklarının en küçüğü (yuvarlama hatasına dayanıklı)
   function quantStep(x) {
     const set = new Set(); const st = Math.max(1, Math.floor(x.length / 400000));
@@ -404,7 +637,7 @@ const DSP = (() => {
   // Otomatik parazit analizi: DC/eğilim, şebeke uğultusu (50/60 Hz + harmonikler), düşük frekans gürültüsü,
   // tık/pop, sessiz bölümden gürültü profili. Çıktı: {plan, log, noise:[a,b)|null}
   function autoClean(x, fs) {
-    const n = x.length, log = [], plan = {dc: 'mean', hp: 0, lp: 0, notch: 0, nq: 30, nh: 1, click: false, ck: 5, cs: 8, dn: false, dnDb: 12, dnA: 2}, res = {plan, log, noise: null};
+    const n = x.length, log = [], plan = {dc: 'mean', hp: 0, lp: 0, notch: 0, nq: 30, nh: 1, click: false, ck: 5, cs: 8, dn: false, dnDb: 12, dnA: 2, crackle: false, crDb: 8, dnM: 'omlsa', protect: true}, res = {plan, log, noise: null};
     let mean = 0; for (let i = 0; i < n; i++) mean += x[i]; mean /= n;
     let sd = 0; for (let i = 0; i < n; i++) sd += (x[i] - mean) ** 2; sd = Math.sqrt(sd / n);
     if (!(sd > 1e-12)) { log.push('Sinyal sabit; temizlenecek bir şey yok.'); plan.dc = 'none'; return res; }
@@ -450,6 +683,12 @@ const DSP = (() => {
       if (frac < 0.005) { if (fl.length) { plan.click = true; plan.cs = sg; log.push(`Tık/pop: ${fl.length} olay (σ>${sg}) → temizlenecek`); } else log.push('Tık/pop bulunmadı'); break; }
       if (sg === 12) log.push(`Tık/pop: aykırı örnek oranı yüksek (%${(100 * frac).toFixed(2)}), sinyalin doğal yapısı olabilir; otomatik temizleme atlandı`);
     }
+    // çıtırtı: sık, çok kısa geniş bant patlamalar (saniyede ≥ 5) → bastırılır; darbe olayları (sönümlü / güçlü) korunur
+    if (!coarse && n >= fs * 2) {
+      const cr = decrackle(z, fs, {thrDb: 8});
+      if (cr.rate >= 5) { plan.crackle = true; log.push(`Çıtırtı: saniyede ${cr.rate.toFixed(0)} kısa patlama → bastırılacak (${cr.kept} uzun/güçlü olay korunuyor)`); }
+      else log.push('Çıtırtı bulunmadı');
+    }
     // sessiz bölüm yoksa: durağan gürültü tabanını minimum istatistikle tahmin et (yalnızca sinyal/gürültü ayrımı mümkünse)
     let pkr = 0; { let mxp = 0; for (let i = 1; i < y.length; i++) if (y[i] > mxp) mxp = y[i]; pkr = 10 * Math.log10(mxp / (med(1, y.length) + 1e-300)); }
     const minStat = (why, range) => {
@@ -470,7 +709,7 @@ const DSP = (() => {
           const lim = q * 1.413, good = i => !clipW[i] && rms[i] <= lim; let bs = -1, be = -1;
           for (let i = 0; i < nw;) { if (!good(i)) { i++; continue; } let e = i; while (e < nw && good(e)) e++; if (e - i > be - bs) { bs = i; be = e; } i = e; }
           const maxW = Math.max(1, Math.floor(30 * fs / W)); if (be - bs > maxW) { const c = (bs + be) >> 1; bs = c - (maxW >> 1); be = bs + maxW; }
-          const wi = bs; res.noise = [bs * W, be * W]; plan.dn = true; plan.dnDb = Math.min(25, Math.max(10, Math.round(range))); log.push(`Sessiz bölüm bulundu (${(bs * W / fs).toFixed(3)}–${(be * W / fs).toFixed(3)} s, dinamik fark ${range.toFixed(1)} dB) → spektral gürültü azaltma ${plan.dnDb} dB`); }
+          const wi = bs; res.noise = [bs * W, be * W]; plan.dn = true; plan.dnDb = plan.dnM === 'omlsa' ? Math.min(25, Math.max(18, Math.round(range) + 6)) : Math.min(25, Math.max(10, Math.round(range))); log.push(`Sessiz bölüm bulundu (${(bs * W / fs).toFixed(3)}–${(be * W / fs).toFixed(3)} s, dinamik fark ${range.toFixed(1)} dB) → spektral gürültü azaltma ${plan.dnDb} dB`); }
         else minStat(`Belirgin sessiz bölüm yok (dinamik fark ${range.toFixed(1)} dB)`, range);
       } else minStat('Sessiz bölüm analizi için yeterli temiz pencere yok', 0);
     } else minStat('Kayıt kısa', 0);
@@ -823,6 +1062,6 @@ const DSP = (() => {
     fft(ar, ai, true);
     for (let k = 0; k < n; k++) { const r = ar[k] / M, i = ai[k] / M; re[k] = r * B.wr[k] - i * B.wi[k]; im[k] = r * B.wi[k] + i * B.wr[k]; }
   }
-  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, quantStep, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC, iirDesign, firwin, firApply, filterDesign, filterApply, freqResp, rainflow, rainflowSummary, turningPoints, slidingStats, fftAny, polyRoots};
+  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, quantStep, omlsa, omlsaN, noiseProfile, decrackle, transientEvents, speechSegments, levelAgc, wsola, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC, iirDesign, firwin, firApply, filterDesign, filterApply, freqResp, rainflow, rainflowSummary, turningPoints, slidingStats, fftAny, polyRoots};
 })();
 if (typeof module !== 'undefined') module.exports = DSP;
