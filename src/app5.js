@@ -30,7 +30,7 @@ KIND.ac.ic = 'acoustic'; KIND.feat.ic = 'chart'; for (const k of Object.keys(KIN
 const ic = (n, s = 16) => '<svg class="ic" width="' + s + '" height="' + s + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IC[n] || '') + '</svg>';
 function icEl(n, s) { const sp = document.createElement('span'); sp.className = 'ico'; sp.innerHTML = ic(n, s); return sp; }
 const kic = (k, s = 14) => { const sp = icEl((KIND[k] || KIND.other).ic, s); sp.style.color = (KIND[k] || KIND.other).color; return sp; };
-const ICMAP = [[/^(Uygula|Tamam|Onayla)/, 'check'], [/sığdır/i, 'expand'], [/^(Yeni alt|Ekle|Ekle )/, 'plus'], [/(temizle|Temizle)/, 'clear'], [/^(Sil|Kaldır)/, 'trash'], [/(hesapla|Hesapla|Çal|Dinle|Başlat)/, 'play'], [/Durdur/, 'stop'],
+const ICMAP = [[/^(Uygula|Tamam|Onayla)/, 'check'], [/sığdır/i, 'expand'], [/^(Yeni alt|Ekle|Ekle )/, 'plus'], [/(^|\s)[Tt]emizle(\s|$)/, 'clear'], [/^(Sil|Kaldır)/, 'trash'], [/(hesapla|Hesapla|Çal|Dinle|Başlat)/, 'play'], [/Durdur/, 'stop'],
   [/(Kaydet|kaydet|Dışa|dışa|aktar|PNG|İndir)/, 'download'], [/(Yükle|yükle|Aç|aç…)/, 'open'], [/(Kapat|İptal)/, 'close'], [/(Otomatik)/, 'wand'], [/(Tespit|tespit|Bul|Ara)/, 'search'], [/(Karşılaştır)/, 'chart'],
   [/Excel/, 'table'], [/Kopyala/, 'copy'], [/(Spektrum|Spektrogram)/, 'unv'], [/(Filtre)/, 'analyze'], [/Geri al/, 'undo']];
 function decorate(root) {

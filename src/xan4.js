@@ -45,6 +45,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.24', d: 'Akustik oynatma: yedek ses oynatıcı', items: [
+    'Oynatma başladıktan sonra Web Audio saati ilerlemiyorsa (bazı Windows / WebView2 ses aygıtı durumlarında süre 0,00\'da kalıyor ve ses gelmiyordu) ses otomatik olarak tarayıcının standart ses oynatıcısıyla (<audio>) çalınır; sarma, duraklatma, döngü ve ses düzeyi aynı çalışır. Geçiş ve nedeni Dinle günlüğüne yazılır.',
+    'Ses hiç açılamazsa hata mesajı gösterilir (ses çıkış aygıtını denetleme önerisiyle).',
+    'Dinle düğmelerindeki ve “Temizlenmiş …” yazılı düğmelerdeki yanlış çarpı simgeleri kaldırıldı.']},
   {v: '2.23', d: '.mat dosyalarında zaman vektöründen örnekleme', items: [
     '.mat dosyasında zaman vektörü (zaman_s, zaman, time, t …) varsa örnekleme frekansı ondan alınır. Önceden bu vektör yok sayıldığından MATView\'den kaydedilen akustik kanallar 200 Hz kabul ediliyor, oynatma ×40 yavaşlıyor ve ses duyulmuyordu.',
     'Zaman vektöründeki kayıp çerçeve boşlukları korunur: boşluktan sonraki örnekler grafikte doğru zamanda görünür.',

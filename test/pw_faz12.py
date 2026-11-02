@@ -25,6 +25,13 @@ async def main():
         await pg.click('#rtabs [data-t=acoustic]'); await pg.wait_for_timeout(200); await pg.evaluate("$('#acScope').value='all'")
         await pg.evaluate("acPlay(false)"); await pg.wait_for_timeout(1500)
         a = await pg.evaluate("S.audio ? [S.audio.speed, S.audio.buf.sampleRate] : null"); print('oynatma', a); ok(a == [1, fs], 'akustik 1× hızda çalmıyor')
+        # Web Audio saati ilerlemezse (ses aygıtı açılamadı) <audio> yedek oynatıcısına geçilir ve süre ilerler
+        await pg.evaluate("acStop(); S.acCtx = null; const C = window.AudioContext; window.AudioContext = function () { const c = new C(); c.suspend(); c.resume = () => Promise.resolve(); return c; }; 0")
+        await pg.evaluate("acPlay(false)"); await pg.wait_for_timeout(4500)
+        m = await pg.evaluate("[S.audio && S.audio.mode, acPos(), $('#acLog').textContent]"); print('yedek', m[:2]); ok(m[0] == 'el' and m[1] > 0.5, 'yedek oynatıcı çalışmadı')
+        await pg.evaluate("acTogglePause()"); p1 = await pg.evaluate("acPos()"); await pg.wait_for_timeout(400); ok(abs(await pg.evaluate("acPos()") - p1) < 1e-3, 'duraklatma')
+        await pg.evaluate("acStop()")
+        ok(await pg.evaluate("[...document.querySelectorAll('#right button')].filter(b=>/Temizlenmiş|Orijinal|Durdur/.test(b.textContent)).every(b=>!b.querySelector('svg'))"), 'oynatma düğmelerinde gereksiz simge')
         ok(not errs, 'sayfa hatası ' + str(errs)); await b.close()
     print('faz12:', 'OK' if not fail else f'{len(fail)} HATA'); sys.exit(1 if fail else 0)
 asyncio.run(main())
