@@ -430,10 +430,11 @@
     else {
       const w1 = cl(Wn[0]), w2 = cl(Wn[1]); wo = Math.sqrt(w1 * w2); bw = w2 - w1; const np = []; const sq = [];
       for (const p of poles) { const pl = [p[0] * bw / 2, p[1] * bw / 2]; const d = cm(pl, pl); const s = [d[0] - wo * wo, d[1]]; const mag = Math.hypot(s[0], s[1]), ang = Math.atan2(s[1], s[0]); const r = [Math.sqrt(mag) * Math.cos(ang / 2), Math.sqrt(mag) * Math.sin(ang / 2)]; np.push([pl[0] + r[0], pl[1] + r[1]]); np.push([pl[0] - r[0], pl[1] - r[1]]); }
-      poles = np; zeros_ = new Array(N).fill(0).map(() => [0, 0]); gain = Math.pow(bw, N);
-      if (type === 'stop') E('MATLAB:unsupported', "butter: 'stop' tipi desteklenmiyor.");
+      if (type === 'stop') { // lp2bs: p → (bw/2)/p ± √(((bw/2)/p)² − wo²); sıfırlar ±j·wo
+        const ns = []; for (const p of poles) { const pl = cdv([bw / 2, 0], p); const d = cm(pl, pl); const s = [d[0] - wo * wo, d[1]]; const mag = Math.hypot(s[0], s[1]), ang = Math.atan2(s[1], s[0]); const r = [Math.sqrt(mag) * Math.cos(ang / 2), Math.sqrt(mag) * Math.sin(ang / 2)]; ns.push([pl[0] + r[0], pl[1] + r[1]]); ns.push([pl[0] - r[0], pl[1] - r[1]]); }
+        poles = ns; zeros_ = []; for (let k = 0; k < N; k++) { zeros_.push([0, wo]); zeros_.push([0, -wo]); } gain = 1;
+      } else { poles = np; zeros_ = new Array(N).fill(0).map(() => [0, 0]); gain = Math.pow(bw, N); }
     }
-    if (type === 'stop') E('MATLAB:unsupported', "butter: 'stop' tipi desteklenmiyor.");
     // çift doğrusal dönüşüm
     const fs2 = 2 * fs; const zd = zeros_.map(z => cdv([fs2 + z[0], z[1]], [fs2 - z[0], -z[1]])), pd = poles.map(p => cdv([fs2 + p[0], p[1]], [fs2 - p[0], -p[1]]));
     const degree = poles.length - zeros_.length; for (let i = 0; i < degree; i++) zd.push([-1, 0]);
@@ -652,4 +653,5 @@
   B.yyaxis = unsup('yyaxis'); B.tiledlayout = function (a) { const f = fig(this); f.tl = [sc1(a[0]), sc1(a[1])]; f.tlN = 0; }; B.nexttile = function () { const f = fig(this); if (!f.tl) E('MATLAB:nexttile', 'nexttile için önce tiledlayout(r,c) çağrılmalı.'); f.tlN++; f.cur = mkAx(f, f.tl[0], f.tl[1], f.tlN); };
   B.saveas = B.print = B.exportgraphics = () => {};
   ML.figApi = {fig, newFig, axes, mkAx};
+  ML._h = {mat, sc1, S, isVec, like, dft, filt, filtfiltVec, butterDesign, axes, parseStyle};   // mlab5 (ek işlevler) için
 })(MLAB);

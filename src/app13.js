@@ -340,7 +340,7 @@ function codeWorkerSrc() {
   function finish(d, err) {
     flush();
     const gids = new Set(MLAB.guiFigIds(it));
-    const figs = []; if (it.figs) for (const [id, f] of it.figs) if (!gids.has(id)) figs.push({id, rows: f.rows, cols: f.cols, title: f.title, axes: f.axes.map(a => ({r: a.r, c: a.c, p: a.p, title: a.title, xlabel: a.xlabel, ylabel: a.ylabel, xlim: a.xlim, ylim: a.ylim, grid: a.grid, legend: a.legend, xscale: a.xscale, yscale: a.yscale, traces: a.traces.map(t => ({x: t.x, y: t.y, name: t.name, color: t.color, dash: t.dash, marker: t.marker, noLine: t.noLine, lw: t.lw, kind: t.kind}))}))});
+    const figs = []; if (it.figs) for (const [id, f] of it.figs) if (!gids.has(id)) figs.push({id, rows: f.rows, cols: f.cols, title: f.title, axes: f.axes.map(a => ({r: a.r, c: a.c, p: a.p, title: a.title, xlabel: a.xlabel, ylabel: a.ylabel, xlim: a.xlim, ylim: a.ylim, grid: a.grid, legend: a.legend, xscale: a.xscale, yscale: a.yscale, traces: a.traces.map(t => ({x: t.x, y: t.y, name: t.name, color: t.color, dash: t.dash, marker: t.marker, noLine: t.noLine, lw: t.lw, kind: t.kind, errbar: t.errbar || undefined}))}))});
     guiPost(true);
     postMessage({t: 'done', id: d.id, err, ws: wsList(), figs, added, saved, curFig: it.curFig || 0, gui: gids.size > 0});
   }
@@ -614,11 +614,12 @@ function renderFigure() {
       const pa = P.addAxes({xlabel: ax.xlabel, ylabel: ax.ylabel, title: ax.title, xlog: ax.xscale === 'log', ylog: ax.yscale === 'log'}); pa.fig = true;
       ax.traces.forEach((t, k) => {
         const y = t.y, n = y.length; let x = t.x; if (!x) { x = new Float64Array(n); for (let j = 0; j < n; j++) x[j] = j + 1; }
-        const color = t.color || FIG_PAL[k % FIG_PAL.length], label = t.name || ('veri' + (k + 1));
+        const color = t.color || (t.errbar && k ? (ax.traces[k - 1].color || FIG_PAL[(k - 1) % FIG_PAL.length]) : FIG_PAL[k % FIG_PAL.length]), label = t.name || ('veri' + (k + 1));
         const tr = {kind: 'xy', x, y, label, color, width: t.lw || 1.2, visible: true};
         if (t.kind === 'bar') { let dx = Infinity; for (let j = 1; j < n; j++) { const d = Math.abs(x[j] - x[j - 1]); if (d > 0 && d < dx) dx = d; } tr.bars = isFinite(dx) ? dx * 0.8 : 0.8; }
         else if (t.kind === 'stem' || t.marker) { tr.marker = true; tr.msize = 4; if (!t.noLine && t.kind !== 'stem') { pa.traces.push({kind: 'xy', x, y, label, color, width: t.lw || 1.2, visible: true, dash: t.dash || null}); tr.noLegend = true; } }
         if (t.dash && !tr.marker) tr.dash = t.dash;
+        if (t.kind === 'area') tr.area = true; if (t.errbar) { tr.segs = true; tr.noLegend = true; }
         pa.traces.push(tr);
       });
       P.active = pa; P.fitAll();
@@ -780,10 +781,10 @@ function guiAxes(a) {
   const pa = P.addAxes({xlabel: a.xlabel, ylabel: a.ylabel, title: a.title, xlog: a.xscale === 'log', ylog: a.yscale === 'log'});
   (a.traces || []).forEach((t, k) => {
     const y = t.y, n = y.length; let x = t.x; if (!x) { x = new Float64Array(n); for (let j = 0; j < n; j++) x[j] = j + 1; }
-    const color = t.color || FIG_PAL[k % FIG_PAL.length], label = t.name || ('veri' + (k + 1)), tr = {kind: 'xy', x, y, label, color, width: t.lw || 1.2, visible: true};
+    const color = t.color || (t.errbar && k ? (a.traces[k - 1].color || FIG_PAL[(k - 1) % FIG_PAL.length]) : FIG_PAL[k % FIG_PAL.length]), label = t.name || ('veri' + (k + 1)), tr = {kind: 'xy', x, y, label, color, width: t.lw || 1.2, visible: true};
     if (t.kind === 'bar') { let dx = Infinity; for (let j = 1; j < n; j++) { const d = Math.abs(x[j] - x[j - 1]); if (d > 0 && d < dx) dx = d; } tr.bars = isFinite(dx) ? dx * 0.8 : 0.8; }
     else if (t.kind === 'stem' || t.marker) { tr.marker = true; tr.msize = 4; if (!t.noLine && t.kind !== 'stem') { pa.traces.push({kind: 'xy', x, y, label, color, width: t.lw || 1.2, visible: true, dash: t.dash || null}); tr.noLegend = true; } }
-    if (t.dash && !tr.marker) tr.dash = t.dash; pa.traces.push(tr);
+    if (t.dash && !tr.marker) tr.dash = t.dash; if (t.kind === 'area') tr.area = true; if (t.errbar) { tr.segs = true; tr.noLegend = true; } pa.traces.push(tr);
   });
   P.active = pa; P.fitAll(); if (a.xlim) pa.xlim = a.xlim.slice(); if (a.ylim) { pa.yAuto = false; pa.ylim = a.ylim.slice(); } P.invalidate();
 }

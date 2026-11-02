@@ -45,6 +45,14 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.19', d: 'Kod: yeni MATLAB işlevleri (sinyal işleme, veri temizleme, grafik)', items: [
+    'Süzgeç: lowpass, highpass, bandpass, bandstop (gecikmesiz, MATLAB gibi), sgolayfilt, smoothdata (movmean / movmedian / gaussian / lowess / loess / sgolay), sosfilt, iirnotch, fir2, kaiserord, filtic, upfirdn; butter artık \'stop\' tipini de destekliyor.',
+    'Spektral: periodogram, pspectrum, bandpower, cpsd, mscohere, tfestimate, snr, thd, sinad, goertzel, dct, idct, xcov.',
+    'Dönüşüm: tf2sos, sos2tf, zp2sos, tf2zp, zp2tf, impz, grpdelay, freqs.',
+    'Pencere ve sinyal üretimi: kaiser, tukeywin, gausswin, flattopwin, rectwin, bartlett, triang, chirp, sawtooth, square, rectpuls, tripuls, pulstran, buffer.',
+    'Veri temizleme ve istatistik: isoutlier, rmoutliers, filloutliers, fillmissing, normalize, rescale, zscore, bounds, islocalmax, islocalmin, findchangepts, discretize, peak2peak, peak2rms, gradient, findgroups, splitapply, groupsummary.',
+    'Grafik: stairs, area (altı dolu) ve errorbar (hata çubukları).',
+    'Tüm yeni işlevler "İşlevler" listesinde; sonuçlar MATLAB ile aynı formüller kullanılarak sentetik verilerle doğrulandı.']},
   {v: '2.18', d: 'Kod düzenleyicide yazarken hata denetimi', items: [
     'Kod yazarken (durunca ~300 ms) denetlenir: sözdizimi hataları (kapanmayan parantez / tırnak, beklenmeyen simge, eksik end — kapanmayan bloğun satırı gösterilir) kırmızı dalgalı çizgi ve satır işaretiyle.',
     'Uyarılar (sarı): tanımsız değişken / işlev (çalışma alanı, açık sekmelerdeki işlevler ve yerleşik işlevler dikkate alınır), yerleşik işlevi gölgeleyen değişken, işlevde kullanılmayan değişken; bilgi: işlevde ";" olmadığı için ekrana yazdırma.',

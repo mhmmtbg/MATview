@@ -621,7 +621,7 @@ class Plot {
 // ---- iz yardımcıları ----
 function trBounds(tr, xlog) {
   if (tr.kind === 'ts') { const ch = tr.ch; return [ch.t(0), ch.t(ch.n - 1)]; }
-  if (tr.marker || tr.bars) { if (!tr._xb) { let lo = Infinity, hi = -Infinity, pl = Infinity; for (let i = 0; i < tr.x.length; i++) { const v = tr.x[i]; if (!isFinite(v)) continue; if (v < lo) lo = v; if (v > hi) hi = v; if (v > 0 && v < pl) pl = v; } const w = tr.bars ? tr.bars / 2 : 0; tr._xb = [lo - w, hi + w, pl]; } return isFinite(tr._xb[0]) ? [xlog ? tr._xb[2] : tr._xb[0], tr._xb[1]] : null; }
+  if (tr.marker || tr.bars || tr.segs) { if (!tr._xb) { let lo = Infinity, hi = -Infinity, pl = Infinity; for (let i = 0; i < tr.x.length; i++) { const v = tr.x[i]; if (!isFinite(v)) continue; if (v < lo) lo = v; if (v > hi) hi = v; if (v > 0 && v < pl) pl = v; } const w = tr.bars ? tr.bars / 2 : 0; tr._xb = [lo - w, hi + w, pl]; } return isFinite(tr._xb[0]) ? [xlog ? tr._xb[2] : tr._xb[0], tr._xb[1]] : null; }
   const x = tr.x; if (!x || !x.length) return null;
   let lo = xlog ? Math.max(x[0], 1e-300) : x[0];
   if (xlog) for (let i = 0; i < x.length; i++) if (x[i] > 0) { lo = x[i]; break; }
@@ -634,10 +634,11 @@ function trYRange(tr, ax) {
     const i0 = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))), i1 = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1);
     if (i1 <= i0) return null; return ch.minmax(i0, i1) ? [ch._mn, ch._mx] : null;
   }
-  if (tr.marker || tr.bars) { let lo = tr.bars ? 0 : Infinity, hi = -Infinity; for (let i = 0; i < tr.x.length; i++) { const xv = tr.x[i], v = tr.y[i]; if (!isFinite(v) || xv < ax.xlim[0] || xv > ax.xlim[1]) continue; if (ax.ylog && v <= 0) continue; if (v < lo) lo = v; if (v > hi) hi = v; } return isFinite(hi) && isFinite(lo) ? [lo, hi] : null; }
+  if (tr.marker || tr.bars || tr.segs) { let lo = tr.bars ? 0 : Infinity, hi = -Infinity; for (let i = 0; i < tr.x.length; i++) { const xv = tr.x[i], v = tr.y[i]; if (!isFinite(v) || xv < ax.xlim[0] || xv > ax.xlim[1]) continue; if (ax.ylog && v <= 0) continue; if (v < lo) lo = v; if (v > hi) hi = v; } return isFinite(hi) && isFinite(lo) ? [lo, hi] : null; }
   const x = tr.x, y = tr.y; let i0 = Math.max(0, lowerBound(x, ax.xlim[0]) - 1), i1 = Math.min(x.length, lowerBound(x, ax.xlim[1]) + 1);
   let lo = Infinity, hi = -Infinity;
   for (let i = i0; i < i1; i++) { const v = y[i]; if (!isFinite(v)) continue; if (ax.ylog && v <= 0) continue; if (v < lo) lo = v; if (v > hi) hi = v; }
+  if (tr.area && isFinite(lo) && !ax.ylog) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
   return isFinite(lo) ? [lo, hi] : null;
 }
 function drawTrace(ctx, tr, ax, P, T) {
@@ -684,6 +685,10 @@ function drawTrace(ctx, tr, ax, P, T) {
     const x = tr.x, y = tr.y, w = tr.bars; ctx.globalAlpha = tr.alpha || 0.7;
     for (let i = 0; i < x.length; i++) { if (!(y[i] > 0)) continue; const a = P.xPx(ax, x[i] - w / 2), b = P.xPx(ax, x[i] + w / 2); if (b < r.x || a > r.x + r.w) continue; const y0 = P.yPx(ax, ax.ylog ? ax.ylim[0] : 0), y1 = P.yPx(ax, y[i]); ctx.fillRect(a + .5, y1, Math.max(1, b - a - 1), y0 - y1); }
     ctx.globalAlpha = 1;
+  } else if (tr.segs) { // sırasız çizgi parçaları (NaN ile ayrılmış; ör. hata çubukları)
+    const x = tr.x, y = tr.y; ctx.beginPath(); let pen = false;
+    for (let i = 0; i < x.length; i++) { const xv = x[i], yv = y[i]; if (!isFinite(xv) || !isFinite(yv) || (ax.ylog && yv <= 0) || (ax.xlog && xv <= 0)) { pen = false; continue; } const px = P.xPx(ax, xv), py = P.yPx(ax, yv); if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py); }
+    ctx.stroke();
   } else if (tr.marker) { // dağılım (scatter) işaretçileri
     const x = tr.x, y = tr.y, n = x.length, sz = tr.msize || 4, svg = ctx instanceof SvgCtx, step = Math.max(1, Math.floor(n / (svg ? 15000 : 200000)));
     let lut = null, cv = tr.cval; if (cv) { lut = cmapLUT('viridis'); }
@@ -700,6 +705,10 @@ function drawTrace(ctx, tr, ax, P, T) {
     const i0 = Math.max(0, lowerBound(x, ax.xlim[0]) - 1), i1 = Math.min(n - 1, lowerBound(x, ax.xlim[1]) + 1), count = i1 - i0 + 1;
     const W = r.w;
     ctx.beginPath();
+    if (tr.area && !ax.ylog) { // alan: çizginin altı sıfıra kadar doldurulur
+      const yb = P.yPx(ax, 0); ctx.globalAlpha = 0.3; let run = null; const fillRun = () => { if (run && run.length > 1) { ctx.beginPath(); ctx.moveTo(run[0][0], yb); for (const [px, py] of run) ctx.lineTo(px, py); ctx.lineTo(run[run.length - 1][0], yb); ctx.closePath(); ctx.fill(); } run = null; };
+      const st = Math.max(1, Math.floor(count / (2 * W))); for (let i = i0; i <= i1; i += st) { const v = y[i]; if (!isFinite(v) || (ax.xlog && x[i] <= 0)) { fillRun(); continue; } (run || (run = [])).push([P.xPx(ax, x[i]), P.yPx(ax, v)]); } fillRun(); ctx.globalAlpha = 1; ctx.beginPath();
+    }
     if (count <= 3 * W) {
       let pen = false;
       for (let i = i0; i <= i1; i++) { const v = y[i]; if (!isFinite(v) || (ax.ylog && v <= 0) || (ax.xlog && x[i] <= 0)) { pen = false; continue; } const px = P.xPx(ax, x[i]), py = P.yPx(ax, v); if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py); }
@@ -716,7 +725,7 @@ function drawTrace(ctx, tr, ax, P, T) {
 }
 function nearest(P, ax, tr, px, py) {
   if (tr.marker) { let best = null; const x = tr.x, y = tr.y, step = Math.max(1, Math.floor(x.length / 300000)); for (let i = 0; i < x.length; i += step) { if (!isFinite(x[i]) || !isFinite(y[i])) continue; const d = Math.hypot(P.xPx(ax, x[i]) - px, P.yPx(ax, y[i]) - py); if (!best || d < best.d) best = {tr, d, x: x[i], y: y[i], i}; } return best; }
-  if (tr.bars) return null;
+  if (tr.bars || tr.segs) return null;
   if (tr.kind === 'ts') {
     const ch = tr.ch; if (!ch.data) return null;
     const x = P.pxX(ax, px), fi = ch.timeIdx(x), spp = Math.max(1, (ax.xlim[1] - ax.xlim[0]) / ax.rect.w * (ch.n / Math.max(1e-9, ch.t(ch.n - 1) - ch.t(0)))), w = Math.ceil(spp * 3);
