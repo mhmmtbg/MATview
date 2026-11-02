@@ -224,7 +224,7 @@ function fitBar(el) {
     const vt = $('#viewtabs'); if (vt) vt.setAttribute('data-ovkeep', '');
     for (const id of ['toolbar', 'viewbar']) { const el = $('#' + id); if (el) MVUI.ovbar(el, {compact: 'compact'}); }
     const hi = $('#hoverinfo'); if (hi) hi.classList.add('mvov-flex');
-    MVUI.fx($('#statsbar'));
+    MVUI.fx($('#statsbar')); MVUI.tableFilters(document);
     window.addEventListener('resize', () => { const m = $('#popm'); if (m) popClose(); });
   }, 0));
 })();
