@@ -470,6 +470,7 @@
       if (a.k === 'field') {
         const name = a.dyn ? toStr(this.eval(a.dyn, sc)) : a.name;
         if (cur && cur.map) E('MATLAB:map', 'containers.Map özellikleri atanamaz.');
+        if (cur && cur.obj && ML.objSetField) { if (last) return ML.objSetField(this, cur, name, rhs); return ML.objSetField(this, cur, name, this.setPath(clone(ML.objField(this, cur, name)), accs, i + 1, rhs, sc, tok)); }
         if (cur && cur.gh) { if (last) ML.ghSet(this, cur, name, rhs); else { const sub = clone(ML.ghGet(this, cur, name)); ML.ghSet(this, cur, name, this.setPath(sub, accs, i + 1, rhs, sc, tok)); } return cur; }
         let sa = cur; if (sa === undefined || (sa instanceof M && sa.re.length === 0)) sa = {sa: true, r: 1, c: 1, v: [Object.create(null)], _o: tok};
         if (!isSA(sa)) E('MATLAB:scalarStruct', 'Yapı olmayan değişkene alan atanamaz (önce struct oluşturun).');
@@ -501,6 +502,7 @@
         if (last) { if (!isSA(rhs) || rhs.v.length !== 1) E('MATLAB:unsupported', 'Yapı dizisi elemanına yapı atanmalı.'); const o = rhs.v[0]; this.growSA(cur, pos); cur.v[pos] = Object.assign(Object.create(null), o); return cur; }
         this.growSA(cur, pos); const el = {sa: true, r: 1, c: 1, v: [cur.v[pos]], _o: tok}; const nv = this.setPath(el, accs, i + 1, rhs, sc, tok); cur.v[pos] = nv.v[0]; return cur;
       }
+      if (cur && cur.obj && ML.objSetIdx) { if (!last) E('MATLAB:unsupported', 'Bu nesnede indisten sonra erişimle atama desteklenmiyor.'); return ML.objSetIdx(this, cur, idx, rhs); }
       if (cur && cur.map) { if (!last) E('MATLAB:map', 'containers.Map değerine iç içe atama desteklenmiyor.'); ML.mapSet(cur, idx[0], rhs); return cur; }
       if (!(cur instanceof M)) E('MATLAB:badsubscript', 'Bu değişken indislenerek atanamaz.');
       if (!last) E('MATLAB:unsupported', 'Sayısal dizide indisten sonra erişim yapılamaz.');
@@ -531,7 +533,7 @@
       switch (node.t) {
         case 'num': return [num(node.v)];
         case 'imag': return [ML.cplx(0, node.v)];
-        case 'str': return [str(node.v)];
+        case 'str': { const v = str(node.v); if (node.dq) v.s = true; return [v]; }
         case 'paren': { if (nargout > 1 && (node.a.t === 'call' || node.a.t === 'id')) return this.evalMulti(node.a, sc, nargout); return [this.eval(node.a, sc)]; }   // [~,i] = (find(...)): MATLAB gibi çok çıktı geçer
         case 'id': {
           const n = node.n;
@@ -540,11 +542,11 @@
         }
         case 'colon': return [str(':')];
         case 'end': { const t = this.endStack[this.endStack.length - 1]; if (!t) E('MATLAB:end', "'end' yalnızca indis içinde kullanılabilir."); const s = sizeOf(t.v); if (t.n === 1) return [num(s.reduce((a, b) => a * b, 1))]; while (s.length < t.n) s.push(1); if (t.k === t.n - 1) return [num(s.slice(t.k).reduce((a, b) => a * b, 1))]; return [num(s[t.k])]; }
-        case 'bin': { const a = this.eval(node.a, sc), b = this.eval(node.b, sc); this.cur = node.line; return [binop(node.op, a, b, node.line)]; }
+        case 'bin': { const a = this.eval(node.a, sc), b = this.eval(node.b, sc); this.cur = node.line; return [(a && (a.obj || a.s)) || (b && (b.obj || b.s)) ? ML.binop(node.op, a, b, node.line) : binop(node.op, a, b, node.line)]; }
         case 'andand': { const a = this.eval(node.a, sc); if (!(a instanceof M)) E('MATLAB:nonLogicalConditional', '&& işleneni mantıksal olmalı.'); if (!isTrue(a)) return [bool(false)]; const b = this.eval(node.b, sc); return [bool(isTrue(b))]; }
         case 'oror': { const a = this.eval(node.a, sc); if (!(a instanceof M)) E('MATLAB:nonLogicalConditional', '|| işleneni mantıksal olmalı.'); if (isTrue(a)) return [bool(true)]; const b = this.eval(node.b, sc); return [bool(isTrue(b))]; }
-        case 'un': { const a = this.eval(node.a, sc); if (!(a instanceof M)) E('MATLAB:undefinedFunction', 'Tekli işleç bu tür için tanımlı değil.'); return [node.op === '-' ? uminus(a) : unot(a)]; }
-        case 'post': { const a = this.eval(node.a, sc); if (a instanceof M) return [ctranspose(a, node.op === "'")]; if (isCell(a)) { const o = {cell: true, r: a.c, c: a.r, v: new Array(a.v.length)}; for (let i = 0; i < a.r; i++) for (let j = 0; j < a.c; j++) o.v[j + i * a.c] = a.v[i + j * a.r]; return [o]; } E('MATLAB:undefinedFunction', 'Devrik bu tür için tanımlı değil.'); break; }
+        case 'un': { const a = this.eval(node.a, sc); if (a && a.obj && ML.objUnary) return [ML.objUnary(node.op, a)]; if (!(a instanceof M)) E('MATLAB:undefinedFunction', 'Tekli işleç bu tür için tanımlı değil.'); return [node.op === '-' ? uminus(a) : unot(a)]; }
+        case 'post': { const a = this.eval(node.a, sc); if (a && a.obj && ML.objPost) return [ML.objPost(a)]; if (a instanceof M) return [ctranspose(a, node.op === "'")]; if (isCell(a)) { const o = {cell: true, r: a.c, c: a.r, v: new Array(a.v.length)}; for (let i = 0; i < a.r; i++) for (let j = 0; j < a.c; j++) o.v[j + i * a.c] = a.v[i + j * a.r]; return [o]; } E('MATLAB:undefinedFunction', 'Devrik bu tür için tanımlı değil.'); break; }
         case 'range': { const a = this.eval(node.a, sc), b = this.eval(node.b, sc), s = node.s ? this.eval(node.s, sc) : null; if (!(a instanceof M && b instanceof M) || !a.re.length || !b.re.length) return [new M(1, 0)]; const r = range(a.re[0], s ? s.re[0] : 1, b.re[0]); if (isInt(a.t) || isInt(b.t)) r.t = isInt(a.t) ? a.t : b.t; else if (a.t === 'c' && b.t === 'c') r.t = 'c'; return [r]; }
         case 'mat': return [this.buildMatrix(node, sc)];
         case 'cellLit': return [this.buildCell(node, sc)];
@@ -552,7 +554,7 @@
         case 'fh': return [{fh: true, name: node.name}];
         case 'call': return this.evalCall(node, sc, nargout, stmt);
         case 'cidx': {
-          const base = this.eval(node.f, sc); if (!isCell(base)) E('MATLAB:cellRefFromNonCell', "'{}' ile indisleme yalnızca hücre dizilerinde kullanılabilir (bu bir " + classOf(base) + ').');
+          const base = this.eval(node.f, sc); if (base && base.obj && ML.objCidx) return [ML.objCidx(this, base, this.evalIdx(node.args, base, sc))]; if (!isCell(base)) E('MATLAB:cellRefFromNonCell', "'{}' ile indisleme yalnızca hücre dizilerinde kullanılabilir (bu bir " + classOf(base) + ').');
           const idx = this.evalIdx(node.args, base, sc);
           return this.cellRead(base, idx);
         }
@@ -563,6 +565,7 @@
           const b = base[0];
           if (b && b.gh) return [ML.ghGet(this, b, name)];
           if (b && b.map) return [ML.mapProp(this, b, name)];
+          if (b && b.obj && ML.objField) return [ML.objField(this, b, name)];
           if (isSA(b)) { const out = []; for (const o of b.v) { if (!(name in o)) E('MATLAB:nonExistentField', `Yapıda '${name}' alanı yok.`); out.push(o[name]); } return out; }
           if (b instanceof M && b.re.length === 0 && false) return [];
           E('MATLAB:nonStructAsStruct', `'${name}' alanına erişim: değer bir yapı değil (${classOf(b)}).`);
@@ -609,7 +612,7 @@
           const base = this.getVar(sc, n); return this.indexValue(base, node.args, sc, nargout, node.line);
         }
         // işlev çağrısı
-        const args = this.evalArgs(node.args, sc); this.cur = node.line;
+        const args = this.evalArgs(node.args, sc); this.cur = node.line; this.callNode = node;
         return this.callNamed(n, args, nargout, node.line, sc, stmt);
       }
       const bs = this.evalMulti(f, sc, 1); if (!bs.length) E('MATLAB:needMoreRhsOutputs', 'İndislenecek değer yok.');
@@ -624,6 +627,7 @@
       if (base && base.map) { const args = this.evalArgs(argNodes, sc); if (args.length !== 1) E('MATLAB:map', 'containers.Map: tek anahtar bekleniyordu.'); return [ML.mapGet(base, args[0])]; }
       if (base && base.gh) { const idx = this.evalIdx(argNodes, num(1), sc); if (idx.every(x => x === COLON || (x.re && x.re.length === 1 && x.re[0] === 1))) return [base]; E('MATLAB:badsubscript', 'Grafik nesnesi tutamacı indislenemez.'); }
       if (isFH(base)) { const args = this.evalArgs(argNodes, sc); return this.callFH(base, args, nargout); }
+      if (base && base.obj && ML.objIndex) return [ML.objIndex(this, base, base.obj === 'cfit' ? this.evalArgs(argNodes, sc) : this.evalIdx(argNodes, base, sc))];
       const idx = this.evalIdx(argNodes, base, sc);
       this.cur = line;
       if (base instanceof M) { if (!idx.length) return [base]; return [readM(base, idx, line)]; }
@@ -708,7 +712,9 @@
         const sub = []; for (let k = 0; k < np; k++) { let q = k; const idx = []; for (let j = 2; j < d.length; j++) { idx.push(q % d[j] + 1); q = Math.floor(q / d[j]); } const page = new M(d[0], d[1], v.re.slice(k * pg, (k + 1) * pg), v.im ? v.im.slice(k * pg, (k + 1) * pg) : null, v.t); out(`${name}(:,:,${idx.join(',')}) =\n\n${fmtMatrix(page)}\n`); }
         return;
       }
+      if (v && v.obj && ML.objText) { out(`${name} =\n${ML.objText(v)}\n`); return; }
       if (v instanceof M) {
+        if (v.s && v.t === 'c' && v.r <= 1) { out(`${name} = "${toStr(v)}"\n`); return; }
         if (v.t === 'c' && v.r <= 1) { out(`${name} = ${toStr(v)}\n`); return; }
         if (v.re.length === 0) { out(v.r === 0 && v.c === 0 ? `${name} = []\n` : `${name} = zeros(${v.r},${v.c})\n`.replace('zeros', v.t === 'c' ? '' : 'zeros')); return; }
         if (v.re.length === 1 && v.t !== 'c') { out(`${name} = ${fmtScalar(v, 0)}\n`); return; }
@@ -756,7 +762,7 @@
   }
   function cellSummary(x, top) {
     if (x instanceof M) { if (x.t === 'c' && x.r <= 1) return top ? `'${toStr(x)}'` : `'${toStr(x)}'`; if (x.re.length === 1) return top ? fmtScalar(x, 0) : `[${fmtScalar(x, 0)}]`; if (x.re.length === 0) return '[]'; return `[${x.r}×${x.c} ${ML.CLSNAME[x.t]}]`; }
-    if (isCell(x)) return `{${x.r}×${x.c} cell}`; if (isSA(x)) return `[${x.r}×${x.c} struct]`; if (isFH(x)) return fhText(x); return '?';
+    if (isCell(x)) return `{${x.r}×${x.c} cell}`; if (isSA(x)) return `[${x.r}×${x.c} struct]`; if (isFH(x)) return fhText(x); if (x && x.obj) return ML.objSummary ? ML.objSummary(x) : `[${x.r}×${x.c} ${x.obj}]`; return '?';
   }
   function unparse(n) {
     switch (n.t) {

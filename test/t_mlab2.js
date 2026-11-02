@@ -1,6 +1,6 @@
 // MATLAB alt kümesi: oturum içi save/load/who -file, save -struct/-append, (f(...)) çok çıktı, unique hücre, uiputfile, datacursormode,
 // warning/tic/addpath çıktıları, klasör işlevleri (pwd/cd/dir/ls/exist)
-const ML = require('./ml_load.js')(['mlab1.js', 'mlab2.js', 'mlab3.js', 'mlab4.js','mlab5.js']); let bad = 0;
+const ML = require('./ml_load.js')(['mlab1.js', 'mlab2.js', 'mlab3.js', 'mlab4.js','mlab5.js','mlab6.js']); let bad = 0;
 function run(code, ctx, folder) { let o = ''; const notes = []; const it = new ML.Interp({out: s => { o += s; }, ctx: Object.assign({saveMat: () => {}, notify: (k, p) => notes.push([k, p])}, ctx || {})}); if (folder) it.folder = folder; let err = null; try { it.run(code); } catch (e) { err = e.message; } return {o, err, it, notes}; }
 function ck(name, code, want, opt) { const r = run(code, opt && opt.ctx, opt && opt.folder); const ok = !r.err && (typeof want === 'function' ? want(r) : r.o.includes(want)); if (!ok) { bad++; console.log('HATA', name, '\n  çıktı:', JSON.stringify(r.o.slice(-300)), '\n  hata:', r.err); } }
 ck('save→who -file→load (işlev içinde)', `function r = f1()

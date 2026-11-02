@@ -45,6 +45,16 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.20', d: 'Kod: doğrusal cebir, optimizasyon, eğri uydurma, tablo, tarih/süre, CSV ve string', items: [
+    'Doğrusal cebir: eig (karmaşık özdeğer ve özvektörler dahil), svd, rank, pinv, cond, lu, qr, chol, expm, null, orth, toeplitz, hankel, vander; norm artık matrislerde 1, 2 ve Inf normlarını, magic çift boyutları da destekliyor.',
+    'roots artık MATLAB gibi eşlik matrisinin özdeğerleriyle hesaplanıyor (çoklu köklerde daha doğru).',
+    'Polinom ve ara değer: polyder, polyint, residue, mkpp, ppval, unmkpp; spline(x,y) / pchip(x,y) parçalı polinom döndürür; interp2 (linear, nearest, spline), griddata (linear, nearest, v4), delaunay.',
+    'Optimizasyon: fminbnd, fminsearch, lsqnonneg, lsqcurvefit, lsqnonlin, optimset / optimoptions.',
+    'Eğri uydurma: fit (poly1–poly9, exp1, exp2, power1, power2, gauss1, sin1 ve \'a*exp(-b*x)+c\' gibi katsayılı ifadeler), [f, gof] istatistikleri, f(x) ile değerlendirme, coeffvalues.',
+    'Tarih ve süre: datetime (metin, InputFormat, Format, ConvertFrom), duration, seconds/minutes/hours/days/years, year/month/day/hour/minute/second, datetime − datetime = süre, sıralama, diff, karşılaştırma, grafikte zaman ekseni.',
+    'Tablo: table (değişken adları argüman adlarından), T.ad, T(satır, değişken), T{…}, yeni sütun ekleme, height/width, array2table, table2array, table2struct, struct2table, sortrows, head/tail.',
+    'Dosyalar: readmatrix, readtable, csvread, dlmread, writematrix, writetable, csvwrite, dlmwrite (ayırıcı ve ondalık virgül otomatik tanınır; yazılan dosya indirilir ve aynı oturumda yeniden okunabilir).',
+    'String: "çift tırnaklı" metinler string olarak tanınır (+ ile birleştirme, == ile karşılaştırma); string, strings, isstring, strlength, extractBetween, extractBefore, extractAfter.']},
   {v: '2.19', d: 'Kod: yeni MATLAB işlevleri (sinyal işleme, veri temizleme, grafik)', items: [
     'Süzgeç: lowpass, highpass, bandpass, bandstop (gecikmesiz, MATLAB gibi), sgolayfilt, smoothdata (movmean / movmedian / gaussian / lowess / loess / sgolay), sosfilt, iirnotch, fir2, kaiserord, filtic, upfirdn; butter artık \'stop\' tipini de destekliyor.',
     'Spektral: periodogram, pspectrum, bandpower, cpsd, mscohere, tfestimate, snr, thd, sinad, goertzel, dct, idct, xcov.',
