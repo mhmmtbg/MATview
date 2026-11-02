@@ -219,7 +219,12 @@ function fitBar(el) {
   window.addEventListener('DOMContentLoaded', () => setTimeout(() => {
     try { const o = JSON.parse(localStorage.getItem('mv.lg') || 'null'); if (o) for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) { P.lgSize = o.size; P.lgCorner = o.corner; } } catch (_) {}
     try { const o = JSON.parse(localStorage.getItem('mv.layout') || 'null'); if (o && S.plot) { S.plot.cols = o.cols || 'auto'; S.plot.cellW = o.cellW || null; S.plot.cellH = o.cellH || null; S.plot.syncSize = !!o.sync; S.plot.invalidate(); } } catch (_) {}
-    for (const id of ['toolbar', 'viewbar']) { const el = $('#' + id); if (!el) continue; const ro = new ResizeObserver(() => fitBar(el)); ro.observe(el); fitBar(el); }
+    // araç satırları tek satır: önce yazılar gizlenir (compact), yetmezse sondan başlayarak "⋯" menüsüne; sayfa yakınlaştırması kapalı
+    MVUI.noZoom(window);
+    const vt = $('#viewtabs'); if (vt) vt.setAttribute('data-ovkeep', '');
+    for (const id of ['toolbar', 'viewbar']) { const el = $('#' + id); if (el) MVUI.ovbar(el, {compact: 'compact'}); }
+    const hi = $('#hoverinfo'); if (hi) hi.classList.add('mvov-flex');
+    MVUI.fx($('#statsbar'));
     window.addEventListener('resize', () => { const m = $('#popm'); if (m) popClose(); });
   }, 0));
 })();

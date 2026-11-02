@@ -577,6 +577,33 @@ function acJumpMark(dir) {
   if (dir > 0) m = L.find(x => x.t0 > t + 0.35); else for (const x of L) if (x.t0 < t - 0.5) m = x;
   if (m) acSeekTo(Math.max(0, m.t0 - 0.3 - A.t0), true); else toast(dir > 0 ? 'Sonrasında bölüm yok' : 'Öncesinde bölüm yok');
 }
+// grafikteki oynatma çizgisi tutulup sürüklenerek konuma gidilir (sürüklerken ses duraklar, bırakınca kaldığı yerden sürer)
+(function () {
+  const near = e => {
+    const A = S.audio, P = S.plot; if (!A || !A.buf || A.stopped || P.playhead == null || S.view !== 'time') return null;
+    const ax = A.ax && P.axes.includes(A.ax) ? A.ax : null; if (!ax || !ax.rect) return null;
+    const r = P.cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, px = P.xPx(ax, P.playhead);
+    return Math.abs(x - px) <= 6 && P.axes.some(a => a.rect && y >= a.rect.y && y <= a.rect.y + a.rect.h && x >= a.rect.x && x <= a.rect.x + a.rect.w) ? {ax, r} : null;
+  };
+  const hook = () => {
+    const P = S.plot; if (!P || !P.cv || P._phHook) return; P._phHook = true; const cv = P.cv; let drag = null, prevCur = null;
+    cv.addEventListener('pointermove', e => {
+      if (drag) return; const n = near(e);
+      if (n && prevCur === null) { prevCur = cv.style.cursor; cv.style.cursor = 'ew-resize'; cv.title = 'Oynatma konumunu sürükleyin'; }
+      else if (!n && prevCur !== null) { cv.style.cursor = prevCur; prevCur = null; cv.title = ''; }
+    });
+    cv.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return; const n = near(e); if (!n) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      const A = S.audio, was = !A.paused; if (was) acTogglePause();
+      drag = {ax: n.ax, was}; try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+      const mv = ev => { const r = cv.getBoundingClientRect(), t = P.pxX(drag.ax, ev.clientX - r.left); acSeekTo(Math.max(0, Math.min(A.dur, t - A.t0)), true); };
+      const up = () => { cv.removeEventListener('pointermove', mv, true); cv.removeEventListener('pointerup', up, true); cv.removeEventListener('pointercancel', up, true); const d = drag; drag = null; if (d && d.was && S.audio === A && A.paused) acTogglePause(); };
+      cv.addEventListener('pointermove', mv, true); cv.addEventListener('pointerup', up, true); cv.addEventListener('pointercancel', up, true);
+    }, true);
+  };
+  window.addEventListener('DOMContentLoaded', () => setTimeout(hook, 0)); if (document.readyState !== 'loading') setTimeout(hook, 0);
+})();
 // Shift+← / Shift+→ sar, Shift+Boşluk duraklat (yalnız ses çalarken; giriş kutularında değil)
 window.addEventListener('keydown', e => {
   const A = S.audio; if (!A || !A.buf || A.stopped || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;

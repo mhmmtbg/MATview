@@ -30,17 +30,17 @@ async def main():
         st = await f.evaluate("[document.querySelector('#tlFilesSum').textContent, document.querySelector('#btnRunMv').disabled, document.querySelector('#tlDrawer').classList.contains('hidden')]"); print('dosyalar', st)
         ok('kayit.bin' in st[0] and st[1] is False, 'dosya her iki listeye de girmedi')
         # oynat → panel katlanır
-        if await f.evaluate("document.querySelector('#tlDrawer').classList.contains('hidden')"): await f.click('#tlDrawerBtn')
+        if await f.evaluate("document.querySelector('#tlDrawer').classList.contains('hidden')"): await f.evaluate("document.querySelector('#tlDrawerBtn').click()")
         ok(not await f.evaluate("document.querySelector('#tlDrawer').classList.contains('hidden')"), 'panel açılmadı')
-        await f.click('#tlDrawerBtn'); ok(await f.evaluate("document.querySelector('#tlDrawer').classList.contains('hidden')"), 'panel katlanmadı'); await f.click('#tlDrawerBtn')
-        await f.click('#lvConnect'); await pg.wait_for_timeout(1200)
+        await f.evaluate("document.querySelector('#tlDrawerBtn').click()"); ok(await f.evaluate("document.querySelector('#tlDrawer').classList.contains('hidden')"), 'panel katlanmadı'); await f.evaluate("document.querySelector('#tlDrawerBtn').click()")
+        await f.evaluate("document.querySelector('#lvConnect').click()"); await pg.wait_for_timeout(1200)
         ok(await f.evaluate("document.querySelector('#tlDrawer').classList.contains('hidden')"), 'Oynat ile panel katlanmadı')
         # canlı durum aç / kapa
         ok(await f.evaluate("document.querySelector('#tlStatus').classList.contains('hidden')"), 'durum kutusu varsayılan açık')
-        await f.click('#tlStatusBtn'); fr = await f.evaluate("[!document.querySelector('#tlStatus').classList.contains('hidden'), document.querySelector('#lvFrames').textContent]"); print('durum', fr)
+        await f.evaluate("document.querySelector('#tlStatusBtn').click()"); fr = await f.evaluate("[!document.querySelector('#tlStatus').classList.contains('hidden'), document.querySelector('#lvFrames').textContent]"); print('durum', fr)
         ok(fr[0] and fr[1] != '0', 'durum kutusu açılmadı / veri yok'); await f.click('#tlStatusX')
         # işlem kaydı penceresi
-        await f.click('#tlLogBtn'); lg = await f.evaluate("[!document.querySelector('#logOverlay').classList.contains('hidden'), document.querySelector('#logView').textContent.length]"); print('log', lg)
+        await f.evaluate("document.querySelector('#tlLogBtn').click()"); lg = await f.evaluate("[!document.querySelector('#logOverlay').classList.contains('hidden'), document.querySelector('#logView').textContent.length]"); print('log', lg)
         ok(lg[0] and lg[1] > 50, 'işlem kaydı açılmadı'); await f.click('#logX')
         # işlem düğmeleri sağda sabit (tablo yatay kaydırılınca da görünür)
         await f.evaluate("document.querySelector('#lvWrap').scrollLeft = 0")
@@ -66,7 +66,7 @@ async def main():
         ok(await pg.evaluate("S.plot.axes.length === 1 && S.plot.axes[0].traces.length === 2"), 'mevcut alt grafiğe eklenmedi')
         # grafikteki parametreler üste sabitlenir
         await pg.click('#viewtabs button[data-v=tlm]'); await pg.wait_for_timeout(300)
-        await f.click('#tlPinBtn'); await pg.wait_for_timeout(300)
+        await f.evaluate("document.querySelector('#tlPinBtn').click()"); await pg.wait_for_timeout(300)
         pn = await f.evaluate("[document.querySelector('#tlPinBtn').getAttribute('aria-pressed'), [...document.querySelectorAll('#lvWrap tbody tr[data-id]')].slice(0, 2).map(t => t.classList.contains('pinrow')), !!document.querySelector('#lvWrap tr.pinsep')]"); print('üstte', pn)
         ok(pn[0] == 'true' and pn[1] == [True, True] and pn[2], 'grafikteki parametreler üste sabitlenmedi')
         # Zaman sekmesinde grafiği temizle → tablodaki grafik işaretleri söner
@@ -75,8 +75,8 @@ async def main():
         pn2 = await f.evaluate("document.querySelectorAll('#lvWrap tr.pinrow').length"); ok(pn2 == 0, 'temizlenince üstteki sabitler kalktı değil')
         # etiket süzgeci açılır menü
         await pg.click('#viewtabs button[data-v=tlm]'); await pg.wait_for_timeout(200)
-        await f.click('#tlPinBtn')
-        await f.click('#tlUfBtn'); await pg.wait_for_timeout(150)
+        await f.evaluate("document.querySelector('#tlPinBtn').click()")
+        await f.evaluate("document.querySelector('#tlUfBtn').click()"); await pg.wait_for_timeout(150)
         nl = await f.evaluate("document.querySelectorAll('#tlUf label').length"); print('etiket sayısı', nl); ok(nl >= 5, 'filtre menüsü etiketleri listelemedi')
         await f.fill('#tlUf [data-uq]', 'psu'); await pg.wait_for_timeout(100)
         await f.click('#tlUf [data-ua=vis]'); await pg.wait_for_timeout(250)
@@ -90,7 +90,7 @@ async def main():
         ok('❚❚' in fb[0] and 'Çerçeve' in fb[0] and 'paused' in fb[1], 'duraklatınca çerçeve gösterilmiyor')
         # seçilen çerçevenin verileri Excel'e
         await pg.evaluate("window.__sv = []; MATViewTLM.saveFile = async (n, b) => { window.__sv.push([n, b.size]); window.__xb = b; return true; }; 0")
-        await f.click('#tlFrameXls'); await f.fill('#tlXlsN', '120'); await f.click('#modalFoot .btn.primary')
+        await f.evaluate("document.querySelector('#tlFrameXls').click()"); await f.fill('#tlXlsN', '120'); await f.click('#modalFoot .btn.primary')
         for _ in range(40):
             await pg.wait_for_timeout(200)
             if await pg.evaluate("window.__sv.length"): break
@@ -130,7 +130,7 @@ async def main():
         await f.evaluate("(() => { const b = document.querySelector('#lvDisconnect'); if (!b.disabled) b.click(); })()")
         await f.click('#lvChartsClear'); ok(await f.evaluate("document.querySelector('#lvChartsCard').classList.contains('hidden')"), 'kamera penceresi kapanmadı')
         # sütun görünümü kalıcı
-        await f.fill('#lvFilter', ''); await f.click('#tlColsBtn')
+        await f.fill('#lvFilter', ''); await f.evaluate("document.querySelector('#tlColsBtn').click()")
         await f.evaluate("(() => { const cb = document.querySelector('#tlCols input[data-col=hex]'); cb.checked = false; cb.dispatchEvent(new Event('change', {bubbles: true})); })()")
         await f.click('#tlCols [data-c=save]'); await pg.wait_for_timeout(400)
         hx = await f.evaluate("[...document.querySelectorAll('#lvWrap thead th')].some(t => t.textContent.trim() === 'Hex')"); ok(not hx, 'Hex sütunu gizlenmedi')

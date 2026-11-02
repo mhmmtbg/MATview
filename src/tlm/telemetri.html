@@ -587,9 +587,9 @@ main.tl-main > #lvRawCard { flex: none; }
 .tl-cols .note { font-size: 11.5px; color: var(--muted); }
 .tl-data #lvGeneral:empty { display: none; }
 /* başlık: sol grup sarılabilir, sağdaki seçenekler her zaman panelin sağ kenarında (sığmazsa alt satıra, yine sağa) */
-.tl-dh { flex-wrap: wrap !important; row-gap: 6px; }
-.tl-dh .subtabs { flex: 0 1 auto !important; flex-wrap: wrap !important; min-width: 0; }
-.tl-dhr { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: 0 1 auto; min-width: 0; justify-content: flex-end; }
+.tl-dh .subtabs { flex: none; }
+.tl-dhr { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; justify-content: flex-end; }
+.tl-dhr .hint { max-width: 26ch; }
 .tl-dhr .hint { flex: 0 1 auto; min-width: 0; }
 /* tablo panelden darsa son (işlem) sütunu kalan genişliği alır: düğmeler sağ kenarda kalır */
 .tl-data .lv-table { min-width: 100%; }
@@ -1218,6 +1218,7 @@ main.tl-main > #lvRawCard { flex: none; }
      ÇEKİRDEK: ayrıştırma motoru. Hem ana sayfada hem Web Worker
      içinde çalışır (worker bu bloğun metninden oluşturulur).
      ============================================================ -->
+<script>/*MVUI*/</script>
 <script id="tp-core">
 (function (G) {
 'use strict';
@@ -7326,6 +7327,7 @@ function vfNavUpd(f) {
 function bindVfig(f) {
   var cv = f.canvas;
   f.infoEl = f.el.querySelector('.vinfo'); f.errEl = f.el.querySelector('.verr');
+  if (window.MVUI) MVUI.fx(f.infoEl, '32ch');
   var vs = f.el.querySelector('.vseek');
   if (vs) {
     vs.addEventListener('pointerdown', function () { f.navDrag = true; });
@@ -8933,6 +8935,25 @@ window.addEventListener('drop', function (e) {
   try { if (window.parent !== window && window.parent.MATViewTLM) window.parent.MATViewTLM.dropFiles(Array.prototype.slice.call(e.dataTransfer.files)); } catch (x) {}
 });
 try { if (window.parent !== window && window.parent.MATViewTLM) window.parent.MATViewTLM.ready(window); } catch (e) {}
+})();
+
+/* tek satır araç çubukları + sabit genişlikli kayan yazılar + sayfa yakınlaştırması kapalı */
+(function () {
+  if (!window.MVUI) return;
+  MVUI.noZoom(window);
+  var $q = function (q) { return document.querySelector(q); };
+  ['#tlDrawerBtn', '#lvConnect', '#lvPause'].forEach(function (q) { var e = $q(q); if (e) e.setAttribute('data-ovkeep', ''); });
+  var sn = $q('#lvSimNav'); if (sn) { sn.setAttribute('data-ovkeep', ''); sn.classList.add('mvov-flex'); }
+  // menüye taşıma önceliği (büyük önce): sağdaki pencere düğmeleri, sonra kayıt / Excel, en son çözümleme düğmeleri
+  [['#btnSettingsTab', 6], ['#tlLogBtn', 6], ['#tlVideoBtn', 6], ['#lvRawToggle', 6], ['#tlStatusBtn', 6], ['#lvRec', 5], ['#tlFrameXls', 5], ['#lvConnBadge', 4], ['#liveTabDot', 4], ['#tlFilesSum', 4], ['#runState', 3], ['#tlProg', 3], ['#btnStop', 3], ['#lvDisconnect', 2], ['#tlFrameBadge', 2], ['#btnRun', 1], ['#btnRunMv', 1]].forEach(function (a) { var e = $q(a[0]); if (e) e.setAttribute('data-ovp', a[1]); });
+  var tb = $q('#mainTabs'); if (tb) MVUI.ovbar(tb, { keep: '[data-ovkeep], [hidden]', btnClass: 'btn sm' });
+  var dh = $q('#tlData .tl-dh');
+  if (dh) {
+    var pr = function (q, p) { var e = dh.querySelector(q); if (e) e.setAttribute('data-ovp', p); };
+    pr('#tlPinBtn', 3); pr('#lvUnits', 2); pr('#lvWorkBadge', 2); pr('h2', 1);
+    MVUI.ovbar(dh, { keep: '[data-ovkeep], .tl-menu, #tlUf, .tl-dhr, #lvSubtabs', btnClass: 'btn sm' });
+  }
+  [['#tlFilesSum', '20ch'], ['#lvFrInfo', '13ch'], ['#tlFrameBadge', '21ch'], ['#runState', '11ch'], ['#lvConnBadge', '10ch'], ['#lvWorkInfo', '26ch']].forEach(function (a) { var e = $q(a[0]); if (e) MVUI.fx(e, a[1]); });
 })();
 </script>
 </body>
