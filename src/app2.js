@@ -337,7 +337,7 @@ function buildAcoustic() {
   r.append(card('Kaynak',
     h('div', {id: 'acSrc', class: 'note'}, 'Aktif iz kullanılır (Akustik kanal: as…).'),
     fr('Aralık', selIn('acScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
-    fr('Hız çarpanı', numIn('acSpeed', 1, {min: 0.05, step: 'any'})), fr('Ses düzeyi', h('input', {type: 'range', id: 'acVol', min: 0, max: 1, step: 0.01, value: 0.5, oninput: e => { if (S.audio && S.audio.gain) S.audio.gain.gain.value = +e.target.value; }})),
+    fr('Hız çarpanı', numIn('acSpeed', 1, {min: 0.05, step: 'any'})), fr('Ses düzeyi', h('input', {type: 'range', id: 'acVol', min: 0, max: 1, step: 0.01, value: 0.5, oninput: e => { if (S.audio && S.audio.gain) S.audio.gain.gain.value = +e.target.value; if (S.audio && S.audio.el) S.audio.el.volume = Math.min(1, +e.target.value); }})),
     chkIn('acLoop', 'Döngü', false),
     h('div', {class: 'note'}, 'Örnekleme 8 kHz altına inerse hız otomatik artırılır. Dinlemeden önce ses düzeyini düşük tutun.')));
   r.append(card('Otomatik temizleme',
@@ -372,7 +372,7 @@ function buildAcoustic() {
     h('div', {id: 'acMarks', class: 'acmarks'}),
     h('div', {class: 'note'}, 'Konuşma: 300–3400 Hz bandında gürültü tabanının üstünde, perdeli ve hece hızında dalgalanan bölümler (yeşil). Olay: geniş bantlı ani darbeler — kopma, çarpma, kırılma (kırmızı). Listeden seçerek o noktaya gidin; oynatma çubuğundaki ⇤ ⇥ ile bölümler arasında atlayın.')));
   r.append(card('Dinle ve kaydet',
-    h('div', {class: 'btns', style: 'margin-top:0'}, btn('▶ Orijinal', () => acPlay(false), 'primary'), btn('▶ Temizlenmiş', () => acPlay(true), 'primary'), btn('■ Durdur', acStop)),
+    h('div', {class: 'btns', style: 'margin-top:0'}, btn('▶ Orijinal', () => acPlay(false), 'primary noic'), btn('▶ Temizlenmiş', () => acPlay(true), 'primary noic'), btn('■ Durdur', acStop, 'noic')),
     h('div', {class: 'actr', id: 'acTr'},
       h('button', {id: 'acBack', title: 'Geri sar (Shift+←)', onclick: () => acSkip(-1), disabled: true}, '⏪'),
       h('button', {id: 'acPP', title: 'Duraklat / devam (Shift+Boşluk)', onclick: acTogglePause, disabled: true}, '❚❚'),
@@ -449,7 +449,7 @@ async function acPrepare(clean) {
   if (o.eq && 3000 < fs * 0.45) { y = await DSPW.run('filtfilt', [DSP.design('peak', {f1: 3000, gain: o.eq / 2, Q: 0.8}, fs), y], y === x ? [] : [y]); log.push('Ünsüz vurgusu: +' + o.eq + ' dB (3 kHz)'); }
   return {y, fs, a, b, ch, log, raw: x, ax};
 }
-function acStop() { const A = S.audio; if (A) { try { A.src && A.src.stop(); } catch (e) {} A.stopped = true; A.buf = null; } S.plot.playhead = null; S.plot.xtra = null; S.plot.invalidate(); acTrUI(); }
+function acStop() { const A = S.audio; if (A) { try { A.src && A.src.stop(); } catch (e) {} if (A.el) { try { A.el.pause(); } catch (_) {} } clearTimeout(A.chk); A.stopped = true; A.buf = null; } S.plot.playhead = null; S.plot.xtra = null; S.plot.invalidate(); acTrUI(); }
 // grafikteki oynatma çubuğu: çalan kanalın alt grafiğinin altında (eksen yazılarından sonra) şerit
 function acBarSync(P, ov) {
   const A = S.audio, on = !!(A && A.buf && !A.stopped && A.ax && P.axes.includes(A.ax) && A.ax.rect);
@@ -469,9 +469,18 @@ function acBarSync(P, ov) {
   acTrUI();
 }
 // konum (sinyal saniyesi): offset + (şimdi − başlangıç) × hız; döngüde süreye göre sarılır
-function acPos() { const A = S.audio; if (!A || !A.buf) return 0; let el = A.paused ? A.offset : A.offset + (A.ctx.currentTime - A.start) * A.speed; if (A.loop) el = ((el % A.dur) + A.dur) % A.dur; return Math.max(0, Math.min(A.dur, el)); }
+function acPos() { const A = S.audio; if (!A || !A.buf) return 0; let el = A.paused ? A.offset : A.mode === 'el' ? A.el.currentTime * A.speed : A.offset + (A.ctx.currentTime - A.start) * A.speed; if (A.loop) el = ((el % A.dur) + A.dur) % A.dur; return Math.max(0, Math.min(A.dur, el)); }
 function acStartAt(el) {
-  const A = S.audio; if (!A || !A.buf) return; if (A.ctx.state === 'suspended') { try { A.ctx.resume(); } catch (_) {} }
+  const A = S.audio; if (!A || !A.buf) return;
+  if (A.mode === 'el') {   // yedek oynatıcı: <audio> öğesi (Web Audio çıkışı ilerlemiyorsa)
+    el = Math.max(0, Math.min(A.dur, el)); const au = A.el; au.loop = A.loop; au.volume = Math.min(1, +sv('acVol'));
+    try { au.currentTime = Math.min(A.dur / A.speed - 1e-3, el / A.speed); } catch (_) {}
+    Object.assign(A, {offset: el, paused: false, stopped: false});
+    au.onended = () => { if (S.audio === A && !A.loop && !A.paused) { A.offset = A.dur; A.paused = true; S.plot.playhead = null; S.plot.invalidate(); acTrUI(); } };
+    const pr = au.play(); if (pr && pr.catch) pr.catch(e => { A.paused = true; acTrUI(); toast('Ses çalınamadı: ' + (e && e.message || e) + ' — Windows ses çıkış aygıtını (hoparlör / kulaklık) denetleyin.', 9000); });
+    acTrUI(); requestAnimationFrame(acTick); return;
+  }
+  if (A.ctx.state === 'suspended') { try { A.ctx.resume(); } catch (_) {} }
   if (A.src) { A.src.onended = null; try { A.src.stop(); } catch (e) {} }
   el = Math.max(0, Math.min(A.dur, el));
   const src = A.ctx.createBufferSource(); src.buffer = A.buf; src.loop = A.loop; src.connect(A.gain);
@@ -479,6 +488,17 @@ function acStartAt(el) {
   Object.assign(A, {src, start: A.ctx.currentTime, offset: el, paused: false, stopped: false});
   src.onended = () => { if (S.audio === A && A.src === src && !A.loop && !A.paused) { A.offset = A.dur; A.paused = true; S.plot.playhead = null; S.plot.invalidate(); acTrUI(); } };
   acTrUI(); requestAnimationFrame(acTick);
+  // Web Audio saati ilerlemiyorsa (ses aygıtı açılamadı / askıda) <audio> öğesiyle çal
+  clearTimeout(A.chk); const c0 = A.ctx.currentTime; A.chk = setTimeout(() => { if (S.audio !== A || A.paused || A.stopped || A.mode === 'el') return; if (A.ctx.state !== 'running' || A.ctx.currentTime - c0 < 0.2) acToElement(A, el); }, 900);
+}
+function acToElement(A, el) {
+  try { if (A.src) { A.src.onended = null; A.src.stop(); } } catch (_) {}
+  const d = A.buf.getChannelData(0), url = URL.createObjectURL(DSP.wavBlob(d, A.buf.sampleRate, {float: true}));
+  const au = S.acEl || (S.acEl = new Audio()); if (au._url) URL.revokeObjectURL(au._url); au._url = url; au.src = url; au.preload = 'auto';
+  A.mode = 'el'; A.el = au; A.src = null;
+  const why = 'Web Audio durumu: ' + A.ctx.state + ', saat ' + A.ctx.currentTime.toFixed(2) + ' s, ' + A.ctx.sampleRate + ' Hz';
+  const lg = $('#acLog'); if (lg) lg.textContent += (lg.textContent ? '\n' : '') + 'Ses çıkışı: Web Audio ilerlemedi (' + why + '); yedek oynatıcıya (<audio>) geçildi.';
+  acStartAt(el);
 }
 function acTick() {
   const A = S.audio; if (!A || !A.buf || A.stopped) return;
@@ -490,7 +510,7 @@ function acSkip(dir) { const A = S.audio; if (!A || !A.buf) return; acSeekTo(acP
 function acTogglePause() {
   const A = S.audio; if (!A || !A.buf) return;
   if (A.paused) { acStartAt(A.offset >= A.dur - 1e-3 ? 0 : A.offset); return; }
-  A.offset = acPos(); A.paused = true; if (A.src) { A.src.onended = null; try { A.src.stop(); } catch (e) {} } acTrUI();
+  A.offset = acPos(); A.paused = true; clearTimeout(A.chk); if (A.mode === 'el') { try { A.el.pause(); } catch (_) {} } if (A.src) { A.src.onended = null; try { A.src.stop(); } catch (e) {} } acTrUI();
 }
 function acTrUI(el) {
   const A = S.audio, on = !!(A && A.buf && !A.stopped); for (const id of ['acBack', 'acPP', 'acFwd', 'acSeek']) { const e = $('#' + id); if (e) e.disabled = !on; }
@@ -509,6 +529,7 @@ function acTrUI(el) {
 // Ses çıkışı tıklama anında (kullanıcı etkileşimi geçerliyken) açılır: uzun temizleme sonrasında oluşturulan
 // AudioContext tarayıcı / WebView2 tarafından askıda bırakılır ve ses çalmaz.
 function acCtx() {
+  if (!S.acEl) { try { S.acEl = new Audio(); } catch (_) {} }
   let c = S.acCtx; if (!c || c.state === 'closed') { c = S.acCtx = new (window.AudioContext || window.webkitAudioContext)(); }
   if (c.state === 'suspended') { try { c.resume(); } catch (_) {} }
   return c;
@@ -537,7 +558,7 @@ async function acPlay(clean) {
     if (ck('acPitch') && !forced && Math.abs(speed - 1) > 1e-3 && fs >= 3000) { y = await DSPW.run('wsola', [y, fs, speed]); rate = Math.round(fs); extra.push('perde korunarak ×' + fmtNum(speed, 3)); }
     if (extra.length) $('#acLog').textContent += (p.log.length ? '\n' : '') + 'Dinleme: ' + extra.join(', ');
     const ctx = ctx0.state === 'closed' ? acCtx() : ctx0;
-    if (!(await acCtxReady(ctx))) toast('Ses çıkışı tarayıcı tarafından askıya alındı: oynatma çubuğundaki ▶ düğmesine bir kez daha tıklayın.', 7000);
+    await acCtxReady(ctx);   // askıda kalırsa acStartAt <audio> yedeğine geçer
     const buf = ctx.createBuffer(1, y.length, rate), d = buf.getChannelData(0);
     const sm = []; const st = Math.max(1, Math.floor(y.length / 20000)); for (let i = 0; i < y.length; i += st) sm.push(Math.abs(y[i])); sm.sort((u, v) => u - v); const pk = sm[Math.floor(sm.length * 0.999)] || 1;
     const nrm = 0.9 / pk, fade = Math.min(Math.floor(rate * 0.01), y.length >> 2);
