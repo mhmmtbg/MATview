@@ -47,6 +47,13 @@ async def main():
         ok(await f.evaluate("TPLive.colSort().dir") == -1, 'telemetri azalan')
         await f.evaluate("document.querySelector('#lvWrap th[data-col=unit]').click()"); await pg.wait_for_timeout(200)
         ok(await f.evaluate("TPLive.colSort()") is None and await f.evaluate("TPLive.rowCount()") == n0, 'telemetri sırasız')
+        # çözümleme sürerken ilerleme çubuğu ⋯ menüsüne gizlenmez
+        await f.evaluate("document.querySelector('#tlProg').classList.remove('hidden')"); await pg.wait_for_timeout(250)
+        ok(await f.evaluate("!document.querySelector('#tlProg').closest('.mvov-pop') && document.querySelector('#tlProg').getBoundingClientRect().width > 50"), 'ilerleme çubuğu görünmüyor')
+        await f.evaluate("document.querySelector('#tlProg').classList.add('hidden')"); await pg.wait_for_timeout(100)
+        # akustik: ses çıkışı tıklama anında (beklemeden önce) açılır
+        ok(await pg.evaluate("(()=>{S.acCtx=null; try{acPlay(false).catch(()=>{});}catch(e){} return !!S.acCtx;})()"), 'AudioContext tıklama anında açılmadı')
+        await pg.wait_for_timeout(300)
         # kod: sekme menüsündeki kapatma seçenekleri ve kapatma onayı simgesiz
         await pg.click('#viewtabs button[data-v=code]'); await pg.wait_for_timeout(300)
         await pg.evaluate("codeNewDoc('a.m','x=1'); codeNewDoc('b.m','y=2'); CODE.docs[CODE.docs.length-1].dirty=true; codeRenderTabs()")

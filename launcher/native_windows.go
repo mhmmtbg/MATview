@@ -58,7 +58,7 @@ func runNative(u, dir string) (ok bool) {
 		return false
 	}
 	// sayfa file:// üzerinden klasör okuyabilsin (Klasör paneli, yol yazarak açma)
-	os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--allow-file-access-from-files --disable-features=Translate")
+	os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--allow-file-access-from-files --autoplay-policy=no-user-gesture-required --disable-features=Translate")
 	data := filepath.Join(os.Getenv("LOCALAPPDATA"), "MATView", "WebView2")
 	if os.Getenv("LOCALAPPDATA") == "" {
 		data = filepath.Join(dir, "webview2")
