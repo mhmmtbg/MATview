@@ -45,6 +45,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.18', d: 'Kod düzenleyicide yazarken hata denetimi', items: [
+    'Kod yazarken (durunca ~300 ms) denetlenir: sözdizimi hataları (kapanmayan parantez / tırnak, beklenmeyen simge, eksik end — kapanmayan bloğun satırı gösterilir) kırmızı dalgalı çizgi ve satır işaretiyle.',
+    'Uyarılar (sarı): tanımsız değişken / işlev (çalışma alanı, açık sekmelerdeki işlevler ve yerleşik işlevler dikkate alınır), yerleşik işlevi gölgeleyen değişken, işlevde kullanılmayan değişken; bilgi: işlevde ";" olmadığı için ekrana yazdırma.',
+    'Editör altında Sorunlar listesi (tıklayınca satıra gider), satır numarasında işaret ve ipucu, konum satırında imlecin bulunduğu satırın iletisi; bulunulan satır vurgusu. Çalışma sırasındaki hata da aynı biçimde işaretlenir.']},
   {v: '2.17', d: 'Listelerde başlığa göre süzme', items: [
     'Tüm tablolarda (çalışma alanı değişkenleri, kalite / test / öznitelik / rainflow sonuçları, tablo verisi sütunları, telemetri ayar tabloları …) sütun başlığındaki ▾: metin araması, sayı aralığı, değer listesi (onay kutuları), artan / azalan sıralama, temizle. Etkin süzgeç başlıkta işaretli; tablo yeniden çizilince korunur.',
     'Telemetri › Çözülen Veriler: template sütunlarının başlığında ▾ ile o sütunda içeren metne göre süzme (birim, etiket, değişken, tip, formül …).',
