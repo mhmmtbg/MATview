@@ -127,6 +127,8 @@ th.tf-th{position:relative;padding-right:18px!important}
 th.tf-th .tf-b{position:absolute;right:2px;top:50%;transform:translateY(-50%);border:0;background:none;padding:0 3px;margin:0;font-size:10px;line-height:1;color:var(--muted,#888);cursor:pointer;min-width:0;height:auto;opacity:.55}
 th.tf-th:hover .tf-b,th.tf-th .tf-b:focus{opacity:1}
 th.tf-on .tf-b{opacity:1;color:var(--accent,#0072BD);font-weight:700}
+th.tf-th.tf-srt{cursor:pointer;user-select:none}
+th.tf-th .tf-s{font-size:9px;margin-left:3px;color:var(--accent,#0072BD)}
 .tf-pop{position:fixed;z-index:1001;width:250px;max-height:70vh;display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--panel,#fff);color:var(--fg,var(--text,#222));border:1px solid var(--border,var(--line,#ccd));border-radius:6px;font-size:12px}
 .tf-pop.hidden{display:none}
 .tf-pop input[type=search],.tf-pop input[type=number]{width:100%;box-sizing:border-box;height:26px;font-size:12px}
@@ -142,10 +144,12 @@ th.tf-on .tf-b{opacity:1;color:var(--accent,#0072BD);font-weight:700}
   function headRow(tb) { const th = tb.tHead && tb.tHead.rows.length ? tb.tHead.rows[tb.tHead.rows.length - 1] : Array.from(tb.rows).find(r => r.querySelector('th')); return th || null; }
   function dataRows(tb, hr) { return Array.from(tb.rows).filter(r => r !== hr && !(tb.tHead && tb.tHead.contains(r)) && !r.querySelector('th:only-child')); }
   const cellText = (r, i) => { const c = r.cells[i]; return c ? (c.dataset.v != null ? c.dataset.v : c.textContent.trim()) : ''; };
-  function sig(tb, hr) { return (tb.closest('[id]') ? tb.closest('[id]').id : '') + '|' + Array.from(hr.cells).map(c => c.textContent.replace(/▾/g, '').trim()).join('|'); }
+  function sig(tb, hr) { return (tb.closest('[id]') ? tb.closest('[id]').id : '') + '|' + Array.from(hr.cells).map(c => c.textContent.replace(/[▾▲▼]/g, '').trim()).join('|'); }
   function apply(tb) {
     const st = tb._tf, hr = st.hr, rows = dataRows(tb, hr);
-    if (st.sort && st.sort.dir) {
+    if (!st.orig) st.orig = rows.slice();
+    if (!(st.sort && st.sort.dir)) { const par = rows.length ? rows[0].parentNode : null; if (par && st.resort) for (const r of st.orig) if (r.parentNode === par) par.appendChild(r); st.resort = false; }
+    if (st.sort && st.sort.dir) { st.resort = true;
       const i = st.sort.i, d = st.sort.dir, par = rows.length ? rows[0].parentNode : null;
       const arr = rows.map((r, k) => ({r, k, t: cellText(r, i), n: num(cellText(r, i))}));
       arr.sort((a, b) => { const an = !isNaN(a.n), bn = !isNaN(b.n); const c = an && bn ? a.n - b.n : an ? -1 : bn ? 1 : a.t.localeCompare(b.t, 'tr', {numeric: true}); return (c || a.k - b.k) * d; });
@@ -161,7 +165,7 @@ th.tf-on .tf-b{opacity:1;color:var(--accent,#0072BD);font-weight:700}
       }
       r.style.display = vis ? '' : 'none';
     }
-    Array.from(hr.cells).forEach((c, i) => c.classList.toggle('tf-on', !!st.flt[i] || !!(st.sort && st.sort.i === i && st.sort.dir)));
+    Array.from(hr.cells).forEach((c, i) => { const sd = st.sort && st.sort.i === i ? st.sort.dir : 0; c.classList.toggle('tf-on', !!st.flt[i] || !!sd); let ind = c.querySelector('.tf-s'); if (sd) { if (!ind) { ind = tb.ownerDocument.createElement('span'); ind.className = 'tf-s'; const b = c.querySelector('.tf-b'); c.insertBefore(ind, b); } ind.textContent = sd > 0 ? '▲' : '▼'; } else if (ind) ind.remove(); });
     store.set(st.sig, {flt: st.flt, sort: st.sort});
   }
   function pop(doc) {
@@ -188,7 +192,7 @@ th.tf-on .tf-b{opacity:1;color:var(--accent,#0072BD);font-weight:700}
     } else vl.append(E('span', {text: keys.length + ' farklı değer — metin araması kullanın'}));
     const srt = d => { st.sort = st.sort && st.sort.i === i && st.sort.dir === d ? null : {i, dir: d}; apply(tb); };
     const cnt = E('div', {class: 'tf-cnt'});
-    p.replaceChildren(E('div', {class: 'tf-h', text: btn.parentElement.textContent.replace(/▾/g, '').trim()}),
+    p.replaceChildren(E('div', {class: 'tf-h', text: btn.parentElement.textContent.replace(/[▾▲▼]/g, '').trim()}),
       E('div', {class: 'tf-row'}, E('button', {type: 'button', onclick: () => srt(1), text: '↑ Artan'}), E('button', {type: 'button', onclick: () => srt(-1), text: '↓ Azalan'})),
       qi, ...(numeric ? [E('div', {class: 'tf-row'}, mi, ma)] : []), vl,
       E('div', {class: 'tf-row'}, cnt, E('button', {type: 'button', onclick: () => { delete st.flt[i]; if (st.sort && st.sort.i === i) st.sort = null; apply(tb); p.classList.add('hidden'); }, text: 'Temizle'})));
@@ -199,7 +203,7 @@ th.tf-on .tf-b{opacity:1;color:var(--accent,#0072BD);font-weight:700}
     if (tb._tf || tb.classList.contains('kv') || tb.classList.contains('nofilter')) return;
     const hr = headRow(tb); if (!hr) return; const doc = tb.ownerDocument;
     const st = tb._tf = {hr, flt: {}, sort: null, sig: ''};
-    Array.from(hr.cells).forEach((c, i) => { if (!c.textContent.trim() || c.querySelector('.tf-b')) return; c.classList.add('tf-th'); const b = doc.createElement('button'); b.type = 'button'; b.className = 'tf-b'; b.textContent = '▾'; b.title = 'Bu sütuna göre süz / sırala'; b.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); openFor(tb, i, b); }); c.appendChild(b); });
+    Array.from(hr.cells).forEach((c, i) => { if (!c.textContent.trim() || c.querySelector('.tf-b')) return; c.classList.add('tf-th'); if (!c.querySelector('input,select,button,a') && !c.onclick) { c.classList.add('tf-srt'); c.title = c.title || 'Tıklayarak sırala (artan → azalan → ilk sıra)'; c.addEventListener('click', e => { if (e.target.closest('.tf-b')) return; const cur = st.sort && st.sort.i === i ? st.sort.dir : 0; st.sort = cur === 0 ? {i, dir: 1} : cur > 0 ? {i, dir: -1} : null; apply(tb); }); } const b = doc.createElement('button'); b.type = 'button'; b.className = 'tf-b'; b.textContent = '▾'; b.title = 'Bu sütuna göre süz / sırala'; b.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); openFor(tb, i, b); }); c.appendChild(b); });
     st.sig = sig(tb, hr); const old = store.get(st.sig); if (old) { st.flt = old.flt; st.sort = old.sort; apply(tb); }
   }
   function tableFilters(doc) {

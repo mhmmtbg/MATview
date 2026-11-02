@@ -24,7 +24,7 @@ async function busy(txt, fn, opt) {
 function modal(title, body, buttons) {
   $('#mtitle').textContent = title; const mb = $('#mbody'); mb.replaceChildren(body); const f = $('#mfoot'); f.replaceChildren();
   const close = () => $('#modal').classList.add('hidden');
-  for (const b of buttons || [{t: 'Kapat'}]) f.append(h('button', {class: b.primary ? 'primary' : '', onclick: () => { if (!b.fn || b.fn() !== false) close(); }}, b.t));
+  for (const b of buttons || [{t: 'Kapat'}]) f.append(h('button', {class: (b.primary ? 'primary' : '') + (b.noic ? ' noic' : ''), onclick: () => { if (!b.fn || b.fn() !== false) close(); }}, b.t));
   $('#mclose').onclick = close; $('#modal').classList.remove('hidden');
 }
 async function saveBlob(blob, name) {

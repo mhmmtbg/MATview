@@ -672,7 +672,11 @@
         try { this.execBlock(ast.body, sc); } catch (e) { if (e instanceof MLError && !e.mfile) { e.mfile = name + '.m'; if (!e.mline) e.mline = this.cur; } throw e; } finally { this.depth--; this.cur = save; }
         return [];
       }
-      E('MATLAB:UndefinedFunction', `'${name}' tanımsız: değişken ya da işlev bulunamadı` + (line ? ` (satır ${line})` : '') + '.' + (/^[a-z_]\w*$/i.test(name) && !ML.builtins[name] ? ` Kendi işlevinizse ${name}.m dosyasını da Kod sekmesinde açın; açık sekmelerdeki işlev ve betikler otomatik kullanılır.` : ''));
+      if (!this._ciTry) {   // ad farklı büyük/küçük harfle yazılmışsa (dosya yyy.m, çağrı Yyy): Windows'taki MATLAB gibi bul
+        const ln = name.toLowerCase(), fk = [...this.funcs.keys()].find(k => k.toLowerCase() === ln), sk = this.ctx && this.ctx.scripts ? Object.keys(this.ctx.scripts).find(k => k.toLowerCase() === ln) : null;
+        if (fk || sk) { this._ciTry = true; try { return this.callNamed(fk || sk, args, nargout, line, sc, stmt); } finally { this._ciTry = false; } }
+      }
+      E('MATLAB:UndefinedFunction', `'${name}' tanımsız: değişken ya da işlev bulunamadı` + (line ? ` (satır ${line})` : '') + '.' + (/^[a-z_]\w*$/i.test(name) && !ML.builtins[name] ? ` Kendi işlevinizse ${name}.m dosyasını da Kod sekmesinde açın ya da dosyanın bulunduğu klasörü Klasör panelinde açın (alt klasörler de taranır).` : ''));
     }
     callUser(f, args, nargout) {
       if (this.depth > this.maxDepth) E('MATLAB:recursionLimit', 'Özyineleme sınırı aşıldı (sonsuz özyineleme olabilir).');

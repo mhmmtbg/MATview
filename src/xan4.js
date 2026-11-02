@@ -45,6 +45,12 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.21', d: 'Dışa aktar menüsü, tablo sıralama, değer listesi süzgeci, klasördeki .m dosyaları', items: [
+    'Görünüm çubuğundaki aynı görünen Rapora ekle / PNG / SVG düğmeleri tek “Dışa aktar” düğmesinde toplandı; seçeneklerin her birinin kendi simgesi var.',
+    'Tablolarda sütun başlığına tıklayınca sıralanır (artan → azalan → ilk sıra); sıralanan sütunda ▲ / ▼ işareti görünür.',
+    'Telemetri “Çözülen Veriler” tablosu: başlığa tıklayarak sıralama; ▾ süzgecinde o sütundaki değerlerden seçim yapılan açılır liste (metin araması ve artan / azalan düğmeleri de var).',
+    'Kod sekmesinde sekme kapatma seçenekleri ve kapatma onayındaki düğmeler simgesiz, yalnız metin olarak gösterilir.',
+    'Bir .m dosyasından başka bir .m dosyası çağrılırken Klasör panelinde açık klasör ve alt klasörleri (4 düzeye kadar) taranır; ad farklı büyük/küçük harfle yazılsa da bulunur. Bulunan işlevler için “tanımsız” uyarısı verilmez.']},
   {v: '2.20', d: 'Kod: doğrusal cebir, optimizasyon, eğri uydurma, tablo, tarih/süre, CSV ve string', items: [
     'Doğrusal cebir: eig (karmaşık özdeğer ve özvektörler dahil), svd, rank, pinv, cond, lu, qr, chol, expm, null, orth, toeplitz, hankel, vander; norm artık matrislerde 1, 2 ve Inf normlarını, magic çift boyutları da destekliyor.',
     'roots artık MATLAB gibi eşlik matrisinin özdeğerleriyle hesaplanıyor (çoklu köklerde daha doğru).',

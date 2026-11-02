@@ -90,18 +90,19 @@ function codeCloseDocs(idx) {
   const one = docs.length === 1;
   const msg = one ? `“${dirty[0].name}” kaydedilmemiş değişiklikler içeriyor. Yine de kapatılsın mı?` : h('div', null, `${dirty.length} sekmede kaydedilmemiş değişiklik var:`, h('ul', {style: 'margin:6px 0 0 18px;padding:0'}, dirty.map(d => h('li', null, d.name))));
   modal(one ? 'Sekmeyi kapat' : docs.length + ' sekmeyi kapat', h('div', null, msg), [
-    {t: one ? 'Kaydet ve kapat' : 'Hepsini kaydet ve kapat', fn: () => { (async () => { for (const d of dirty) { const ok = await codeSaveM(CODE.docs.indexOf(d)); if (ok === false) return; } doIt(); })(); }},
-    {t: 'Kaydetmeden kapat', primary: true, fn: doIt}, {t: 'Vazgeç'}]);
+    {t: one ? 'Kaydet ve kapat' : 'Hepsini kaydet ve kapat', noic: true, fn: () => { (async () => { for (const d of dirty) { const ok = await codeSaveM(CODE.docs.indexOf(d)); if (ok === false) return; } doIt(); })(); }},
+    {t: 'Kaydetmeden kapat', primary: true, noic: true, fn: doIt}, {t: 'Vazgeç', noic: true}]);
 }
 function codeTabMenu(i, x, y) {
   const n = CODE.docs.length, d = CODE.docs[i], all = CODE.docs.map((_, k) => k);
-  const items = [{t: 'Kapat', ic: 'close', fn: () => codeCloseDocs([i])}];
+  const items = [{t: 'Kapat', fn: () => codeCloseDocs([i])}];
   if (n > 1) items.push({t: 'Diğerlerini kapat', fn: () => codeCloseDocs(all.filter(k => k !== i))});
   if (i < n - 1) items.push({t: 'Sağdakileri kapat', fn: () => codeCloseDocs(all.filter(k => k > i))});
-  items.push({t: 'Tümünü kapat', ic: 'clear', fn: () => codeCloseDocs(all)});
+  items.push({t: 'Tümünü kapat', fn: () => codeCloseDocs(all)});
   if (CODE.docs.some(x => !x.dirty) && n > 1) items.push({t: 'Kaydedilmiş olanları kapat', fn: () => codeCloseDocs(all.filter(k => !CODE.docs[k].dirty))});
-  items.push('-', {t: 'Kaydet', ic: 'download', fn: () => codeSaveM(i)}, {t: 'Yeniden adlandır…', fn: () => codeRenameDoc(i)});
-  if (d && d.src && typeof wspReveal === 'function') items.push({t: 'Klasörde göster', ic: 'open', fn: () => wspReveal(d)});
+  items.push('-', {t: 'Kaydet', fn: () => codeSaveM(i)}, {t: 'Yeniden adlandır…', fn: () => codeRenameDoc(i)});
+  if (d && d.src && typeof wspReveal === 'function') items.push({t: 'Klasörde göster', fn: () => wspReveal(d)});
+  for (const it of items) if (it !== '-') it.noic = true;   // kapatma seçenekleri: simgesiz, yalnız metin
   ctxMenu(x, y, items);
 }
 function codeRenderTabs() {

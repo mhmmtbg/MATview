@@ -9,10 +9,11 @@ shutil.rmtree(T, ignore_errors=True); os.makedirs(T + '/alt klasör', exist_ok=T
 scipy.io.savemat(T + '/veri.mat', {'x': np.arange(1, 6, dtype=float).reshape(-1, 1), 'fs': 100.0})
 open(T + '/karesi.m', 'w').write('function r = karesi(v)\n  r = yardimci(v).^2;\nend\n')
 open(T + '/yardimci.m', 'w').write('function y = yardimci(v)\n  y = v + 0;\nend\n')
-open(T + '/ana.m', 'w').write("load('veri.mat');\nfprintf('toplam=%d\\n', sum(karesi(x)));\nfid = fopen('ham.bin'); b = fread(fid, inf, 'uint8'); fclose(fid);\nfprintf('bayt=%d\\n', numel(b));\nd = dir('*.m'); fprintf('mdosya=%d\\n', numel(d));\n")
+open(T + '/ana.m', 'w').write("load('veri.mat');\nfprintf('toplam=%d\\n', sum(karesi(x)));\nfid = fopen('ham.bin'); b = fread(fid, inf, 'uint8'); fclose(fid);\nfprintf('bayt=%d\\n', numel(b));\nd = dir('*.m'); fprintf('mdosya=%d\\n', numel(d));\nfprintf('alt=%d\\n', altfn(2) + Yardimci(1));\n")
 open(T + '/ham.bin', 'wb').write(bytes(range(10)))
 open(T + '/notlar.xyz', 'w').write('?')
 open(T + '/alt klasör/ic.m', 'w').write("disp('ic')\n")
+open(T + '/alt klasör/altfn.m', 'w').write("function r = altfn(v)\n  r = v * 10;\nend\n")
 URL = 'file://' + os.path.abspath(ROOT + 'dist/matview.html')
 
 async def wait_run(pg):
@@ -63,13 +64,14 @@ async def path_mode(p):
     assert await pg.evaluate("codeDoc().src && codeDoc().src.mode") == 'path'
     await pg.evaluate("codeRun('all')"); await wait_run(pg)
     out = await pg.evaluate("$('#codeOut').innerText"); print(out[-300:])
-    assert 'toplam=55' in out and 'bayt=10' in out and 'mdosya=3' in out, out
+    assert 'toplam=55' in out and 'bayt=10' in out and 'mdosya=3' in out and 'alt=21' in out, out
+    await pg.wait_for_timeout(400); lint = await pg.evaluate("LINT.diags.map(d=>d.msg)"); print(lint); assert not any('altfn' in m or 'Yardimci' in m for m in lint), lint
     # pwd / cd komut sözdizimi
     await pg.evaluate("codeRunText('p = pwd', 0, '>>', 'komut')"); await wait_run(pg)
     assert T in await pg.evaluate("$('#codeOut').innerText")
     await pg.evaluate("codeRunText('cd alt klasör', 0, '>>', 'komut')"); await wait_run(pg); await pg.wait_for_timeout(500)
     assert await pg.evaluate("WSP.path") == T + '/alt klasör', await pg.evaluate("WSP.path")
-    assert await pg.evaluate("WSP.items.map(x=>x.name)") == ['ic.m']
+    assert await pg.evaluate("WSP.items.map(x=>x.name)") == ['altfn.m', 'ic.m']
     # Backspace ile üst klasör
     await pg.focus('#wsList'); await pg.keyboard.press('Backspace'); await pg.wait_for_timeout(600)
     assert await pg.evaluate("WSP.path") == T and await pg.evaluate("WSP.items[WSP.sel].name") == 'alt klasör'
