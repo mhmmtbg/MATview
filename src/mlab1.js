@@ -37,16 +37,17 @@ const MLAB = (() => {
     for (let i = 0; i < v.re.length; i++) if (v.re[i] === 0 && !(v.im && v.im[i])) return false; return true;
   };
   const clone = v => {
-    if (v instanceof M) { const o = new M(v.r, v.c, v.re.slice(), v.im ? v.im.slice() : null, v.t); if (v.nd) o.nd = v.nd.slice(); return o; }
+    if (v instanceof M) { const o = new M(v.r, v.c, v.re.slice(), v.im ? v.im.slice() : null, v.t); if (v.nd) o.nd = v.nd.slice(); if (v.s) o.s = true; return o; }
+    if (v && v.obj) return v;   // tablo / datetime / duration / cfit: değişmez nesneler
     if (isCell(v)) { const o = {cell: true, r: v.r, c: v.c, v: v.v.slice()}; for (const e of o.v) if (e) e._o = null; return o; }
     if (isSA(v)) { const o = {sa: true, r: v.r, c: v.c, v: v.v.map(s => { const q = Object.assign(Object.create(null), s); for (const k in q) if (q[k]) q[k]._o = null; return q; })}; return o; }
     return v;
   };
-  const sizeOf = v => v instanceof M ? (v.nd ? v.nd.slice() : [v.r, v.c]) : isCell(v) || isSA(v) ? [v.r, v.c] : [1, 1];
+  const sizeOf = v => v instanceof M ? (v.nd ? v.nd.slice() : [v.r, v.c]) : isCell(v) || isSA(v) || (v && v.obj) ? [v.r, v.c] : [1, 1];
   const numelOf = v => sizeOf(v).reduce((a, b) => a * b, 1);
   // N-boyutlu: nd = [d1, d2, d3, ...] (sondaki 1'ler atılmış, en az 3 öğe); r = d1, c = d2*d3*...
   const setDims = (m, d) => { d = d.slice(); while (d.length > 2 && d[d.length - 1] === 1) d.pop(); while (d.length < 2) d.push(1); m.r = d[0]; m.c = d.slice(1).reduce((a, b) => a * b, 1); m.nd = d.length > 2 ? d : undefined; return m; };
-  const classOf = v => v instanceof M ? CLSNAME[v.t] : isCell(v) ? 'cell' : isSA(v) ? 'struct' : isFH(v) ? 'function_handle' : v && v.gh ? (v.cls || 'matlab.ui.control.UIControl') : v && v.map ? 'containers.Map' : 'double';
+  const classOf = v => v instanceof M ? (v.s && v.t === 'c' ? 'string' : CLSNAME[v.t]) : v && v.obj ? v.obj : isCell(v) ? 'cell' : isSA(v) ? 'struct' : isFH(v) ? 'function_handle' : v && v.gh ? (v.cls || 'matlab.ui.control.UIControl') : v && v.map ? 'containers.Map' : 'double';
   // sayıyı sınıfa göre yuvarla/doyur
   function castVal(x, t) { if (t === 'd' || t === 'l' || t === 'c') return x; if (t === 's') return Math.fround(x); const r = INT[t]; if (Number.isNaN(x)) return 0; x = Math.round(x); if (x - Math.trunc(x) === 0.5 || false) { /* yuvarlama: .5 sıfırdan uzağa */ } return x < r[0] ? r[0] : x > r[1] ? r[1] : x; }
   const round0 = x => x < 0 ? -Math.round(-x) : Math.round(x);   // MATLAB round: .5 sıfırdan uzağa
@@ -308,7 +309,7 @@ const MLAB = (() => {
       switch (t.k) {
         case 'num': p++; return {t: 'num', v: t.v};
         case 'imag': p++; return {t: 'imag', v: t.v};
-        case 'str': p++; return {t: 'str', v: t.v};
+        case 'str': p++; return t.dq ? {t: 'str', v: t.v, dq: true} : {t: 'str', v: t.v};
         case 'id': p++; return {t: 'id', n: t.v, line: t.line};
         case 'kw': if (t.v === 'end' && inIndexCtx > 0) { p++; return {t: 'end'}; } err(`Beklenmeyen anahtar sözcük '${t.raw || t.v}' (ifade bekleniyordu)`, t.line); break;
         case 'op':

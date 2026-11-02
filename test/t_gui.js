@@ -1,5 +1,5 @@
 // GUIDE arayüz çalışma zamanı (düğüm testi): .fig ağacı + GUIDE .m
-const ML=require('./ml_load.js')(['mlab1.js','mlab2.js','mlab3.js','mlab4.js','mlab5.js']);
+const ML=require('./ml_load.js')(['mlab1.js','mlab2.js','mlab3.js','mlab4.js','mlab5.js','mlab6.js']);
 const fs=require('fs');
 const S=s=>({k:'num',cls:'c',dims:[1,s.length],re:Float64Array.from(s,c=>c.charCodeAt(0))});
 const N=a=>({k:'num',cls:'d',dims:[1,a.length],re:Float64Array.from(a)});

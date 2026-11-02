@@ -285,6 +285,7 @@
   const fitem = (it, name) => { const b = base(name).toLowerCase(); return fitems(it).find(e => e.name.toLowerCase() === b) || null; };
   function vfs(it) { return it.vfs || (it.vfs = new Map()); }
   function vfsFind(it, name) { const b = base(name).toLowerCase(); for (const [k, v] of vfs(it)) if (k.toLowerCase() === b) return v; const r = it.ctx.statFile && it.ctx.statFile(base(name)); if (r) { const e = {name: r.name, size: r.size, remote: true}; vfs(it).set(r.name, e); return e; } return null; }
+  ML._fs = {vfsFind: (it, n) => vfsFind(it, n), readBytes: (it, e, o, l) => readBytes(it, e, o, l), base: n => base(n)};
   ML.vfsAdd = (it, name, bytes) => { vfs(it).set(base(name), {name: base(name), size: bytes.length, bytes}); };
   function readBytes(it, e, off, len) {
     len = Math.max(0, Math.min(len, e.size - off)); if (!len) return new Uint8Array(0);

@@ -653,5 +653,5 @@
   B.yyaxis = unsup('yyaxis'); B.tiledlayout = function (a) { const f = fig(this); f.tl = [sc1(a[0]), sc1(a[1])]; f.tlN = 0; }; B.nexttile = function () { const f = fig(this); if (!f.tl) E('MATLAB:nexttile', 'nexttile için önce tiledlayout(r,c) çağrılmalı.'); f.tlN++; f.cur = mkAx(f, f.tl[0], f.tl[1], f.tlN); };
   B.saveas = B.print = B.exportgraphics = () => {};
   ML.figApi = {fig, newFig, axes, mkAx};
-  ML._h = {mat, sc1, S, isVec, like, dft, filt, filtfiltVec, butterDesign, axes, parseStyle};   // mlab5 (ek işlevler) için
+  ML._h = {mat, sc1, S, isVec, like, dft, filt, filtfiltVec, butterDesign, axes, parseStyle, splineCoef, pchipSlopes, hermiteEval, sortXY};   // mlab5 (ek işlevler) için
 })(MLAB);
