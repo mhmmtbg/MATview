@@ -6,6 +6,8 @@ const EXPR = (() => {
       const c = s[i];
       if (/\s/.test(c)) { i++; continue; }
       if (/[0-9.]/.test(c)) { const m = /^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(s.slice(i)); if (!m) throw new Error('Sayı hatası: ' + s.slice(i, i + 5)); t.push({t: 'num', v: parseFloat(m[0])}); i += m[0].length; continue; }
+      // [tam kanal adı]: '/', boşluk, nokta, tire içeren adlar (ör. telemetri birim/parametre) köşeli parantezle yazılır
+      if (c === '[') { const j = s.indexOf(']', i + 1); if (j < 0) throw new Error('"]" eksik (kanal adı köşeli parantez içinde yazılır: [birim/parametre])'); const nm = s.slice(i + 1, j).trim(); if (!nm) throw new Error('Boş kanal adı: []'); t.push({t: 'id', v: nm, q: true}); i = j + 1; continue; }
       if (/[A-Za-z_À-ɏ]/.test(c)) { const m = /^[A-Za-z0-9_À-ɏ]+/.exec(s.slice(i)); t.push({t: 'id', v: m[0]}); i += m[0].length; continue; }
       if (c === '.' && '*/^'.includes(s[i + 1])) { t.push({t: 'op', v: s[i + 1]}); i += 2; continue; }
       if ('+-*/^(),'.includes(c)) { t.push({t: c === '(' || c === ')' || c === ',' ? c : 'op', v: c}); i++; continue; }
@@ -132,6 +134,8 @@ const EXPR = (() => {
     }
     return ev(ast);
   }
-  return {run: (s, ctx) => evaluate(parse(tokenize(s)), ctx), identifiers: s => tokenize(s).filter(t => t.t === 'id').map(t => t.v)};
+  return {run: (s, ctx) => evaluate(parse(tokenize(s)), ctx), identifiers: s => tokenize(s).filter(t => t.t === 'id').map(t => t.v),
+    // kanal başvuruları: ardından '(' gelmeyen adlar (işlev adları değil); köşeli parantezli adlar her zaman kanaldır
+    refs: s => { const t = tokenize(s), o = []; t.forEach((x, i) => { if (x.t === 'id' && (x.q || !(t[i + 1] && t[i + 1].t === '('))) o.push(x.v); }); return o; }};
 })();
 if (typeof module !== 'undefined') module.exports = EXPR;

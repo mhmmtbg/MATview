@@ -3245,6 +3245,8 @@ const EXPR = (() => {
       const c = s[i];
       if (/\s/.test(c)) { i++; continue; }
       if (/[0-9.]/.test(c)) { const m = /^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(s.slice(i)); if (!m) throw new Error('Sayı hatası: ' + s.slice(i, i + 5)); t.push({t: 'num', v: parseFloat(m[0])}); i += m[0].length; continue; }
+      // [tam kanal adı]: '/', boşluk, nokta, tire içeren adlar (ör. telemetri birim/parametre) köşeli parantezle yazılır
+      if (c === '[') { const j = s.indexOf(']', i + 1); if (j < 0) throw new Error('"]" eksik (kanal adı köşeli parantez içinde yazılır: [birim/parametre])'); const nm = s.slice(i + 1, j).trim(); if (!nm) throw new Error('Boş kanal adı: []'); t.push({t: 'id', v: nm, q: true}); i = j + 1; continue; }
       if (/[A-Za-z_À-ɏ]/.test(c)) { const m = /^[A-Za-z0-9_À-ɏ]+/.exec(s.slice(i)); t.push({t: 'id', v: m[0]}); i += m[0].length; continue; }
       if (c === '.' && '*/^'.includes(s[i + 1])) { t.push({t: 'op', v: s[i + 1]}); i += 2; continue; }
       if ('+-*/^(),'.includes(c)) { t.push({t: c === '(' || c === ')' || c === ',' ? c : 'op', v: c}); i++; continue; }
@@ -3371,11 +3373,28 @@ const EXPR = (() => {
     }
     return ev(ast);
   }
-  return {run: (s, ctx) => evaluate(parse(tokenize(s)), ctx), identifiers: s => tokenize(s).filter(t => t.t === 'id').map(t => t.v)};
+  return {run: (s, ctx) => evaluate(parse(tokenize(s)), ctx), identifiers: s => tokenize(s).filter(t => t.t === 'id').map(t => t.v),
+    // kanal başvuruları: ardından '(' gelmeyen adlar (işlev adları değil); köşeli parantezli adlar her zaman kanaldır
+    refs: s => { const t = tokenize(s), o = []; t.forEach((x, i) => { if (x.t === 'id' && (x.q || !(t[i + 1] && t[i + 1].t === '('))) o.push(x.v); }); return o; }};
 })();
 
 /* Grafik motoru: Canvas, MATLAB benzeri etkileşim, büyük veri için min/max inceltme */
-const PAL = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E', '#77AC30', '#4DBEEE', '#A2142F'];
+// birbirinden kolay ayırt edilen 12 renk (açık ve koyu temada okunur); ton aralıkları geniş tutuldu
+const PAL = ['#1f77b4', '#d62728', '#2ca02c', '#ff7f0e', '#9467bd', '#17becf', '#8c564b', '#e377c2', '#bcbd22', '#7f7f7f', '#00a087', '#f0c419'];
+const DASHES = [[], [7, 4], [2, 3], [9, 3, 2, 3]];
+// aynı alt grafikte otomatik renkli izler farklı renk alır; 12 renk bitince kesikli / noktalı çizgi devreye girer
+function distinctColors(ax) {
+  const used = new Map(); for (const t of ax.traces) if (!t.autoColor) used.set(t.color + '|' + (t.dash || []).join(','), 1);
+  let k = 0;
+  for (const t of ax.traces) {
+    if (!t.autoColor) continue;
+    let key = t.color + '|' + (t.dash || []).join(',');
+    if (used.has(key) || !PAL.includes(t.color)) {
+      for (; k < PAL.length * DASHES.length; k++) { const c = PAL[k % PAL.length], d = DASHES[Math.floor(k / PAL.length)], kk = c + '|' + d.join(','); if (!used.has(kk)) { t.color = c; t.dash = d.length ? d : null; key = kk; break; } }
+    }
+    used.set(key, 1);
+  }
+}
 const THEMES = {
   light: {bg: '#ffffff', fg: '#1b1f24', axis: '#3a3f45', grid: '#e3e6ea', minor: '#f0f2f4', muted: '#6b7280', box: '#ffffff', sel: '#d62728', acc: '#0072BD'},
   dark: {bg: '#16191d', fg: '#e6e8eb', axis: '#aab0b8', grid: '#2c3137', minor: '#22262b', muted: '#8b929b', box: '#1e2227', sel: '#ff6b6b', acc: '#3b9ae1'}
@@ -3651,7 +3670,8 @@ class Plot {
     // izler
     ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
     ax._lab = [];
-    for (let k = 0; k < ax.traces.length; k++) { const tr = ax.traces[k]; if (!tr.visible) continue; if (tr.yr) this._r(ax, () => drawTrace(ctx, tr, ax, this, T)); else drawTrace(ctx, tr, ax, this, T); }
+    distinctColors(ax);
+    for (let k = 0; k < ax.traces.length; k++) { const tr = ax.traces[k]; if (!tr.visible) continue; ctx.setLineDash(tr.dash || []); if (tr.yr) this._r(ax, () => drawTrace(ctx, tr, ax, this, T)); else drawTrace(ctx, tr, ax, this, T); ctx.setLineDash([]); }
     ctx.restore(); ctx.save();
     // çerçeve ve tikler
     ctx.strokeStyle = T.axis; ctx.strokeRect(r.x + .5, r.y + .5, r.w, r.h);
@@ -3691,7 +3711,7 @@ class Plot {
         const cn = this.lgCorner || 'tr', bw = wmax + 34, bh = vis.length * lh + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx0 = cn[1] === 'l' ? r.x + 6 + lp.dx : r.x + r.w - bw - 6 + lp.dx, by0 = cn[0] === 'b' ? r.y + r.h - bh - 6 + lp.dy : r.y + 6 + lp.dy, bx = Math.max(r.x, Math.min(r.x + r.w - bw, bx0)), by = Math.max(r.y, Math.min(r.y + r.h - bh, by0));
         ctx.globalAlpha = .92; ctx.fillStyle = T.box; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1;
         ctx.strokeStyle = T.grid; ctx.strokeRect(bx + .5, by + .5, bw, bh);
-        vis.forEach((t, i) => { const y = by + 3 + lh / 2 + i * lh; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
+        vis.forEach((t, i) => { const y = by + 3 + lh / 2 + i * lh; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.setLineDash(t.dash || []); ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
       }
     }
     ctx.restore();
@@ -4697,7 +4717,7 @@ function freeMemory() {
 
 /* ---------- grafik yönetimi ---------- */
 function nextColor() { return PAL[S.colorIdx++ % PAL.length]; }
-function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), width: 1, visible: true}; }
+function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), autoColor: !color, width: 1, visible: true}; }
 function unitOf(ch) { return ch ? (ch.unit || (KIND[ch.kind] && KIND[ch.kind].ylabel) || '') : ''; }
 function axisLabelFor(ax) {
   const lbl = trs => { const t2 = trs.filter(t => t.ch), ks = new Set(t2.map(t => t.ch.kind)), us = new Set(t2.map(t => t.ch.unit || '')); return us.size === 1 && [...us][0] ? [...us][0] : ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; };
@@ -5169,7 +5189,8 @@ function buildAcoustic() {
     fr('  Gürültü aralığı (s)', numIn('acN0', ''), numIn('acN1', '')),
     fr('  Kuantalama adımı', numIn('acQ', '', {min: 0, placeholder: 'yok', title: 'Sinyal kaba kuantalıysa (az sayıda ayrık seviye) ADC adımı: gürültü tabanı en az adım²/12 alınır. Otomatik temizleme doldurur.'})),
     h('div', {class: 'btns'}, btn('Görünen aralığı gürültü yap', setNoiseFromView), btn('Aralığı kaldır', () => { S.acNoise = null; $('#acN0').value = ''; $('#acN1').value = ''; acBands(); })),
-    h('div', {class: 'note'}, 'Gürültü aralığı: yalnızca arka plan gürültüsünün olduğu sessiz bir bölüm seçin. Wiener bu bölümün ortalama spektrumunu çıkarır; OM-LSA gürültüyü kayıt boyunca izler ve bu bölümü alt sınır olarak kullanır.')));
+    h('div', {class: 'note'}, 'Gürültü aralığı: yalnızca arka plan gürültüsünün olduğu sessiz bir bölüm seçin. Wiener bu bölümün ortalama spektrumunu çıkarır; OM-LSA gürültüyü kayıt boyunca izler ve bu bölümü alt sınır olarak kullanır.'),
+    h('div', {class: 'btns'}, h('button', {id: 'acCleanAdd', class: 'primary', title: 'Bu karttaki ayarlarla temizler, temiz kanalı ekler ve grafiğe çizer', onclick: acAddClean}, 'Temizle ve grafiğe ekle'))));
   r.append(card('Konuşma ve olaylar',
     fr('Ön ayar', selIn('acPreset', [['', '—'], ['clean', 'Temiz dinleme'], ['speech', 'Konuşma odaklı']], ''), h('button', {id: 'acPresetBtn', onclick: acPresetApply}, 'Uygula')),
     h('div', {class: 'fr chk', title: '100 Hz altı (uğultu, gövde titreşimi) ve 5 kHz üstü (tıslama) kesilir; konuşmanın anlaşılırlığını taşıyan bant kalır'}, h('label', {for: 'acSpOn'}, 'Konuşma bandı (100–5000 Hz)'), h('input', {type: 'checkbox', id: 'acSpOn'})),
@@ -5887,7 +5908,7 @@ async function addSpec(chs) {
   const ax = specAxes(); const units = new Set();
   for (const c of chs) {
     const s = c.spec; units.add(c.unit || '');
-    ax.traces.push({kind: 'xy', x: s.x, y: c.data, label: c.name, color: nextColor(), width: 1, visible: true, raw: c.data, scale: s.psd ? 'psd' : 'other', df: s.dx, srcKind: s.psd ? 'vib' : '', unvCh: c});
+    ax.traces.push({kind: 'xy', x: s.x, y: c.data, label: c.name, color: nextColor(), autoColor: true, width: 1, visible: true, raw: c.data, scale: s.psd ? 'psd' : 'other', df: s.dx, srcKind: s.psd ? 'vib' : '', unvCh: c});
   }
   for (const t of ax.traces) units.add(t.unvCh ? t.unvCh.unit || '' : '');
   units.delete(''); if (units.size === 1 && !ax.traces.some(t => t.profileId)) ax.ylabel = [...units][0];
@@ -6157,7 +6178,7 @@ function ctxMenu(x, y, items) {
 }
 function traceMenu(P, ax, k, x, y) {
   const tr = ax.traces[k], items = [{t: tr.visible ? 'Gizle' : 'Göster', ic: 'eye', fn: () => { tr.visible = !tr.visible; P.invalidate(); afterStruct(P); }},
-    {t: 'Rengi değiştir…', ic: 'palette', fn: () => { const c = h('input', {type: 'color', value: tr.color, style: 'position:fixed;left:-99px'}); document.body.append(c); c.oninput = () => { tr.color = c.value; P.invalidate(); }; c.onchange = () => { c.remove(); afterStruct(P); }; c.click(); }},
+    {t: 'Rengi değiştir…', ic: 'palette', fn: () => { const c = h('input', {type: 'color', value: tr.color, style: 'position:fixed;left:-99px'}); document.body.append(c); c.oninput = () => { tr.color = c.value; tr.autoColor = false; tr.dash = null; P.invalidate(); }; c.onchange = () => { c.remove(); afterStruct(P); }; c.click(); }},
     ...(P === S.plot && tr.ch ? [{t: 'Spektrum (yalnız bu iz)', ic: 'unv', fn: () => graphSpectrum(ax, tr)}, {t: 'Spektrogram (bu iz)', ic: 'sgram', fn: () => graphSpectrogram(ax, tr)}, '-'] : []),
     {t: 'Çizgi: ince', fn: () => { tr.width = .75; P.invalidate(); }}, {t: 'Çizgi: orta', fn: () => { tr.width = 1.5; P.invalidate(); }}, {t: 'Çizgi: kalın', fn: () => { tr.width = 3; P.invalidate(); }}, '-',
     {t: 'İzi kaldır', ic: 'trash', fn: () => removeTraceUndo(P, ax, k)}];
@@ -6184,7 +6205,7 @@ function syncOverlay(P) {
   const ov = ensureOv(P);
   if (!P.axes.length || !P.axes[0].rect || !P.W) { if (ov.firstChild) { ov.replaceChildren(); ov._parts = []; ov._sig = ''; } return; }
   ov.style.height = P.H + 'px';
-  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + (P.lgSize || 'm') + (P.lgCorner || 'tr') + P.gridCols() + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
+  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + (P.lgSize || 'm') + (P.lgCorner || 'tr') + P.gridCols() + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.dash ? 'd' + t.dash.join('') : '') + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
   if (sig !== ov._sig) { ov._sig = sig; buildOv(P, ov); }
   if (P === S.plot && typeof acBarSync === 'function') acBarSync(P, ov);
   for (const p of ov._parts) { p.upd(); if (p.cor && p.ax.rect) { const r = p.ax.rect; p.cor.style.left = r.x + r.w - 12 + 'px'; p.cor.style.top = r.y + r.h - 12 + 'px'; } }
@@ -6228,7 +6249,7 @@ function buildOv(P, ov) {
       ax.traces.forEach((tr, k) => {
         if (tr.noLegend) return;
         const ex = h('span', {class: 'ex'}), x = h('button', {class: 'ib x', title: 'İzi kaldır', 'aria-label': 'İzi kaldır'}); x.innerHTML = ic('close', 10);
-        const row = h('div', {class: 'lrow' + (tr.visible ? '' : ' off') + (P.active === ax && k === (ax.active || 0) ? ' cur' : ''), draggable: main ? 'true' : null, tabindex: 0, title: 'Tıkla: göster/gizle · Sağ tık: seçenekler' + (main ? ' · Sürükle: başka alt grafiğe taşı' : '')}, h('span', {class: 'sw', style: 'background:' + tr.color}), h('span', {class: 'nm'}, tr.label), ...(tr.yr ? [h('span', {class: 'yr', title: 'Sağ Y ekseni'}, 'R')] : []), ex, x);
+        const row = h('div', {class: 'lrow' + (tr.visible ? '' : ' off') + (P.active === ax && k === (ax.active || 0) ? ' cur' : ''), draggable: main ? 'true' : null, tabindex: 0, title: 'Tıkla: göster/gizle · Sağ tık: seçenekler' + (main ? ' · Sürükle: başka alt grafiğe taşı' : '')}, h('span', {class: 'sw', style: tr.dash ? 'background:repeating-linear-gradient(90deg,' + tr.color + ' 0 ' + tr.dash[0] + 'px,transparent ' + tr.dash[0] + 'px ' + (tr.dash[0] + tr.dash[1]) + 'px)' : 'background:' + tr.color}), h('span', {class: 'nm'}, tr.label), ...(tr.yr ? [h('span', {class: 'yr', title: 'Sağ Y ekseni'}, 'R')] : []), ex, x);
         row.onclick = e => { if (e.target.closest('.x')) return; tr.visible = !tr.visible; ax.active = k; P.active = ax; P.invalidate(); afterStruct(P); };
         row.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); } else if (e.key === 'Delete') removeTraceUndo(P, ax, k); };
         x.onclick = e => { e.stopPropagation(); removeTraceUndo(P, ax, k); };
@@ -6355,11 +6376,11 @@ function buildExpr() {
   r.append(card('Formül',
     h('textarea', {id: 'exprIn', rows: 3, style: 'width:100%;font-family:ui-monospace,Consolas,monospace', placeholder: 'ör.  sqrt(ivme1_X^2 + ivme1_Y^2 + ivme1_Z^2)'}),
     fr('Sonuç adı', h('input', {type: 'text', id: 'exprName', value: 'formul1'})),
-    fr('Kanal ekle', h('select', {id: 'exprPick'}), btn('Ekle', () => { const s = $('#exprPick').value; if (!s) return; const t = $('#exprIn'); const p = t.selectionStart; t.value = t.value.slice(0, p) + s + t.value.slice(t.selectionEnd); t.focus(); })),
-    h('div', {class: 'btns'}, btn('Hesapla ve grafiğe ekle', runExpr, 'primary'), btn('Seçili kanal adlarını ekle', () => { $('#exprIn').value += chsFromSel().map(c => c.name).join(' + '); })),
+    fr('Kanal ekle', h('select', {id: 'exprPick'}), btn('Ekle', exprInsertPick)),
+    h('div', {class: 'btns'}, btn('Hesapla ve grafiğe ekle', runExpr, 'primary'), btn('Seçili kanal adlarını ekle', () => { const t = $('#exprIn'); t.value += chsFromSel().map(c => exprRef(c, t)).join(' + '); })),
     h('div', {id: 'exprMsg', class: 'note'})));
   r.append(card('Söz dizimi',
-    h('div', {class: 'note', style: 'white-space:pre-line'}, 'Kanallar: tam kanal adı veya benzersiz son ek (ör. ivme1_X). İşleçler: + − * / ^ ve parantez.\nSkaler fonksiyon: abs sqrt sin cos tan exp log log10 db sign round floor ceil atan2(a,b) pow(a,b) max(a,b) min(a,b)\nİntegral/türev: integral(x) integral2(x) cumtrapz(x) deriv(x) deriv2(x) diff(x) cumsum(x)\nKayan: movmean movmedian movrms movstd movmax movmin movsum (x,w)\nÖlçekleme: zscore normalize rescale(x,a,b) clip(x,lo,hi) shift(x,n) unwrap demean detrend(x[,derece]) trend(x,derece) decimate(x,n)\nSüzgeç: lp(x,fc) hp(x,fc) bp(x,f1,f2) notch(x,f0,Q) · zarf: env(x)\nSkaler döner: mean std var rms max min median sum p2p crest kurt skew meanabs energy count percentile(x,p) corr(a,b) cov(a,b)\nFarklı uzunluktaki kanallar ilk operanda göre yeniden örneklenir.')));
+    h('div', {class: 'note', style: 'white-space:pre-line'}, 'Kanallar: tam kanal adı, benzersiz son ek (ör. ivme1_X) ya da köşeli parantez içinde tam ad (ör. [PSU/voltage]) — / boşluk . - içeren adlar köşeli parantezle yazılır; "Kanal ekle" bunu kendisi yapar. İşleçler: + − * / ^ ve parantez.\nSkaler fonksiyon: abs sqrt sin cos tan exp log log10 db sign round floor ceil atan2(a,b) pow(a,b) max(a,b) min(a,b)\nİntegral/türev: integral(x) integral2(x) cumtrapz(x) deriv(x) deriv2(x) diff(x) cumsum(x)\nKayan: movmean movmedian movrms movstd movmax movmin movsum (x,w)\nÖlçekleme: zscore normalize rescale(x,a,b) clip(x,lo,hi) shift(x,n) unwrap demean detrend(x[,derece]) trend(x,derece) decimate(x,n)\nSüzgeç: lp(x,fc) hp(x,fc) bp(x,f1,f2) notch(x,f0,Q) · zarf: env(x)\nSkaler döner: mean std var rms max min median sum p2p crest kurt skew meanabs energy count percentile(x,p) corr(a,b) cov(a,b)\nFarklı uzunluktaki kanallar ilk operanda göre yeniden örneklenir.')));
   setTimeout(() => { syncQop(); refreshCalcUI(); }, 0);
   return r;
 }
@@ -6369,13 +6390,30 @@ function syncQop() {
 }
 function refreshCalcUI() {
   const tr = typeof activeTrace === 'function' && S.plot ? activeTrace() : null, q = $('#qSrc'); if (q) q.textContent = tr && tr.ch ? 'Kaynak: ' + tr.ch.name + (tr.ch.unit ? ' [' + tr.ch.unit + ']' : '') + ' · fs ' + fmtNum(tr.ch.fs, 5) + ' Hz' : 'Önce grafikten bir zaman izi seçin.';
-  const pick = $('#exprPick'); if (pick) { const keep = pick.value; pick.replaceChildren(h('option', {value: ''}, '— seç —')); const seen = new Set(); for (const ax of S.plot.axes) for (const t of ax.traces) if (t.ch && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); pick.append(h('option', {value: t.ch.name}, t.ch.name)); } pick.value = keep; }
+  const pick = $('#exprPick'); if (pick) { const keep = pick.value; pick.replaceChildren(h('option', {value: ''}, '— seç —')); const seen = new Set(), g1 = h('optgroup', {label: 'Grafikteki kanallar'}), g2 = h('optgroup', {label: 'Açık dosyalardaki kanallar'});
+    const opt = c => h('option', {value: c.uid, title: c.name + (c.file && c.file.name ? ' · ' + c.file.name : '')}, c.name + (c.file && c.file.name && !c.file.derived ? '  ·  ' + c.file.name : ''));
+    for (const ax of S.plot.axes) for (const t of ax.traces) if (t.ch && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); g1.append(opt(t.ch)); }
+    let n = 0; for (const f of allFiles()) for (const c of f.channels) { if (seen.has(c.uid) || n >= 800) continue; seen.add(c.uid); g2.append(opt(c)); n++; }
+    if (g1.children.length) pick.append(g1); if (g2.children.length) pick.append(g2); pick.value = keep; }
   const pb = $('#pB'); if (pb) { const keep = pb.value; pb.replaceChildren(); const seen = new Set(); for (const ax of S.plot.axes) for (const t of ax.traces) if (t.ch && t.ch !== (tr && tr.ch) && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); pb.append(h('option', {value: t.ch.uid}, t.ch.name)); } if ([...pb.options].some(o => o.value === keep)) pb.value = keep; }
 }
 // ---- çekirdek: formülü değerlendir (önceden bağlanmış değişkenlerle: A, B …) ----
+// formüle kanal başvurusu: düz ad tanımlayıcı olabiliyorsa olduğu gibi, değilse [ad] (ör. [PSU/voltage]); seçilen kanal hatırlanır
+function exprRef(c, ta) {
+  const r = /^[A-Za-z_À-ɏ][A-Za-z0-9_À-ɏ]*$/.test(c.name) ? c.name : '[' + c.name + ']';
+  if (ta) { let m = {}; try { m = JSON.parse(ta.dataset.picks || '{}'); } catch (_) {} m[c.name] = c.uid; ta.dataset.picks = JSON.stringify(m); }
+  return r;
+}
+function exprInsertPick() {
+  const uid = $('#exprPick').value; if (!uid) return; const c = allFiles().flatMap(f => f.channels).find(c => String(c.uid) === uid); if (!c) return;
+  const t = $('#exprIn'), s = exprRef(c, t), p = t.selectionStart; t.value = t.value.slice(0, p) + s + t.value.slice(t.selectionEnd); t.focus(); t.selectionStart = t.selectionEnd = p + s.length;
+}
 async function evalFormula(src, pre) {
   pre = pre || {};
-  const ids = [...new Set(EXPR.identifiers(src))].filter(i => !/^(pi|e)$/i.test(i) && !new RegExp('\\b' + i + '\\s*\\(').test(src.replace(new RegExp('\\b' + i + '\\b(?!\\s*\\()', 'g'), '')));
+  const ids = [...new Set(EXPR.refs(src))].filter(i => !/^(pi|e)$/i.test(i));
+  // "Kanal ekle" ile eklenen adlar seçilen kanala bağlıdır (aynı adlı kanal başka dosyada da olsa)
+  let picks = {}; try { picks = JSON.parse(($('#exprIn') && $('#exprIn').dataset.picks) || '{}'); } catch (_) {}
+  for (const id of ids) if (!pre[id] && picks[id]) { const c = allFiles().flatMap(f => f.channels).find(c => c.uid === picks[id]); if (c) pre[id] = c; }
   const map = {};
   for (const id of ids) { const c = pre[id] || resolveChannel(id); await ensureLoaded(c); map[id] = {v: c.del ? DSP.segment(c.data, c.del, 0, c.n) : c.data, fs: c.fs, ch: c}; }
   return EXPR.run(src, {DSP, resolve: n => { if (!map[n]) throw new Error('Yüklenmemiş: ' + n); return map[n]; }});
@@ -6436,10 +6474,53 @@ async function runExpr() {
       const pre = {}; if ($('#exprIn').dataset.pre === 'A') { const tr = activeTrace(); if (tr && tr.ch) pre.A = tr.ch; }
       const res = await evalFormula(src, pre);
       if (typeof res === 'number') { msg.textContent = 'Sonuç (skaler): ' + res; return; }
-      const name = sanitizeName(sv('exprName') || 'formul'); S.opDesc = 'Formül: ' + src; const c = addResult(res, name, {dest: 'new'}); c.formula = src; msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
+      const name = sanitizeName(sv('exprName') || 'formul'); S.opDesc = 'Formül: ' + src; const c = addResult(res, name, {dest: 'new'}); c.formula = src; c.formulaPicks = $('#exprIn').dataset.picks || '{}'; msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
     } catch (e) { msg.textContent = 'Hata: ' + e.message; }
   });
 }
+
+/* ---- türetilmiş kanal: sil (geri alınabilir) / formülü düzenle ---- */
+function derivedTraces(chs) { const set = new Set(chs), out = []; for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) for (const ax of P.axes) ax.traces.forEach((t, k) => { if (set.has(t.ch) || set.has(t.unvCh) || set.has(t.srcCh)) out.push({P, ax, t}); }); return out; }
+function deleteDerived(chs) {
+  chs = chs.filter(c => c && c.derived && S.derived && S.derived.channels.includes(c)); if (!chs.length) return;
+  const used = derivedTraces(chs), pos = chs.map(c => S.derived.channels.indexOf(c));
+  const doIt = () => {
+    for (const u of used) { const i = u.ax.traces.indexOf(u.t); if (i >= 0) u.ax.traces.splice(i, 1); }
+    S.derived.channels = S.derived.channels.filter(c => !chs.includes(c)); for (const c of chs) S.selCh.delete(c.uid);
+    if (typeof tlvSyncSubs === 'function') try { tlvSyncSubs(); } catch (_) {}
+    renderChips(); renderTree(); refreshAll(); for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) P.invalidate();
+    logOp('derived-delete', {names: chs.map(c => c.name)});
+  };
+  const undo = () => {
+    chs.forEach((c, j) => S.derived.channels.splice(Math.min(pos[j], S.derived.channels.length), 0, c));
+    for (const u of used) if (!u.ax.traces.includes(u.t) && u.P.axes.includes(u.ax)) u.ax.traces.push(u.t);
+    renderChips(); renderTree(); refreshAll(); for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) P.invalidate();
+  };
+  const go = () => { doIt(); toast(chs.length + ' türetilmiş kanal silindi', 8000, {t: 'Geri al', fn: undo}); };
+  if (used.length) modal('Türetilmiş kanalı sil', h('div', null, `${chs.map(c => c.name).join(', ')} grafikte ${used.length} izde kullanılıyor. Silinirse izler de kaldırılır (geri alınabilir).`), [{t: 'Sil', primary: true, fn: go}, {t: 'Vazgeç'}]);
+  else go();
+}
+function editDerivedFormula(c) {
+  const ta = h('textarea', {rows: 4, style: 'width:100%;font-family:ui-monospace,Consolas,monospace'}), nm = h('input', {type: 'text', value: c.name, style: 'width:100%'}), msg = h('div', {class: 'note'});
+  ta.value = c.formula || ''; ta.dataset.picks = c.formulaPicks || '{}';
+  const body = h('div', null, h('div', {class: 'note'}, c.formula ? 'Formülü değiştirip Güncelle\'ye basın: kanal yeniden hesaplanır, grafikteki izleri de güncellenir.' : 'Bu kanal formülle oluşturulmadı (' + (c.desc || 'işlem') + '). Yeni bir formül yazarsanız kanal formül sonucuyla değiştirilir.'), h('label', null, 'Formül'), ta, h('label', null, 'Ad'), nm, msg);
+  modal('Türetilmiş kanal: ' + c.name, body, [{t: 'Güncelle', primary: true, fn: () => {
+    const src = ta.value.trim(); if (!src) { msg.textContent = 'Formül boş'; return false; }
+    (async () => {
+      try {
+        msg.textContent = 'Hesaplanıyor…'; const res = await evalFormulaFor(src, ta); msg.textContent = '';
+        if (typeof res === 'number') { msg.textContent = 'Sonuç skaler (' + res + '); kanal için dizi gerekir'; return; }
+        const s0 = res.ch; c.data = res.v; c.n = res.v.length; c.pyr = null; c._mm = null; c.del = null; c.delCount = 0;
+        if (s0 && s0.n === c.n) c.copyTiming(s0); else if (s0) { c.g = null; c.t0 = s0.t(0); if (res.fs) c.setFs(res.fs); }
+        c.formula = src; c.formulaPicks = ta.dataset.picks || '{}'; c.desc = 'Formül: ' + src; const nn = cleanName(nm.value || c.name); if (nn !== c.name) { for (const u of derivedTraces([c])) if (u.t.label === c.name) u.t.label = nn; c.name = c.rest = c.base = c.label = nn; }
+        logOp('derived-update', {name: c.name, formula: src});
+        $('#modal').classList.add('hidden'); renderTree(); refreshAll(); for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) P.invalidate(); toast(c.name + ' güncellendi');
+      } catch (e) { msg.textContent = 'Hata: ' + e.message; }
+    })();
+    return false;
+  }}, {t: 'Vazgeç'}]);
+}
+async function evalFormulaFor(src, ta) { const t = $('#exprIn'), keep = t ? t.dataset.picks : null; try { if (t) t.dataset.picks = ta.dataset.picks || '{}'; return await evalFormula(src, {}); } finally { if (t) t.dataset.picks = keep || '{}'; } }
 
 /* ===== CSV / Excel tablo içe aktarma + zaman serisi / özellik (regresyon) verisi ayrımı ===== */
 function parseCSV(text) {
@@ -7178,7 +7259,9 @@ function fileMenu(f, x, y) {
   const items = []; if (f.binary) items.push({t: 'Tüm binary dosyayı .mat olarak kaydet…', ic: 'download', fn: () => matDlg(f, {t: 'all'})}, {t: 'Alt sistemleri ayrı .mat olarak kaydet (zip)…', ic: 'download', fn: () => matDlg(f, {t: 'all'})});
   const k = chsFromSel().length; items.push({t: 'Seçili kanalları .mat olarak kaydet' + (k ? ' (' + k + ')' : '') + '…', ic: 'download', fn: () => matSelExport(chsFromSel())});
   if (typeof tlmSessionMenu === 'function') tlmSessionMenu(f, items);
-  if (!f.derived) items.push('-', {t: 'Dosyayı kapat', ic: 'close', fn: () => closeFile(f)}); ctxMenu(x, y, items);
+  if (!f.derived) items.push('-', {t: 'Dosyayı kapat', ic: 'close', fn: () => closeFile(f)});
+  else if (f.channels.length) items.push('-', {t: 'Tüm türetilmiş kanalları sil (' + f.channels.length + ')', ic: 'close', fn: () => deleteDerived(f.channels.slice())});
+  ctxMenu(x, y, items);
 }
 function devMenu(f, dev, x, y) {
   const chs = f.channels.filter(c => c.dev === dev), items = [{t: 'Bu gruptaki tüm kanalları seç (' + chs.length + ')', ic: 'layers', fn: () => { S.selCh = new Set(chs.map(c => c.uid)); renderTree(); }}];
@@ -7188,7 +7271,8 @@ function devMenu(f, dev, x, y) {
   ctxMenu(x, y, items);
 }
 function chMenu(c, x, y) {
-  const sel = chsFromSel(); ctxMenu(x, y, [{t: 'Seçili ' + sel.length + ' kanalı .mat olarak kaydet…', ic: 'download', fn: () => matSelExport(sel)}, '-', {t: 'Mevcut grafiği kaldırıp bunu çiz', ic: 'swap', fn: () => replacePlot(sel, sel.length > 1)}, {t: 'Yeni alt grafiğe ekle', ic: 'plus', fn: () => addToNewAxes(sel.length > 1 ? sel : [c], false)}, {t: 'Aktif grafiğe aynı eksende ekle', ic: 'layers', fn: () => addToAxes(activeAxes(), sel.length > 1 ? sel : [c])}]);
+  const sel = chsFromSel(), dsel = sel.filter(x => x.derived), dx = c.derived ? [{t: 'Formülü düzenle / güncelle…', ic: 'fx', fn: () => editDerivedFormula(c)}, {t: 'Türetilmiş kanalı sil' + (dsel.length > 1 ? ' (' + dsel.length + ')' : ''), ic: 'close', fn: () => deleteDerived(dsel.length ? dsel : [c])}, '-'] : [];
+  ctxMenu(x, y, [...dx, {t: 'Seçili ' + sel.length + ' kanalı .mat olarak kaydet…', ic: 'download', fn: () => matSelExport(sel)}, '-', {t: 'Mevcut grafiği kaldırıp bunu çiz', ic: 'swap', fn: () => replacePlot(sel, sel.length > 1)}, {t: 'Yeni alt grafiğe ekle', ic: 'plus', fn: () => addToNewAxes(sel.length > 1 ? sel : [c], false)}, {t: 'Aktif grafiğe aynı eksende ekle', ic: 'layers', fn: () => addToAxes(activeAxes(), sel.length > 1 ? sel : [c])}]);
 }
 /* ---- Çıktı sekmesi kartı ---- */
 function buildMatCard() {
@@ -7395,7 +7479,7 @@ async function qualAuto(files) {
 }
 
 /* ===== Faz 2: Test sekmesi — faz tablosu (B1), şartname uygunluk + şablonlar (B2), hesap kaydı (A2) ===== */
-const APP_VER = '2.15';
+const APP_VER = '2.16';
 function logOp(op, detail) { (S.methodLog = S.methodLog || []).push(Object.assign({t: Date.now(), op}, detail || {})); }
 
 /* ---------- Faz tablosu (düzenlenebilir) ---------- */
@@ -7827,6 +7911,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.16', d: 'Akustik ve kanallar', items: [
+    'Akustik › Parazit temizleme: "Temizle ve grafiğe ekle" — karttaki ayarlarla temizleyip temiz kanalı ekler ve çizer.',
+    'Lejant / iz renkleri: birbirinden kolay ayırt edilen 12 renk; aynı alt grafikte renk tekrarlanmaz, renkler bitince kesikli / noktalı çizgi kullanılır (lejantta da görünür). Elle seçilen renk korunur.',
+    'Türetilmiş kanallar: sağ tık › "Türetilmiş kanalı sil" (birden çok seçim, grafikteki izleriyle; Geri al) ve "Formülü düzenle / güncelle" (kanal ve grafikteki izleri yeniden hesaplanır). Türetilmiş grup menüsünde tümünü silme.',
+    'Formül: "Kanal ekle" artık kanalı [birim/parametre] biçiminde ekler (/ boşluk . - içeren telemetri adları hata vermez), seçilen kanal aynı adlı başka kanallarla karışmaz; listede grafikteki ve açık dosyalardaki kanallar dosya adıyla görünür.']},
   {v: '2.15', d: 'Arayüz kararlılığı', items: [
     'Sayfa yakınlaştırması (Ctrl+tekerlek, Ctrl + / − / 0, sıkıştırma) kapatıldı; grafiklerin kendi yakınlaştırması aynen çalışır.',
     'Araç satırları (Zaman/Spektrum sekmeleri, grafik araçları, Kod, Telemetri üst çubuğu, Çözülen Veriler başlığı) tek satırda kalır, seçenekler iki yana yaslıdır; yer daralınca önce yazılar gizlenir, sonra sığmayanlar "⋯" menüsüne geçer — alt satıra kayma ve yer oynaması yok.',

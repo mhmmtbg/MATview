@@ -45,6 +45,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.16', d: 'Akustik ve kanallar', items: [
+    'Akustik › Parazit temizleme: "Temizle ve grafiğe ekle" — karttaki ayarlarla temizleyip temiz kanalı ekler ve çizer.',
+    'Lejant / iz renkleri: birbirinden kolay ayırt edilen 12 renk; aynı alt grafikte renk tekrarlanmaz, renkler bitince kesikli / noktalı çizgi kullanılır (lejantta da görünür). Elle seçilen renk korunur.',
+    'Türetilmiş kanallar: sağ tık › "Türetilmiş kanalı sil" (birden çok seçim, grafikteki izleriyle; Geri al) ve "Formülü düzenle / güncelle" (kanal ve grafikteki izleri yeniden hesaplanır). Türetilmiş grup menüsünde tümünü silme.',
+    'Formül: "Kanal ekle" artık kanalı [birim/parametre] biçiminde ekler (/ boşluk . - içeren telemetri adları hata vermez), seçilen kanal aynı adlı başka kanallarla karışmaz; listede grafikteki ve açık dosyalardaki kanallar dosya adıyla görünür.']},
   {v: '2.15', d: 'Arayüz kararlılığı', items: [
     'Sayfa yakınlaştırması (Ctrl+tekerlek, Ctrl + / − / 0, sıkıştırma) kapatıldı; grafiklerin kendi yakınlaştırması aynen çalışır.',
     'Araç satırları (Zaman/Spektrum sekmeleri, grafik araçları, Kod, Telemetri üst çubuğu, Çözülen Veriler başlığı) tek satırda kalır, seçenekler iki yana yaslıdır; yer daralınca önce yazılar gizlenir, sonra sığmayanlar "⋯" menüsüne geçer — alt satıra kayma ve yer oynaması yok.',

@@ -241,7 +241,7 @@ function freeMemory() {
 
 /* ---------- grafik yönetimi ---------- */
 function nextColor() { return PAL[S.colorIdx++ % PAL.length]; }
-function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), width: 1, visible: true}; }
+function makeTrace(ch, color) { return {kind: 'ts', ch, label: ch.name, color: color || nextColor(), autoColor: !color, width: 1, visible: true}; }
 function unitOf(ch) { return ch ? (ch.unit || (KIND[ch.kind] && KIND[ch.kind].ylabel) || '') : ''; }
 function axisLabelFor(ax) {
   const lbl = trs => { const t2 = trs.filter(t => t.ch), ks = new Set(t2.map(t => t.ch.kind)), us = new Set(t2.map(t => t.ch.unit || '')); return us.size === 1 && [...us][0] ? [...us][0] : ks.size === 1 ? KIND[[...ks][0]].ylabel : ''; };

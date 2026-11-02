@@ -39,7 +39,7 @@ async function addSpec(chs) {
   const ax = specAxes(); const units = new Set();
   for (const c of chs) {
     const s = c.spec; units.add(c.unit || '');
-    ax.traces.push({kind: 'xy', x: s.x, y: c.data, label: c.name, color: nextColor(), width: 1, visible: true, raw: c.data, scale: s.psd ? 'psd' : 'other', df: s.dx, srcKind: s.psd ? 'vib' : '', unvCh: c});
+    ax.traces.push({kind: 'xy', x: s.x, y: c.data, label: c.name, color: nextColor(), autoColor: true, width: 1, visible: true, raw: c.data, scale: s.psd ? 'psd' : 'other', df: s.dx, srcKind: s.psd ? 'vib' : '', unvCh: c});
   }
   for (const t of ax.traces) units.add(t.unvCh ? t.unvCh.unit || '' : '');
   units.delete(''); if (units.size === 1 && !ax.traces.some(t => t.profileId)) ax.ylabel = [...units][0];

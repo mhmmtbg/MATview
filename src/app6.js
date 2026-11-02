@@ -44,11 +44,11 @@ function buildExpr() {
   r.append(card('Formül',
     h('textarea', {id: 'exprIn', rows: 3, style: 'width:100%;font-family:ui-monospace,Consolas,monospace', placeholder: 'ör.  sqrt(ivme1_X^2 + ivme1_Y^2 + ivme1_Z^2)'}),
     fr('Sonuç adı', h('input', {type: 'text', id: 'exprName', value: 'formul1'})),
-    fr('Kanal ekle', h('select', {id: 'exprPick'}), btn('Ekle', () => { const s = $('#exprPick').value; if (!s) return; const t = $('#exprIn'); const p = t.selectionStart; t.value = t.value.slice(0, p) + s + t.value.slice(t.selectionEnd); t.focus(); })),
-    h('div', {class: 'btns'}, btn('Hesapla ve grafiğe ekle', runExpr, 'primary'), btn('Seçili kanal adlarını ekle', () => { $('#exprIn').value += chsFromSel().map(c => c.name).join(' + '); })),
+    fr('Kanal ekle', h('select', {id: 'exprPick'}), btn('Ekle', exprInsertPick)),
+    h('div', {class: 'btns'}, btn('Hesapla ve grafiğe ekle', runExpr, 'primary'), btn('Seçili kanal adlarını ekle', () => { const t = $('#exprIn'); t.value += chsFromSel().map(c => exprRef(c, t)).join(' + '); })),
     h('div', {id: 'exprMsg', class: 'note'})));
   r.append(card('Söz dizimi',
-    h('div', {class: 'note', style: 'white-space:pre-line'}, 'Kanallar: tam kanal adı veya benzersiz son ek (ör. ivme1_X). İşleçler: + − * / ^ ve parantez.\nSkaler fonksiyon: abs sqrt sin cos tan exp log log10 db sign round floor ceil atan2(a,b) pow(a,b) max(a,b) min(a,b)\nİntegral/türev: integral(x) integral2(x) cumtrapz(x) deriv(x) deriv2(x) diff(x) cumsum(x)\nKayan: movmean movmedian movrms movstd movmax movmin movsum (x,w)\nÖlçekleme: zscore normalize rescale(x,a,b) clip(x,lo,hi) shift(x,n) unwrap demean detrend(x[,derece]) trend(x,derece) decimate(x,n)\nSüzgeç: lp(x,fc) hp(x,fc) bp(x,f1,f2) notch(x,f0,Q) · zarf: env(x)\nSkaler döner: mean std var rms max min median sum p2p crest kurt skew meanabs energy count percentile(x,p) corr(a,b) cov(a,b)\nFarklı uzunluktaki kanallar ilk operanda göre yeniden örneklenir.')));
+    h('div', {class: 'note', style: 'white-space:pre-line'}, 'Kanallar: tam kanal adı, benzersiz son ek (ör. ivme1_X) ya da köşeli parantez içinde tam ad (ör. [PSU/voltage]) — / boşluk . - içeren adlar köşeli parantezle yazılır; "Kanal ekle" bunu kendisi yapar. İşleçler: + − * / ^ ve parantez.\nSkaler fonksiyon: abs sqrt sin cos tan exp log log10 db sign round floor ceil atan2(a,b) pow(a,b) max(a,b) min(a,b)\nİntegral/türev: integral(x) integral2(x) cumtrapz(x) deriv(x) deriv2(x) diff(x) cumsum(x)\nKayan: movmean movmedian movrms movstd movmax movmin movsum (x,w)\nÖlçekleme: zscore normalize rescale(x,a,b) clip(x,lo,hi) shift(x,n) unwrap demean detrend(x[,derece]) trend(x,derece) decimate(x,n)\nSüzgeç: lp(x,fc) hp(x,fc) bp(x,f1,f2) notch(x,f0,Q) · zarf: env(x)\nSkaler döner: mean std var rms max min median sum p2p crest kurt skew meanabs energy count percentile(x,p) corr(a,b) cov(a,b)\nFarklı uzunluktaki kanallar ilk operanda göre yeniden örneklenir.')));
   setTimeout(() => { syncQop(); refreshCalcUI(); }, 0);
   return r;
 }
@@ -58,13 +58,30 @@ function syncQop() {
 }
 function refreshCalcUI() {
   const tr = typeof activeTrace === 'function' && S.plot ? activeTrace() : null, q = $('#qSrc'); if (q) q.textContent = tr && tr.ch ? 'Kaynak: ' + tr.ch.name + (tr.ch.unit ? ' [' + tr.ch.unit + ']' : '') + ' · fs ' + fmtNum(tr.ch.fs, 5) + ' Hz' : 'Önce grafikten bir zaman izi seçin.';
-  const pick = $('#exprPick'); if (pick) { const keep = pick.value; pick.replaceChildren(h('option', {value: ''}, '— seç —')); const seen = new Set(); for (const ax of S.plot.axes) for (const t of ax.traces) if (t.ch && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); pick.append(h('option', {value: t.ch.name}, t.ch.name)); } pick.value = keep; }
+  const pick = $('#exprPick'); if (pick) { const keep = pick.value; pick.replaceChildren(h('option', {value: ''}, '— seç —')); const seen = new Set(), g1 = h('optgroup', {label: 'Grafikteki kanallar'}), g2 = h('optgroup', {label: 'Açık dosyalardaki kanallar'});
+    const opt = c => h('option', {value: c.uid, title: c.name + (c.file && c.file.name ? ' · ' + c.file.name : '')}, c.name + (c.file && c.file.name && !c.file.derived ? '  ·  ' + c.file.name : ''));
+    for (const ax of S.plot.axes) for (const t of ax.traces) if (t.ch && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); g1.append(opt(t.ch)); }
+    let n = 0; for (const f of allFiles()) for (const c of f.channels) { if (seen.has(c.uid) || n >= 800) continue; seen.add(c.uid); g2.append(opt(c)); n++; }
+    if (g1.children.length) pick.append(g1); if (g2.children.length) pick.append(g2); pick.value = keep; }
   const pb = $('#pB'); if (pb) { const keep = pb.value; pb.replaceChildren(); const seen = new Set(); for (const ax of S.plot.axes) for (const t of ax.traces) if (t.ch && t.ch !== (tr && tr.ch) && !seen.has(t.ch.uid)) { seen.add(t.ch.uid); pb.append(h('option', {value: t.ch.uid}, t.ch.name)); } if ([...pb.options].some(o => o.value === keep)) pb.value = keep; }
 }
 // ---- çekirdek: formülü değerlendir (önceden bağlanmış değişkenlerle: A, B …) ----
+// formüle kanal başvurusu: düz ad tanımlayıcı olabiliyorsa olduğu gibi, değilse [ad] (ör. [PSU/voltage]); seçilen kanal hatırlanır
+function exprRef(c, ta) {
+  const r = /^[A-Za-z_À-ɏ][A-Za-z0-9_À-ɏ]*$/.test(c.name) ? c.name : '[' + c.name + ']';
+  if (ta) { let m = {}; try { m = JSON.parse(ta.dataset.picks || '{}'); } catch (_) {} m[c.name] = c.uid; ta.dataset.picks = JSON.stringify(m); }
+  return r;
+}
+function exprInsertPick() {
+  const uid = $('#exprPick').value; if (!uid) return; const c = allFiles().flatMap(f => f.channels).find(c => String(c.uid) === uid); if (!c) return;
+  const t = $('#exprIn'), s = exprRef(c, t), p = t.selectionStart; t.value = t.value.slice(0, p) + s + t.value.slice(t.selectionEnd); t.focus(); t.selectionStart = t.selectionEnd = p + s.length;
+}
 async function evalFormula(src, pre) {
   pre = pre || {};
-  const ids = [...new Set(EXPR.identifiers(src))].filter(i => !/^(pi|e)$/i.test(i) && !new RegExp('\\b' + i + '\\s*\\(').test(src.replace(new RegExp('\\b' + i + '\\b(?!\\s*\\()', 'g'), '')));
+  const ids = [...new Set(EXPR.refs(src))].filter(i => !/^(pi|e)$/i.test(i));
+  // "Kanal ekle" ile eklenen adlar seçilen kanala bağlıdır (aynı adlı kanal başka dosyada da olsa)
+  let picks = {}; try { picks = JSON.parse(($('#exprIn') && $('#exprIn').dataset.picks) || '{}'); } catch (_) {}
+  for (const id of ids) if (!pre[id] && picks[id]) { const c = allFiles().flatMap(f => f.channels).find(c => c.uid === picks[id]); if (c) pre[id] = c; }
   const map = {};
   for (const id of ids) { const c = pre[id] || resolveChannel(id); await ensureLoaded(c); map[id] = {v: c.del ? DSP.segment(c.data, c.del, 0, c.n) : c.data, fs: c.fs, ch: c}; }
   return EXPR.run(src, {DSP, resolve: n => { if (!map[n]) throw new Error('Yüklenmemiş: ' + n); return map[n]; }});
@@ -125,7 +142,50 @@ async function runExpr() {
       const pre = {}; if ($('#exprIn').dataset.pre === 'A') { const tr = activeTrace(); if (tr && tr.ch) pre.A = tr.ch; }
       const res = await evalFormula(src, pre);
       if (typeof res === 'number') { msg.textContent = 'Sonuç (skaler): ' + res; return; }
-      const name = sanitizeName(sv('exprName') || 'formul'); S.opDesc = 'Formül: ' + src; const c = addResult(res, name, {dest: 'new'}); c.formula = src; msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
+      const name = sanitizeName(sv('exprName') || 'formul'); S.opDesc = 'Formül: ' + src; const c = addResult(res, name, {dest: 'new'}); c.formula = src; c.formulaPicks = $('#exprIn').dataset.picks || '{}'; msg.textContent = 'Eklendi: ' + name + ' (' + fmtCnt(res.v.length) + ' örnek)';
     } catch (e) { msg.textContent = 'Hata: ' + e.message; }
   });
 }
+
+/* ---- türetilmiş kanal: sil (geri alınabilir) / formülü düzenle ---- */
+function derivedTraces(chs) { const set = new Set(chs), out = []; for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) for (const ax of P.axes) ax.traces.forEach((t, k) => { if (set.has(t.ch) || set.has(t.unvCh) || set.has(t.srcCh)) out.push({P, ax, t}); }); return out; }
+function deleteDerived(chs) {
+  chs = chs.filter(c => c && c.derived && S.derived && S.derived.channels.includes(c)); if (!chs.length) return;
+  const used = derivedTraces(chs), pos = chs.map(c => S.derived.channels.indexOf(c));
+  const doIt = () => {
+    for (const u of used) { const i = u.ax.traces.indexOf(u.t); if (i >= 0) u.ax.traces.splice(i, 1); }
+    S.derived.channels = S.derived.channels.filter(c => !chs.includes(c)); for (const c of chs) S.selCh.delete(c.uid);
+    if (typeof tlvSyncSubs === 'function') try { tlvSyncSubs(); } catch (_) {}
+    renderChips(); renderTree(); refreshAll(); for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) P.invalidate();
+    logOp('derived-delete', {names: chs.map(c => c.name)});
+  };
+  const undo = () => {
+    chs.forEach((c, j) => S.derived.channels.splice(Math.min(pos[j], S.derived.channels.length), 0, c));
+    for (const u of used) if (!u.ax.traces.includes(u.t) && u.P.axes.includes(u.ax)) u.ax.traces.push(u.t);
+    renderChips(); renderTree(); refreshAll(); for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) P.invalidate();
+  };
+  const go = () => { doIt(); toast(chs.length + ' türetilmiş kanal silindi', 8000, {t: 'Geri al', fn: undo}); };
+  if (used.length) modal('Türetilmiş kanalı sil', h('div', null, `${chs.map(c => c.name).join(', ')} grafikte ${used.length} izde kullanılıyor. Silinirse izler de kaldırılır (geri alınabilir).`), [{t: 'Sil', primary: true, fn: go}, {t: 'Vazgeç'}]);
+  else go();
+}
+function editDerivedFormula(c) {
+  const ta = h('textarea', {rows: 4, style: 'width:100%;font-family:ui-monospace,Consolas,monospace'}), nm = h('input', {type: 'text', value: c.name, style: 'width:100%'}), msg = h('div', {class: 'note'});
+  ta.value = c.formula || ''; ta.dataset.picks = c.formulaPicks || '{}';
+  const body = h('div', null, h('div', {class: 'note'}, c.formula ? 'Formülü değiştirip Güncelle\'ye basın: kanal yeniden hesaplanır, grafikteki izleri de güncellenir.' : 'Bu kanal formülle oluşturulmadı (' + (c.desc || 'işlem') + '). Yeni bir formül yazarsanız kanal formül sonucuyla değiştirilir.'), h('label', null, 'Formül'), ta, h('label', null, 'Ad'), nm, msg);
+  modal('Türetilmiş kanal: ' + c.name, body, [{t: 'Güncelle', primary: true, fn: () => {
+    const src = ta.value.trim(); if (!src) { msg.textContent = 'Formül boş'; return false; }
+    (async () => {
+      try {
+        msg.textContent = 'Hesaplanıyor…'; const res = await evalFormulaFor(src, ta); msg.textContent = '';
+        if (typeof res === 'number') { msg.textContent = 'Sonuç skaler (' + res + '); kanal için dizi gerekir'; return; }
+        const s0 = res.ch; c.data = res.v; c.n = res.v.length; c.pyr = null; c._mm = null; c.del = null; c.delCount = 0;
+        if (s0 && s0.n === c.n) c.copyTiming(s0); else if (s0) { c.g = null; c.t0 = s0.t(0); if (res.fs) c.setFs(res.fs); }
+        c.formula = src; c.formulaPicks = ta.dataset.picks || '{}'; c.desc = 'Formül: ' + src; const nn = cleanName(nm.value || c.name); if (nn !== c.name) { for (const u of derivedTraces([c])) if (u.t.label === c.name) u.t.label = nn; c.name = c.rest = c.base = c.label = nn; }
+        logOp('derived-update', {name: c.name, formula: src});
+        $('#modal').classList.add('hidden'); renderTree(); refreshAll(); for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) P.invalidate(); toast(c.name + ' güncellendi');
+      } catch (e) { msg.textContent = 'Hata: ' + e.message; }
+    })();
+    return false;
+  }}, {t: 'Vazgeç'}]);
+}
+async function evalFormulaFor(src, ta) { const t = $('#exprIn'), keep = t ? t.dataset.picks : null; try { if (t) t.dataset.picks = ta.dataset.picks || '{}'; return await evalFormula(src, {}); } finally { if (t) t.dataset.picks = keep || '{}'; } }

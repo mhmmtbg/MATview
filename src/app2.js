@@ -359,7 +359,8 @@ function buildAcoustic() {
     fr('  Gürültü aralığı (s)', numIn('acN0', ''), numIn('acN1', '')),
     fr('  Kuantalama adımı', numIn('acQ', '', {min: 0, placeholder: 'yok', title: 'Sinyal kaba kuantalıysa (az sayıda ayrık seviye) ADC adımı: gürültü tabanı en az adım²/12 alınır. Otomatik temizleme doldurur.'})),
     h('div', {class: 'btns'}, btn('Görünen aralığı gürültü yap', setNoiseFromView), btn('Aralığı kaldır', () => { S.acNoise = null; $('#acN0').value = ''; $('#acN1').value = ''; acBands(); })),
-    h('div', {class: 'note'}, 'Gürültü aralığı: yalnızca arka plan gürültüsünün olduğu sessiz bir bölüm seçin. Wiener bu bölümün ortalama spektrumunu çıkarır; OM-LSA gürültüyü kayıt boyunca izler ve bu bölümü alt sınır olarak kullanır.')));
+    h('div', {class: 'note'}, 'Gürültü aralığı: yalnızca arka plan gürültüsünün olduğu sessiz bir bölüm seçin. Wiener bu bölümün ortalama spektrumunu çıkarır; OM-LSA gürültüyü kayıt boyunca izler ve bu bölümü alt sınır olarak kullanır.'),
+    h('div', {class: 'btns'}, h('button', {id: 'acCleanAdd', class: 'primary', title: 'Bu karttaki ayarlarla temizler, temiz kanalı ekler ve grafiğe çizer', onclick: acAddClean}, 'Temizle ve grafiğe ekle'))));
   r.append(card('Konuşma ve olaylar',
     fr('Ön ayar', selIn('acPreset', [['', '—'], ['clean', 'Temiz dinleme'], ['speech', 'Konuşma odaklı']], ''), h('button', {id: 'acPresetBtn', onclick: acPresetApply}, 'Uygula')),
     h('div', {class: 'fr chk', title: '100 Hz altı (uğultu, gövde titreşimi) ve 5 kHz üstü (tıslama) kesilir; konuşmanın anlaşılırlığını taşıyan bant kalır'}, h('label', {for: 'acSpOn'}, 'Konuşma bandı (100–5000 Hz)'), h('input', {type: 'checkbox', id: 'acSpOn'})),
