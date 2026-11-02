@@ -471,7 +471,7 @@ function acBarSync(P, ov) {
 // konum (sinyal saniyesi): offset + (şimdi − başlangıç) × hız; döngüde süreye göre sarılır
 function acPos() { const A = S.audio; if (!A || !A.buf) return 0; let el = A.paused ? A.offset : A.offset + (A.ctx.currentTime - A.start) * A.speed; if (A.loop) el = ((el % A.dur) + A.dur) % A.dur; return Math.max(0, Math.min(A.dur, el)); }
 function acStartAt(el) {
-  const A = S.audio; if (!A || !A.buf) return;
+  const A = S.audio; if (!A || !A.buf) return; if (A.ctx.state === 'suspended') { try { A.ctx.resume(); } catch (_) {} }
   if (A.src) { A.src.onended = null; try { A.src.stop(); } catch (e) {} }
   el = Math.max(0, Math.min(A.dur, el));
   const src = A.ctx.createBufferSource(); src.buffer = A.buf; src.loop = A.loop; src.connect(A.gain);
@@ -506,7 +506,20 @@ function acTrUI(el) {
     const sk = bar.querySelector('.acb-seek'); if (sk && on && document.activeElement !== sk) sk.value = v;
   }
 }
+// Ses çıkışı tıklama anında (kullanıcı etkileşimi geçerliyken) açılır: uzun temizleme sonrasında oluşturulan
+// AudioContext tarayıcı / WebView2 tarafından askıda bırakılır ve ses çalmaz.
+function acCtx() {
+  let c = S.acCtx; if (!c || c.state === 'closed') { c = S.acCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+  if (c.state === 'suspended') { try { c.resume(); } catch (_) {} }
+  return c;
+}
+async function acCtxReady(c) {
+  if (c.state === 'running') return true;
+  try { await Promise.race([c.resume(), sleep(1500)]); } catch (_) {}
+  return c.state === 'running';
+}
 async function acPlay(clean) {
+  const ctx0 = acCtx();
   acStop();
   await busy(clean ? 'Temizleniyor…' : 'Hazırlanıyor…', async () => {
     const p = await acPrepare(clean); $('#acLog').textContent = p.log.join('\n');
@@ -523,7 +536,8 @@ async function acPlay(clean) {
     let rate = Math.round(fs * speed);
     if (ck('acPitch') && !forced && Math.abs(speed - 1) > 1e-3 && fs >= 3000) { y = await DSPW.run('wsola', [y, fs, speed]); rate = Math.round(fs); extra.push('perde korunarak ×' + fmtNum(speed, 3)); }
     if (extra.length) $('#acLog').textContent += (p.log.length ? '\n' : '') + 'Dinleme: ' + extra.join(', ');
-    const ctx = (S.audio && S.audio.ctx) || new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') await ctx.resume();
+    const ctx = ctx0.state === 'closed' ? acCtx() : ctx0;
+    if (!(await acCtxReady(ctx))) toast('Ses çıkışı tarayıcı tarafından askıya alındı: oynatma çubuğundaki ▶ düğmesine bir kez daha tıklayın.', 7000);
     const buf = ctx.createBuffer(1, y.length, rate), d = buf.getChannelData(0);
     const sm = []; const st = Math.max(1, Math.floor(y.length / 20000)); for (let i = 0; i < y.length; i += st) sm.push(Math.abs(y[i])); sm.sort((u, v) => u - v); const pk = sm[Math.floor(sm.length * 0.999)] || 1;
     const nrm = 0.9 / pk, fade = Math.min(Math.floor(rate * 0.01), y.length >> 2);

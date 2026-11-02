@@ -45,6 +45,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.22', d: 'Akustik oynatma ve çözümleme ilerlemesi düzeltmeleri', items: [
+    'Akustik oynatma: ses çıkışı düğmeye tıklandığı anda açılır. Uzun hazırlık / temizleme sonrasında açılan ses çıkışı tarayıcı ya da MATView.exe tarafından askıda bırakıldığı için ses çalmıyordu; askıda kalırsa uyarı gösterilir ve ▶ ile yeniden başlatılabilir.',
+    'MATView.exe: yerel pencerede ses kullanıcı etkileşimi beklenmeden çalabilir.',
+    'Telemetri: “Çöz ve MATView\'de aç” / “Çöz ve dosyalara yaz” sürerken ilerleme çubuğu, durum ve Durdur düğmesi ⋯ menüsüne gizlenmez, üst çubukta görünür kalır.']},
   {v: '2.21', d: 'Dışa aktar menüsü, tablo sıralama, değer listesi süzgeci, klasördeki .m dosyaları', items: [
     'Görünüm çubuğundaki aynı görünen Rapora ekle / PNG / SVG düğmeleri tek “Dışa aktar” düğmesinde toplandı; seçeneklerin her birinin kendi simgesi var.',
     'Tablolarda sütun başlığına tıklayınca sıralanır (artan → azalan → ilk sıra); sıralanan sütunda ▲ / ▼ işareti görünür.',

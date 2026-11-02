@@ -9012,6 +9012,12 @@ try { if (window.parent !== window && window.parent.MATViewTLM) window.parent.MA
   // menüye taşıma önceliği (büyük önce): sağdaki pencere düğmeleri, sonra kayıt / Excel, en son çözümleme düğmeleri
   [['#btnSettingsTab', 6], ['#tlLogBtn', 6], ['#tlVideoBtn', 6], ['#lvRawToggle', 6], ['#tlStatusBtn', 6], ['#lvRec', 5], ['#tlFrameXls', 5], ['#lvConnBadge', 4], ['#liveTabDot', 4], ['#tlFilesSum', 4], ['#runState', 3], ['#tlProg', 3], ['#btnStop', 3], ['#lvDisconnect', 2], ['#tlFrameBadge', 2], ['#btnRun', 1], ['#btnRunMv', 1]].forEach(function (a) { var e = $q(a[0]); if (e) e.setAttribute('data-ovp', a[1]); });
   var tb = $q('#mainTabs'); if (tb) MVUI.ovbar(tb, { keep: '[data-ovkeep], [hidden]', btnClass: 'btn sm' });
+  // çözümleme sürerken ilerleme çubuğu, durum ve Durdur düğmesi ⋯ menüsüne taşınmaz (her zaman görünür); boşta eski önceliklerine döner
+  var stopB = $q('#btnStop');
+  if (tb && stopB) {
+    var progE = $q('#tlProg'), runKeep = function () { var on = !stopB.disabled || (progE && !progE.classList.contains('hidden')); ['#tlProg', '#runState', '#btnStop'].forEach(function (q) { var e = $q(q); if (e) { if (on) e.setAttribute('data-ovkeep', ''); else e.removeAttribute('data-ovkeep'); } }); if (tb._ov) tb._ov.fit(); };
+    var mo = new MutationObserver(function () { mo.takeRecords(); runKeep(); }); mo.observe(stopB, { attributes: true, attributeFilter: ['disabled'] }); if (progE) mo.observe(progE, { attributes: true, attributeFilter: ['class'] }); runKeep();
+  }
   var dh = $q('#tlData .tl-dh');
   if (dh) {
     var pr = function (q, p) { var e = dh.querySelector(q); if (e) e.setAttribute('data-ovp', p); };
