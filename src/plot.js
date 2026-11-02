@@ -1,5 +1,20 @@
 /* Grafik motoru: Canvas, MATLAB benzeri etkileşim, büyük veri için min/max inceltme */
-const PAL = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E', '#77AC30', '#4DBEEE', '#A2142F'];
+// birbirinden kolay ayırt edilen 12 renk (açık ve koyu temada okunur); ton aralıkları geniş tutuldu
+const PAL = ['#1f77b4', '#d62728', '#2ca02c', '#ff7f0e', '#9467bd', '#17becf', '#8c564b', '#e377c2', '#bcbd22', '#7f7f7f', '#00a087', '#f0c419'];
+const DASHES = [[], [7, 4], [2, 3], [9, 3, 2, 3]];
+// aynı alt grafikte otomatik renkli izler farklı renk alır; 12 renk bitince kesikli / noktalı çizgi devreye girer
+function distinctColors(ax) {
+  const used = new Map(); for (const t of ax.traces) if (!t.autoColor) used.set(t.color + '|' + (t.dash || []).join(','), 1);
+  let k = 0;
+  for (const t of ax.traces) {
+    if (!t.autoColor) continue;
+    let key = t.color + '|' + (t.dash || []).join(',');
+    if (used.has(key) || !PAL.includes(t.color)) {
+      for (; k < PAL.length * DASHES.length; k++) { const c = PAL[k % PAL.length], d = DASHES[Math.floor(k / PAL.length)], kk = c + '|' + d.join(','); if (!used.has(kk)) { t.color = c; t.dash = d.length ? d : null; key = kk; break; } }
+    }
+    used.set(key, 1);
+  }
+}
 const THEMES = {
   light: {bg: '#ffffff', fg: '#1b1f24', axis: '#3a3f45', grid: '#e3e6ea', minor: '#f0f2f4', muted: '#6b7280', box: '#ffffff', sel: '#d62728', acc: '#0072BD'},
   dark: {bg: '#16191d', fg: '#e6e8eb', axis: '#aab0b8', grid: '#2c3137', minor: '#22262b', muted: '#8b929b', box: '#1e2227', sel: '#ff6b6b', acc: '#3b9ae1'}
@@ -275,7 +290,8 @@ class Plot {
     // izler
     ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
     ax._lab = [];
-    for (let k = 0; k < ax.traces.length; k++) { const tr = ax.traces[k]; if (!tr.visible) continue; if (tr.yr) this._r(ax, () => drawTrace(ctx, tr, ax, this, T)); else drawTrace(ctx, tr, ax, this, T); }
+    distinctColors(ax);
+    for (let k = 0; k < ax.traces.length; k++) { const tr = ax.traces[k]; if (!tr.visible) continue; ctx.setLineDash(tr.dash || []); if (tr.yr) this._r(ax, () => drawTrace(ctx, tr, ax, this, T)); else drawTrace(ctx, tr, ax, this, T); ctx.setLineDash([]); }
     ctx.restore(); ctx.save();
     // çerçeve ve tikler
     ctx.strokeStyle = T.axis; ctx.strokeRect(r.x + .5, r.y + .5, r.w, r.h);
@@ -315,7 +331,7 @@ class Plot {
         const cn = this.lgCorner || 'tr', bw = wmax + 34, bh = vis.length * lh + 6, lp = ax.lgPos || {dx: 0, dy: 0}, bx0 = cn[1] === 'l' ? r.x + 6 + lp.dx : r.x + r.w - bw - 6 + lp.dx, by0 = cn[0] === 'b' ? r.y + r.h - bh - 6 + lp.dy : r.y + 6 + lp.dy, bx = Math.max(r.x, Math.min(r.x + r.w - bw, bx0)), by = Math.max(r.y, Math.min(r.y + r.h - bh, by0));
         ctx.globalAlpha = .92; ctx.fillStyle = T.box; ctx.fillRect(bx, by, bw, bh); ctx.globalAlpha = 1;
         ctx.strokeStyle = T.grid; ctx.strokeRect(bx + .5, by + .5, bw, bh);
-        vis.forEach((t, i) => { const y = by + 3 + lh / 2 + i * lh; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
+        vis.forEach((t, i) => { const y = by + 3 + lh / 2 + i * lh; ctx.strokeStyle = t.color; ctx.lineWidth = 2; ctx.setLineDash(t.dash || []); ctx.beginPath(); ctx.moveTo(bx + 6, y); ctx.lineTo(bx + 22, y); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1; ctx.fillStyle = T.fg; ctx.fillText(lbl.get(t), bx + 28, y); });
       }
     }
     ctx.restore();

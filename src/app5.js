@@ -85,7 +85,7 @@ function ctxMenu(x, y, items) {
 }
 function traceMenu(P, ax, k, x, y) {
   const tr = ax.traces[k], items = [{t: tr.visible ? 'Gizle' : 'Göster', ic: 'eye', fn: () => { tr.visible = !tr.visible; P.invalidate(); afterStruct(P); }},
-    {t: 'Rengi değiştir…', ic: 'palette', fn: () => { const c = h('input', {type: 'color', value: tr.color, style: 'position:fixed;left:-99px'}); document.body.append(c); c.oninput = () => { tr.color = c.value; P.invalidate(); }; c.onchange = () => { c.remove(); afterStruct(P); }; c.click(); }},
+    {t: 'Rengi değiştir…', ic: 'palette', fn: () => { const c = h('input', {type: 'color', value: tr.color, style: 'position:fixed;left:-99px'}); document.body.append(c); c.oninput = () => { tr.color = c.value; tr.autoColor = false; tr.dash = null; P.invalidate(); }; c.onchange = () => { c.remove(); afterStruct(P); }; c.click(); }},
     ...(P === S.plot && tr.ch ? [{t: 'Spektrum (yalnız bu iz)', ic: 'unv', fn: () => graphSpectrum(ax, tr)}, {t: 'Spektrogram (bu iz)', ic: 'sgram', fn: () => graphSpectrogram(ax, tr)}, '-'] : []),
     {t: 'Çizgi: ince', fn: () => { tr.width = .75; P.invalidate(); }}, {t: 'Çizgi: orta', fn: () => { tr.width = 1.5; P.invalidate(); }}, {t: 'Çizgi: kalın', fn: () => { tr.width = 3; P.invalidate(); }}, '-',
     {t: 'İzi kaldır', ic: 'trash', fn: () => removeTraceUndo(P, ax, k)}];
@@ -112,7 +112,7 @@ function syncOverlay(P) {
   const ov = ensureOv(P);
   if (!P.axes.length || !P.axes[0].rect || !P.W) { if (ov.firstChild) { ov.replaceChildren(); ov._parts = []; ov._sig = ''; } return; }
   ov.style.height = P.H + 'px';
-  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + (P.lgSize || 'm') + (P.lgCorner || 'tr') + P.gridCols() + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
+  const sig = P.axes.length + '|' + (P.legend ? 1 : 0) + (P.lgSize || 'm') + (P.lgCorner || 'tr') + P.gridCols() + '|' + P.axes.map(a => (a === P.active ? 'A' : '') + (a.lgMin ? 'm' : '') + a.traces.map(t => t.label + t.color + (t.dash ? 'd' + t.dash.join('') : '') + (t.visible ? 1 : 0) + (t.yr ? 'R' : '')).join('|') + ':' + (a.active || 0)).join(';');
   if (sig !== ov._sig) { ov._sig = sig; buildOv(P, ov); }
   if (P === S.plot && typeof acBarSync === 'function') acBarSync(P, ov);
   for (const p of ov._parts) { p.upd(); if (p.cor && p.ax.rect) { const r = p.ax.rect; p.cor.style.left = r.x + r.w - 12 + 'px'; p.cor.style.top = r.y + r.h - 12 + 'px'; } }
@@ -156,7 +156,7 @@ function buildOv(P, ov) {
       ax.traces.forEach((tr, k) => {
         if (tr.noLegend) return;
         const ex = h('span', {class: 'ex'}), x = h('button', {class: 'ib x', title: 'İzi kaldır', 'aria-label': 'İzi kaldır'}); x.innerHTML = ic('close', 10);
-        const row = h('div', {class: 'lrow' + (tr.visible ? '' : ' off') + (P.active === ax && k === (ax.active || 0) ? ' cur' : ''), draggable: main ? 'true' : null, tabindex: 0, title: 'Tıkla: göster/gizle · Sağ tık: seçenekler' + (main ? ' · Sürükle: başka alt grafiğe taşı' : '')}, h('span', {class: 'sw', style: 'background:' + tr.color}), h('span', {class: 'nm'}, tr.label), ...(tr.yr ? [h('span', {class: 'yr', title: 'Sağ Y ekseni'}, 'R')] : []), ex, x);
+        const row = h('div', {class: 'lrow' + (tr.visible ? '' : ' off') + (P.active === ax && k === (ax.active || 0) ? ' cur' : ''), draggable: main ? 'true' : null, tabindex: 0, title: 'Tıkla: göster/gizle · Sağ tık: seçenekler' + (main ? ' · Sürükle: başka alt grafiğe taşı' : '')}, h('span', {class: 'sw', style: tr.dash ? 'background:repeating-linear-gradient(90deg,' + tr.color + ' 0 ' + tr.dash[0] + 'px,transparent ' + tr.dash[0] + 'px ' + (tr.dash[0] + tr.dash[1]) + 'px)' : 'background:' + tr.color}), h('span', {class: 'nm'}, tr.label), ...(tr.yr ? [h('span', {class: 'yr', title: 'Sağ Y ekseni'}, 'R')] : []), ex, x);
         row.onclick = e => { if (e.target.closest('.x')) return; tr.visible = !tr.visible; ax.active = k; P.active = ax; P.invalidate(); afterStruct(P); };
         row.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); } else if (e.key === 'Delete') removeTraceUndo(P, ax, k); };
         x.onclick = e => { e.stopPropagation(); removeTraceUndo(P, ax, k); };
