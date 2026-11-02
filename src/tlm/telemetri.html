@@ -600,6 +600,11 @@ main.tl-main > #lvRawCard { flex: none; }
 .lvf-pop.hidden { display: none; }
 .lvf-pop .lvf-h { font-weight: 600; }
 .lvf-pop .inp { height: 26px; width: 100%; box-sizing: border-box; }
+.lvf-pop .lvf-s { display: flex; gap: 4px; }
+.lvf-pop .lvf-s .btn { flex: 1; }
+.lvf-pop .lvf-s .btn.on { color: var(--accent); border-color: var(--accent); }
+.lv-table th .lvs { margin-left: 3px; font-size: 9px; color: var(--accent); }
+.lv-table th.mv.srt { color: var(--text); }
 .lvf-pop .lvf-r { display: flex; justify-content: space-between; align-items: center; color: var(--muted); }
 .tl-data .lv-wrap { flex: 1; max-height: none; min-height: 120px; border: none; border-radius: 0 0 var(--radius) var(--radius); }
 /* işlem düğmeleri sağda sabit: tablo yatay kaydırılsa da görünür */
@@ -5852,7 +5857,8 @@ function compileAll() { syncWork(); for (var i = 0; i < work.length; i++) compil
 
 /* ---------- canlı durum ---------- */
 var liveState = [], hist = [], chartKeys = {}, expanded = {}, charts = [], vfigs = [];
-var liveTab = 0, filterText = '', visible = false, colFlt = {}, lvRowCount = 0;   // colFlt: sütun anahtarı → içeren metin (başlık süzgeci)
+var liveTab = 0, filterText = '', visible = false, colFlt = {}, colEq = {}, lvSort = null, lvRowCount = 0, lvRzT = 0;   // colEq: sütun → seçilen değer (tam eşleşme); lvSort: {key, dir}
+   // colFlt: sütun anahtarı → içeren metin (başlık süzgeci)
 var conn = null, connState = 'idle', scanner = null, colDrop = null, tbuf = null, idMap = {}, cntReader = null, cntMod = 0, scanBase = 0;
 // paused: görüntü duraklatıldı (dosyadan oynatmada akış da durur); scrubbing: seçilen tek çerçeve çözülüyor
 var paused = false, scrubbing = false;
@@ -6499,11 +6505,19 @@ function renderTable() {
     if (usel && !usel.has(row[11] || row[0])) return;
     if (ft2 && (row[0] + ' ' + row[11] + ' ' + row[2]).toLowerCase().indexOf(ft2) < 0) return;
     for (var fk in colFlt) { var fc = COLMAP[fk]; if (fc && fc.tpl != null && String(row[fc.tpl] == null ? '' : row[fc.tpl]).toLocaleLowerCase('tr').indexOf(colFlt[fk]) < 0) return; }
+    for (var ek in colEq) { var ec = COLMAP[ek]; if (ec && ec.tpl != null && String(row[ec.tpl] == null ? '' : row[ec.tpl]).trim() !== colEq[ek]) return; }
     var n = countOf(defOf(id));
     rowIndex.set(id, items.length);
     items.push({ id: id, k: k, n: n, sub: false, h: ROW_H });
     if (n > 1 && expanded[liveTab + ':' + id]) items.push({ id: id, k: k, n: n, sub: true, h: estimateSubH(n, perRowOf(id)) });
   });
+  if (lvSort && COLMAP[lvSort.key] && COLMAP[lvSort.key].tpl != null) {   // başlığa tıklayarak sıralama (alt satırlar üst satırıyla birlikte; sayfa işaretleri gizlenir)
+    var stpl = COLMAP[lvSort.key].tpl, groups = [], grp = null;
+    items.forEach(function (it) { if (it.mark) return; if (it.sub) { if (grp) grp.push(it); return; } grp = [it]; groups.push(grp); });
+    groups.forEach(function (g, i) { var v = w.rows[g[0].k + 1][stpl]; v = v == null ? '' : String(v).trim(); var t = v.replace(',', '.'); g.s = v; g.n = /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(t) ? parseFloat(t) : NaN; g.i = i; });
+    groups.sort(function (a, b) { if (a.s === '' || b.s === '') return a.s === b.s ? a.i - b.i : a.s === '' ? 1 : -1; var c = !isNaN(a.n) && !isNaN(b.n) ? a.n - b.n : !isNaN(a.n) ? -1 : !isNaN(b.n) ? 1 : a.s.localeCompare(b.s, 'tr', { numeric: true }); return c * lvSort.dir || a.i - b.i; });
+    items = []; rowIndex = new Map(); groups.forEach(function (g) { g.forEach(function (it) { if (!it.sub) rowIndex.set(it.id, items.length); items.push(it); }); });
+  }
   if (S().live.pinCharted) {   // grafikte açık parametreler en üste (alt satırlarıyla birlikte)
     var pin = [], rest = [];
     items.forEach(function (it) { (chartedId(liveTab, it.id) ? pin : rest).push(it); });
@@ -6511,7 +6525,7 @@ function renderTable() {
   }
   lvRowCount = items.filter(function (it) { return !it.sub && !it.sep && !it.mark; }).length;
   var h = '<table class="lv-table" style="width:' + tw + 'px"><colgroup><col style="width:104px">' + cols.map(function (cd) { return '<col data-col="' + cd.key + '" style="width:' + colW(cd.key) + 'px">'; }).join('') + '<col style="min-width:108px"></colgroup><thead><tr><th class="fix">#</th>';
-  cols.forEach(function (cd) { h += '<th class="mv' + (colFlt[cd.key] ? ' tf-on' : '') + '" draggable="true" data-col="' + cd.key + '" title="' + esc(cd.label) + ' — sürükleyerek taşıyın, sağ tıklayarak gizleyin">' + esc(cd.label) + (cd.tpl != null ? '<span class="lvf" data-f="' + cd.key + '" draggable="false" title="Bu sütuna göre süz">▾</span>' : '') + '<span class="rz" title="Sürükleyerek genişliği değiştirin, çift tıklayarak içeriğe sığdırın"></span></th>'; });
+  cols.forEach(function (cd) { var srt = lvSort && lvSort.key === cd.key ? lvSort.dir : 0; h += '<th class="mv' + (colFlt[cd.key] || colEq[cd.key] != null ? ' tf-on' : '') + (srt ? ' srt' : '') + '" draggable="true" data-col="' + cd.key + '" title="' + esc(cd.label) + (cd.tpl != null ? ' — tıklayarak sıralayın, ' : ' — ') + 'sürükleyerek taşıyın, sağ tıklayarak gizleyin">' + esc(cd.label) + (srt ? '<span class="lvs">' + (srt > 0 ? '▲' : '▼') + '</span>' : '') + (cd.tpl != null ? '<span class="lvf" data-f="' + cd.key + '" draggable="false" title="Bu sütuna göre süz">▾</span>' : '') + '<span class="rz" title="Sürükleyerek genişliği değiştirin, çift tıklayarak içeriğe sığdırın"></span></th>'; });
   h += '<th></th></tr></thead><tbody><tr class="vsp"><td colspan="' + ncols + '"></td></tr><tr class="vsp"><td colspan="' + ncols + '"></td></tr></tbody></table>';
   if (!w.ids.length) h += '<div class="lv-empty">Template\'te satır yok. <b>Satır Ekle</b> ile başlayın.</div>';
   else if (!items.length) h += '<div class="lv-empty">Seçili etiketlerde veya aramayla eşleşen satır yok.</div>';
@@ -8141,6 +8155,13 @@ document.addEventListener('mouseup', function () {
   var r = colRz; colRz = null;
   r.h.classList.remove('active'); document.body.classList.remove('col-resizing');
   if (Math.round(r.w) !== Math.round(r.w0)) setColW(r.key, r.w);
+  lvRzT = Date.now();
+});
+// başlığa tıklama: artan → azalan → sırasız (yalnız template sütunları)
+$('#lvWrap').addEventListener('click', function (e) {
+  var th = e.target.closest && e.target.closest('th[data-col]'); if (!th || e.target.closest('.lvf') || e.target.closest('.rz') || Date.now() - lvRzT < 300) return;
+  var key = th.dataset.col, cd = COLMAP[key]; if (!cd || cd.tpl == null) return;
+  lvSort = !lvSort || lvSort.key !== key ? { key: key, dir: 1 } : lvSort.dir > 0 ? { key: key, dir: -1 } : null; renderTable();
 });
 $('#lvWrap').addEventListener('dblclick', function (e) {
   var h = e.target.closest('.rz'); if (!h) return;
@@ -8600,6 +8621,11 @@ window.TPLive = {
   // başlık süzgeci: colFilter(key) okur, colFilter(key, metin) yazar ve tabloyu yeniler
   colFilter: function (k, v) { if (arguments.length < 2) return colFlt[k] || ''; v = String(v || '').trim().toLocaleLowerCase('tr'); if (v) colFlt[k] = v; else delete colFlt[k]; $('#lvWrap').scrollTop = 0; renderTable(); return v; },
   rowCount: function () { return lvRowCount; },
+  // değer listesi süzgeci: colEqual(key) okur, colEqual(key, değer|null) yazar; colValues(key) → [{v, n}] (o sütundaki farklı değerler)
+  colEqual: function (k, v) { if (arguments.length < 2) return colEq[k] != null ? colEq[k] : null; if (v == null) delete colEq[k]; else colEq[k] = String(v); $('#lvWrap').scrollTop = 0; renderTable(); return colEq[k] != null ? colEq[k] : null; },
+  colValues: function (k) { var cd = COLMAP[k], w = work[liveTab]; if (!cd || cd.tpl == null || !w || !w.rows) return []; var m = new Map(); w.ids.forEach(function (id, i) { var row = w.rows[i + 1]; if (TP.isSheetMark(row)) return; var v = row[cd.tpl] == null ? '' : String(row[cd.tpl]).trim(); m.set(v, (m.get(v) || 0) + 1); });
+    return Array.from(m, function (e) { return { v: e[0], n: e[1] }; }).sort(function (a, b) { var x = parseFloat(a.v), y = parseFloat(b.v); return !isNaN(x) && !isNaN(y) && /^[-+.\d]/.test(a.v) && /^[-+.\d]/.test(b.v) ? x - y : a.v.localeCompare(b.v, 'tr', { numeric: true }); }); },
+  colSort: function (k, dir) { if (arguments.length < 1) return lvSort ? { key: lvSort.key, dir: lvSort.dir } : null; lvSort = dir ? { key: k, dir: dir > 0 ? 1 : -1 } : null; renderTable(); return lvSort; },
   // ayar JSON'una kaydedilmemiş çalışma kopyaları da yazılır; içe aktarılınca aynı çerçeve tipine geri yüklenir
   exportWork: function () { return work.map(function (w) { return w && w.dirty && w.rows ? { rows: w.rows } : null; }); },
   importWork: function (list) {
@@ -8958,14 +8984,20 @@ try { if (window.parent !== window && window.parent.MATViewTLM) window.parent.MA
   document.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('.lvf'); if (!b) return; e.preventDefault(); e.stopPropagation();
     var key = b.dataset.f, api = window.TPLive; if (!api || !api.colFilter) return;
-    pop.innerHTML = '<div class="lvf-h"></div><input type="search" class="inp" placeholder="İçeren metin…"><div class="lvf-r"><span class="lvf-n"></span><button type="button" class="btn sm">Temizle</button></div>';
-    pop.querySelector('.lvf-h').textContent = b.parentElement.textContent.replace(/▾/g, '').trim();
+    pop.innerHTML = '<div class="lvf-h"></div><select class="inp lvf-sel" title="Bu sütunda bulunan değerlerden birini seçin"></select><input type="search" class="inp" placeholder="ya da içeren metin…"><div class="lvf-s"><button type="button" class="btn sm" data-d="1">▲ Artan</button><button type="button" class="btn sm" data-d="-1">▼ Azalan</button></div><div class="lvf-r"><span class="lvf-n"></span><button type="button" class="btn sm lvf-clr">Temizle</button></div>';
+    pop.querySelector('.lvf-h').textContent = b.parentElement.textContent.replace(/[▾▲▼]/g, '').trim();
+    var sel = pop.querySelector('select'), vals = api.colValues ? api.colValues(key) : [], cur = api.colEqual ? api.colEqual(key) : null;
+    var o0 = document.createElement('option'); o0.value = '\u0000'; o0.textContent = 'Tüm değerler (' + vals.length + ')'; sel.appendChild(o0);
+    vals.slice(0, 2000).forEach(function (x) { var o = document.createElement('option'); o.value = x.v; o.textContent = (x.v === '' ? '(boş)' : x.v) + '  · ' + x.n; sel.appendChild(o); });
+    sel.value = cur != null ? cur : '\u0000';
     var inp = pop.querySelector('input'); inp.value = api.colFilter(key) || '';
     var cnt = function () { pop.querySelector('.lvf-n').textContent = api.rowCount() + ' satır'; };
+    sel.addEventListener('change', function () { api.colEqual(key, sel.value === '\u0000' ? null : sel.value); cnt(); });
     inp.addEventListener('input', function () { api.colFilter(key, inp.value); cnt(); });
-    pop.querySelector('button').addEventListener('click', function () { api.colFilter(key, ''); pop.classList.add('hidden'); });
+    pop.querySelectorAll('[data-d]').forEach(function (q) { var d = +q.dataset.d, s0 = api.colSort(); if (s0 && s0.key === key && s0.dir === d) q.classList.add('on'); q.addEventListener('click', function () { var s1 = api.colSort(); api.colSort(key, s1 && s1.key === key && s1.dir === d ? 0 : d); pop.classList.add('hidden'); }); });
+    pop.querySelector('.lvf-clr').addEventListener('click', function () { api.colFilter(key, ''); api.colEqual(key, null); var s1 = api.colSort(); if (s1 && s1.key === key) api.colSort(key, 0); pop.classList.add('hidden'); });
     pop.classList.remove('hidden'); var r = b.getBoundingClientRect(); pop.style.top = Math.round(r.bottom + 3) + 'px'; pop.style.left = Math.round(Math.max(4, Math.min(r.left - 120, innerWidth - 230))) + 'px';
-    cnt(); inp.focus();
+    cnt(); sel.focus();
   }, true);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') pop.classList.add('hidden'); });
   if (window.MVUI && MVUI.tableFilters) MVUI.tableFilters(document);

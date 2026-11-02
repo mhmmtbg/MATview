@@ -280,8 +280,10 @@ function codeLint(text) {
     add('e', line, msg); return out;
   }
   // diğer sekmelerdeki işlev dosyaları ve çalışma alanı değişkenleri bilinir
-  const ext = new Set(); for (const d of CODE.docs || []) { const nm = String(d.name || '').replace(/\.m$/i, ''); if (nm) ext.add(nm); const mm = /^\s*function\s+(?:\[[^\]]*\]\s*=\s*|\w+\s*=\s*)?(\w+)/gm; let r; while ((r = mm.exec(d.text || ''))) ext.add(r[1]); }
+  const ext = new Set(), extL = new Set(); { const mi = typeof wspMNames === 'function' ? wspMNames() : null; if (mi) for (const k of mi.keys()) extL.add(k); }
+  for (const d of CODE.docs || []) { const nm = String(d.name || '').replace(/\.m$/i, ''); if (nm) ext.add(nm); const mm = /^\s*function\s+(?:\[[^\]]*\]\s*=\s*|\w+\s*=\s*)?(\w+)/gm; let r; while ((r = mm.exec(d.text || ''))) ext.add(r[1]); }
   for (const v of CODE.ws || []) if (v && v.name) ext.add(v.name);
+  for (const n of ext) extL.add(n.toLowerCase());
   const fnames = new Set((ast.funcs || []).map(f => f.name));
   function scan(body, sc) {
     const defs = new Map(), uses = [], prints = [];
@@ -310,9 +312,9 @@ function codeLint(text) {
   function check(body, base, isFn, f) {
     const sc = new Set(base), r = scan(body, sc), defs = new Set([...sc, ...r.defs.keys()]), used = new Set(r.uses.map(u => u.n)), seen = new Set();
     for (const u of r.uses) {
-      if (defs.has(u.n) || known.has(u.n) || ext.has(u.n) || fnames.has(u.n)) continue;
+      if (defs.has(u.n) || known.has(u.n) || ext.has(u.n) || fnames.has(u.n) || extL.has(u.n.toLowerCase())) continue;
       const k = u.n + '@' + u.line; if (seen.has(k)) continue; seen.add(k);
-      add('w', u.line, `'${u.n}' tanımsız: değişken ya da işlev bulunamadı` + (u.fn ? ' (kendi işlevinizse .m dosyasını Kod sekmesinde açın)' : ''), lintFind(text, starts, u.line, u.n));
+      add('w', u.line, `'${u.n}' tanımsız: değişken ya da işlev bulunamadı` + (u.fn ? ' (kendi işlevinizse .m dosyasını Kod sekmesinde açın ya da bulunduğu klasörü Klasör panelinde açın)' : ''), lintFind(text, starts, u.line, u.n));
     }
     for (const [n, line] of r.defs) {
       if (known.has(n) && !LINT_EXTRA.includes(n) && !fnames.has(n)) add('w', line, `'${n}' yerleşik işlevini gölgeliyor: bu ad artık işlev olarak çağrılamaz`, lintFind(text, starts, line, n));

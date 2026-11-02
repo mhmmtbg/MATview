@@ -101,7 +101,7 @@ async function wspLoad() {
   items.sort((a, b) => a.dir !== b.dir ? (a.dir ? -1 : 1) : coll.compare(a.name, b.name));
   const prev = WSP.items[WSP.sel] && WSP.items[WSP.sel].name;
   WSP.items = items; WSP.loading = false; WSP.sel = prev ? items.findIndex(x => x.name === prev) : -1;
-  wspRender(); return true;
+  wspRender(); WSP.mIdx = null; WSP._mIdxP = null; setTimeout(() => wspMIndex(), 0); return true;
 }
 async function wspCheckWrite(ask) {
   WSP.writeOk = false; if (WSP.mode !== 'handle') return false;
@@ -172,7 +172,7 @@ function wspItem(name) {
 async function wspFileOf(item) {
   if (item.dir) throw new Error(item.name + ' bir klasör');
   if (item.file) return item.file;
-  const f = WSP.mode === 'handle' ? await item.h.getFile() : await wspReadPath(wspJoin(WSP.path, item.name), item.name);
+  const f = WSP.mode === 'handle' ? await item.h.getFile() : await wspReadPath(wspJoin(WSP.path, item.rel || item.name), item.name);
   if (WSP.mode === 'handle') item.file = f;   // disk üzerindeki File: önbellek ucuz
   return f;
 }
@@ -271,25 +271,47 @@ function wspFolderInfo() {
   return {dir: wspDir(), items: WSP.items.map(x => ({name: x.name, dir: !!x.dir, size: x.size || 0, mtime: x.mtime || 0, date: x.mtime ? new Date(x.mtime).toLocaleString('tr-TR') : ''}))};
 }
 async function wspText(item) {
-  const k = wspSrcKey(wspSrcFor(item.name)) + '|' + item.size + '|' + item.mtime;
+  const k = wspSrcKey(wspSrcFor(item.rel || item.name)) + '|' + item.size + '|' + item.mtime;
   if (WSP.textCache.has(k)) return WSP.textCache.get(k);
   const t = (await codeReadM(await wspFileOf(item))).replace(/\r\n?/g, '\n');
   if (WSP.textCache.size > 400) WSP.textCache.clear(); WSP.textCache.set(k, t); return t;
 }
-// Klasördeki .m dosyalarını MATLAB yolu gibi kullan: koddan adıyla çağrılan işlev/betikleri ekle
+// Klasör (ve alt klasörleri) içindeki .m dosyalarının dizini: ad (küçük harf) → öğe. Geçerli klasördeki dosya önceliklidir.
+const WSP_MSKIP = /^(\.|node_modules$|__pycache__$|\$RECYCLE\.BIN$|System Volume Information$)/i;
+async function wspListSub(it, rel) {
+  if (WSP.mode === 'handle') { const out = []; for await (const [name, hh] of it.h.entries()) out.push({name, dir: hh.kind === 'directory', h: hh, size: null, mtime: 0}); return out; }
+  return wspListPath(wspJoin(WSP.path, rel));
+}
+function wspMIndex(force) {
+  if (!WSP.mode) return Promise.resolve(null); const dir = wspDir() + '|' + WSP.items.length;
+  if (!force && WSP.mIdx && WSP.mIdx.dir === dir) return Promise.resolve(WSP.mIdx.map);
+  if (!force && WSP._mIdxP && WSP._mIdxP.dir === dir) return WSP._mIdxP.p;
+  const p = (async () => {
+    const map = new Map(), add = (it, rel) => { if (it.dir || !/^[A-Za-z]\w*\.m$/i.test(it.name)) return; const k = it.name.slice(0, -2).toLowerCase(); if (!map.has(k)) map.set(k, Object.assign({}, it, {rel})); };
+    for (const it of WSP.items) add(it, it.name);
+    const q = WSP.items.filter(x => x.dir && !WSP_MSKIP.test(x.name)).map(x => ({it: x, rel: x.name, d: 1})); let nd = 0, nf = 0;
+    while (q.length && nd < 200 && nf < 20000) { const {it, rel, d} = q.shift(); nd++; let items; try { items = await wspListSub(it, rel); } catch (_) { continue; } nf += items.length;
+      for (const c of items) { const r = rel + (WSP.mode === 'path' ? wspSep(WSP.path) : '/') + c.name; if (c.dir) { if (d < 4 && !WSP_MSKIP.test(c.name)) q.push({it: c, rel: r, d: d + 1}); } else add(c, r); } }
+    if (wspDir() + '|' + WSP.items.length === dir) { WSP.mIdx = {dir, map}; if (typeof lintSchedule === 'function' && document.querySelector('#codeEd')) lintSchedule(); }
+    return map;
+  })();
+  WSP._mIdxP = {dir, p}; return p;
+}
+const wspMNames = () => WSP.mode && WSP.mIdx && WSP.mIdx.dir === wspDir() + '|' + WSP.items.length ? WSP.mIdx.map : (WSP.mode && wspMIndex(), null);
+// Klasördeki .m dosyalarını MATLAB yolu gibi kullan: koddan adıyla çağrılan işlev/betikleri ekle (alt klasörler dahil, büyük/küçük harf duyarsız)
 async function wspCodeLibs(allSrc, libs, scripts, docIdx) {
   if (!WSP.mode || !WSP.items.length) return allSrc;
-  const open = new Set(CODE.docs.map(d => d.name.replace(/\.m$/i, '')));
-  const ms = new Map(); for (const it of WSP.items) if (!it.dir && /^[A-Za-z]\w*\.m$/.test(it.name)) { const b = it.name.slice(0, -2); if (!open.has(b)) ms.set(b, it); }
+  const open = new Set(CODE.docs.map(d => d.name.replace(/\.m$/i, '').toLowerCase()));
+  const idx = await wspMIndex() || new Map(), ms = new Map(); for (const [k, it] of idx) if (!open.has(k)) ms.set(k, it);
   const cur = CODE.docs[docIdx]; if (cur) await wspFigFor(cur.name);
   if (!ms.size) return allSrc;
   const done = new Set(); let queue = [allSrc], n = 0, bytes = 0;
   while (queue.length && n < 300 && bytes < 2e7) {
     const src = queue.shift(), words = new Set(src.match(/[A-Za-z]\w*/g) || []);
     for (const w of words) {
-      const it = ms.get(w); if (!it || done.has(w)) continue; done.add(w);
+      const lw = w.toLowerCase(), it = ms.get(lw); if (!it || done.has(lw)) continue; done.add(lw);
       let t; try { t = await wspText(it); } catch (_) { continue; }
-      n++; bytes += t.length; if (codeIsFuncFile(t)) libs.push({name: it.name, text: t}); else scripts[w] = t;
+      n++; bytes += t.length; if (codeIsFuncFile(t)) libs.push({name: it.name, text: t}); else { scripts[it.name.slice(0, -2)] = t; scripts[w] = t; }
       allSrc += '\n' + t; queue.push(t); await wspFigFor(it.name);
     }
   }

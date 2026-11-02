@@ -40,7 +40,7 @@ async def main():
         await f.evaluate("document.querySelector('#lvWrap th[data-col=unit] .lvf').click()"); await f.fill('.lvf-pop input', 'motor'); await pg.wait_for_timeout(200)
         n1 = await f.evaluate("TPLive.rowCount()"); print('telemetri satır', n0, '→', n1); ok(0 < n1 < n0, 'telemetri sütun süzgeci')
         ok(await f.evaluate("document.querySelector('#lvWrap th[data-col=unit]').classList.contains('tf-on')"), 'telemetri etkin işaret')
-        await f.click('.lvf-pop button'); ok(await f.evaluate("TPLive.rowCount()") == n0, 'telemetri süzgeç temizle')
+        await f.click('.lvf-pop .lvf-clr'); ok(await f.evaluate("TPLive.rowCount()") == n0, 'telemetri süzgeç temizle')
         ok(not errs, 'sayfa hatası ' + str(errs)); await b.close()
     print('faz8:', 'OK' if not fail else f'{len(fail)} HATA'); sys.exit(1 if fail else 0)
 asyncio.run(main())

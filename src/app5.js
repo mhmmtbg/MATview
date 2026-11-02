@@ -16,6 +16,8 @@ const IC = {
   acoustic: '<path d="M2 6h3l4-3v10l-4-3H2zM11 5.5a3.5 3.5 0 010 5M13 3.5a6 6 0 010 9"/>', traces: '<path d="M1.5 11l3-5 3 3 3-6 3 4"/>',
   clean: '<path d="M3 12l5-8 5 3-4 7H5zM7 14h7"/>', analyze: '<path d="M1 8h2l1.5-5 2 10 2-8 1.5 3H15"/>', clear: '<path d="M3 4l10 10M13 4L3 14"/>', palette: '<path d="M8 1.5a6.5 6.5 0 100 13c1 0 1.5-.7 1.2-1.5-.3-.9.2-1.7 1.2-1.7H12a2.5 2.5 0 002.5-2.5C14.5 4.3 11.6 1.5 8 1.5z"/><path d="M5 7h.1M8 5h.1M11 7h.1"/>',
   undo: '<path d="M5 3L2 6l3 3M2 6h7a4 4 0 010 8H6"/>',
+  share: '<path d="M8 10V2M5 5l3-3 3 3M3 8v6h10V8"/>', report: '<path d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M8 7.5v5M5.5 10h5"/>',
+  image: '<path d="M2 3h12v10H2z"/><circle cx="5.5" cy="6" r="1.2"/><path d="M2 12l4-4 3 3 2-2 3 3"/>', vector: '<path d="M3 13C5 5 11 11 13 3"/><path d="M1.5 11.5h3v3h-3zM11.5 1.5h3v3h-3z"/>',
   feat: '<path d="M2 3h12v10H2zM2 7h12M6 3v10"/>',
   expr: '<path d="M10 2.5C7 2.5 8 6 7 8s-1 5.5-4 5.5M4 7h6"/>', output: '<path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/>',
   qual: '<path d="M8 1.5l5.5 2v4.2c0 3.2-2.3 5.6-5.5 6.8-3.2-1.2-5.5-3.6-5.5-6.8V3.5zM5.5 8l2 2 3.5-4"/>', test: '<path d="M3 14V2M3 2.5h9l-2 3 2 3H3"/>', tools: '<path d="M10.5 2a3 3 0 00-2.7 4.2L2.5 11.5a1.5 1.5 0 002 2l5.3-5.3A3 3 0 1010.5 2z"/>',
@@ -75,10 +77,10 @@ function moveTrace(P, ax, k, to) {
   });
 }
 function ctxMenu(x, y, items) {
-  const m = $('#ctxm'); m.replaceChildren();
+  const m = $('#ctxm'); m.replaceChildren(); m._src = null;
   for (const it of items) {
     if (it === '-') { m.append(h('hr')); continue; } if (it.hd) { m.append(h('div', {class: 'hd'}, it.hd)); continue; }
-    const b = h('button', {onclick: () => { m.classList.add('hidden'); it.fn(); }}); if (it.ic) b.append(icEl(it.ic, 14)); b.append(it.t); m.append(b);
+    const b = h('button', {class: it.noic ? 'noic' : '', onclick: () => { m.classList.add('hidden'); it.fn(); }}); if (it.ic) b.append(icEl(it.ic, 14)); b.append(it.t); m.append(b);
   }
   m.classList.remove('hidden'); const w = m.offsetWidth, hh = m.offsetHeight; m.style.left = Math.min(x, innerWidth - w - 6) + 'px'; m.style.top = Math.min(y, innerHeight - hh - 6) + 'px';
   const f = m.querySelector('button'); if (f) f.focus();
@@ -224,7 +226,7 @@ function initUX() {
   for (const [dd, menu] of [['btnOpenM', 'mOpen'], ['btnSet', 'mSet']]) $('#' + dd).onclick = e => { e.stopPropagation(); const m = $('#' + menu), was = m.classList.contains('hidden'); closeMenus(); m.classList.toggle('hidden', !was); };
   document.addEventListener('click', e => { if (!e.target.closest('.dd') ) closeMenus(); else if (e.target.closest('.ddm button')) closeMenus(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenus(); });
-  $('#btnKeys').onclick = shortcutsDialog; $('#btnPng').onclick = savePng; $('#btnRep').onclick = repAddView; $('#btnSvg').onclick = saveSvg;
+  $('#btnKeys').onclick = shortcutsDialog; $('#btnOut').onclick = e => { e.stopPropagation(); const m = $('#ctxm'); if (!m.classList.contains('hidden') && m._src === 'out') { m.classList.add('hidden'); return; } closeMenus(); const r = e.currentTarget.getBoundingClientRect(); ctxMenu(r.right - 210, r.bottom + 2, [{t: 'Rapora ekle', ic: 'report', fn: repAddView}, {t: 'PNG olarak kaydet', ic: 'image', fn: savePng}, {t: 'SVG (vektör) olarak kaydet', ic: 'vector', fn: saveSvg}]); m._src = 'out'; };
   $('#btnDbl').onclick = () => { S.pref.dbl = S.pref.dbl === 'same' ? 'new' : 'same'; try { localStorage.setItem('mv.dbl', S.pref.dbl); } catch (_) {} updDblBtn(); toast('Çift tık artık: ' + (S.pref.dbl === 'same' ? 'aktif grafiğe ekle' : 'yeni alt grafik')); };
   $('#btnTab').onclick = () => { $('#fileIn').click(); }; $('#wTab').onclick = () => $('#fileIn').click(); $('#wMat').onclick = () => $('#btnOpen').click(); $('#wUnv').onclick = () => $('#btnOpen').click(); $('#wBin').onclick = () => $('#btnBin').click();
   $('#btnSelAll').onclick = () => { const all = S.rowOrder || []; if (all.length && all.every(c => S.selCh.has(c.uid))) S.selCh.clear(); else for (const c of all) S.selCh.add(c.uid); renderTree(); };
