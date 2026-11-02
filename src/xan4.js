@@ -45,6 +45,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.17', d: 'Listelerde başlığa göre süzme', items: [
+    'Tüm tablolarda (çalışma alanı değişkenleri, kalite / test / öznitelik / rainflow sonuçları, tablo verisi sütunları, telemetri ayar tabloları …) sütun başlığındaki ▾: metin araması, sayı aralığı, değer listesi (onay kutuları), artan / azalan sıralama, temizle. Etkin süzgeç başlıkta işaretli; tablo yeniden çizilince korunur.',
+    'Telemetri › Çözülen Veriler: template sütunlarının başlığında ▾ ile o sütunda içeren metne göre süzme (birim, etiket, değişken, tip, formül …).',
+    'Akustik › konuşma / olay listesi türe göre süzülür.']},
   {v: '2.16', d: 'Akustik ve kanallar', items: [
     'Akustik › Parazit temizleme: "Temizle ve grafiğe ekle" — karttaki ayarlarla temizleyip temiz kanalı ekler ve çizer.',
     'Lejant / iz renkleri: birbirinden kolay ayırt edilen 12 renk; aynı alt grafikte renk tekrarlanmaz, renkler bitince kesikli / noktalı çizgi kullanılır (lejantta da görünür). Elle seçilen renk korunur.',

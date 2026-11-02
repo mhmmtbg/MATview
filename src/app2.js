@@ -563,8 +563,10 @@ function acMarksUI() {
   const box = $('#acMarks'); if (!box) return; box.replaceChildren();
   const L = acMarkList(); if (!S.acMarks) return;
   if (!L.length) { box.append(h('div', {class: 'muted'}, 'Konuşma ya da darbe olayı bulunamadı')); return; }
-  box.append(h('div', {class: 'muted'}, `${S.acMarks.speech.length} konuşma · ${S.acMarks.events.length} olay`));
-  for (const m of L.slice(0, 300)) box.append(h('button', {class: 'acmk ' + m.k, title: 'Bu noktaya git' + (S.audio && S.audio.buf ? ' (çalarken oradan sürdürür)' : ''), onclick: () => acGoMark(m)},
+  const fk = S.acMkF || '';
+  box.append(h('div', {class: 'acmkh'}, h('span', {class: 'muted'}, `${S.acMarks.speech.length} konuşma · ${S.acMarks.events.length} olay`),
+    h('select', {title: 'Türe göre süz', onchange: e => { S.acMkF = e.target.value; acMarksUI(); }}, ...[['', 'Tümü'], ['sp', 'Konuşma'], ['ev', 'Olay']].map(([v, t]) => h('option', {value: v, selected: v === fk}, t)))));
+  for (const m of L.filter(m => !fk || m.k === fk).slice(0, 300)) box.append(h('button', {class: 'acmk ' + m.k, title: 'Bu noktaya git' + (S.audio && S.audio.buf ? ' (çalarken oradan sürdürür)' : ''), onclick: () => acGoMark(m)},
     h('span', {class: 'dot'}), `${fmtNum(m.t0, 5)} s`, h('span', {class: 'muted'}, m.k === 'sp' ? ` konuşma · ${fmtNum(m.t1 - m.t0, 3)} s · ${m.snr.toFixed(0)} dB` : ` olay · +${m.db.toFixed(0)} dB · ${fmtNum((m.t1 - m.t0) * 1000, 3)} ms`)));
 }
 function acGoMark(m) {

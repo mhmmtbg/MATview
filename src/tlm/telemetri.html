@@ -593,6 +593,14 @@ main.tl-main > #lvRawCard { flex: none; }
 .tl-dhr .hint { flex: 0 1 auto; min-width: 0; }
 /* tablo panelden darsa son (işlem) sütunu kalan genişliği alır: düğmeler sağ kenarda kalır */
 .tl-data .lv-table { min-width: 100%; }
+.lv-table th .lvf { margin-left: 4px; font-size: 10px; color: var(--muted); cursor: pointer; opacity: .55; padding: 0 2px; }
+.lv-table th:hover .lvf, .lv-table th.tf-on .lvf { opacity: 1; }
+.lv-table th.tf-on .lvf { color: var(--accent); font-weight: 700; }
+.lvf-pop { position: fixed; z-index: 60; width: 220px; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); font-size: 12px; }
+.lvf-pop.hidden { display: none; }
+.lvf-pop .lvf-h { font-weight: 600; }
+.lvf-pop .inp { height: 26px; width: 100%; box-sizing: border-box; }
+.lvf-pop .lvf-r { display: flex; justify-content: space-between; align-items: center; color: var(--muted); }
 .tl-data .lv-wrap { flex: 1; max-height: none; min-height: 120px; border: none; border-radius: 0 0 var(--radius) var(--radius); }
 /* işlem düğmeleri sağda sabit: tablo yatay kaydırılsa da görünür */
 .lv-table td.act { position: sticky; right: 0; z-index: 1; border-left: 1px solid var(--line2); }
@@ -5844,7 +5852,7 @@ function compileAll() { syncWork(); for (var i = 0; i < work.length; i++) compil
 
 /* ---------- canlı durum ---------- */
 var liveState = [], hist = [], chartKeys = {}, expanded = {}, charts = [], vfigs = [];
-var liveTab = 0, filterText = '', visible = false;
+var liveTab = 0, filterText = '', visible = false, colFlt = {}, lvRowCount = 0;   // colFlt: sütun anahtarı → içeren metin (başlık süzgeci)
 var conn = null, connState = 'idle', scanner = null, colDrop = null, tbuf = null, idMap = {}, cntReader = null, cntMod = 0, scanBase = 0;
 // paused: görüntü duraklatıldı (dosyadan oynatmada akış da durur); scrubbing: seçilen tek çerçeve çözülüyor
 var paused = false, scrubbing = false;
@@ -6490,6 +6498,7 @@ function renderTable() {
     }
     if (usel && !usel.has(row[11] || row[0])) return;
     if (ft2 && (row[0] + ' ' + row[11] + ' ' + row[2]).toLowerCase().indexOf(ft2) < 0) return;
+    for (var fk in colFlt) { var fc = COLMAP[fk]; if (fc && fc.tpl != null && String(row[fc.tpl] == null ? '' : row[fc.tpl]).toLocaleLowerCase('tr').indexOf(colFlt[fk]) < 0) return; }
     var n = countOf(defOf(id));
     rowIndex.set(id, items.length);
     items.push({ id: id, k: k, n: n, sub: false, h: ROW_H });
@@ -6500,8 +6509,9 @@ function renderTable() {
     items.forEach(function (it) { (chartedId(liveTab, it.id) ? pin : rest).push(it); });
     if (pin.length && rest.length) { pin.forEach(function (it) { it.pin = true; }); items = pin.concat([{ id: -1, sep: true, h: 4 }], rest); rowIndex = new Map(); items.forEach(function (it, j) { if (!it.sub && !it.sep && !rowIndex.has(it.id)) rowIndex.set(it.id, j); }); }
   }
+  lvRowCount = items.filter(function (it) { return !it.sub && !it.sep && !it.mark; }).length;
   var h = '<table class="lv-table" style="width:' + tw + 'px"><colgroup><col style="width:104px">' + cols.map(function (cd) { return '<col data-col="' + cd.key + '" style="width:' + colW(cd.key) + 'px">'; }).join('') + '<col style="min-width:108px"></colgroup><thead><tr><th class="fix">#</th>';
-  cols.forEach(function (cd) { h += '<th class="mv" draggable="true" data-col="' + cd.key + '" title="' + esc(cd.label) + ' — sürükleyerek taşıyın, sağ tıklayarak gizleyin">' + esc(cd.label) + '<span class="rz" title="Sürükleyerek genişliği değiştirin, çift tıklayarak içeriğe sığdırın"></span></th>'; });
+  cols.forEach(function (cd) { h += '<th class="mv' + (colFlt[cd.key] ? ' tf-on' : '') + '" draggable="true" data-col="' + cd.key + '" title="' + esc(cd.label) + ' — sürükleyerek taşıyın, sağ tıklayarak gizleyin">' + esc(cd.label) + (cd.tpl != null ? '<span class="lvf" data-f="' + cd.key + '" draggable="false" title="Bu sütuna göre süz">▾</span>' : '') + '<span class="rz" title="Sürükleyerek genişliği değiştirin, çift tıklayarak içeriğe sığdırın"></span></th>'; });
   h += '<th></th></tr></thead><tbody><tr class="vsp"><td colspan="' + ncols + '"></td></tr><tr class="vsp"><td colspan="' + ncols + '"></td></tr></tbody></table>';
   if (!w.ids.length) h += '<div class="lv-empty">Template\'te satır yok. <b>Satır Ekle</b> ile başlayın.</div>';
   else if (!items.length) h += '<div class="lv-empty">Seçili etiketlerde veya aramayla eşleşen satır yok.</div>';
@@ -8587,6 +8597,9 @@ mvRender(); mvButtons();
 
 /* ---------- dış arayüz ---------- */
 window.TPLive = {
+  // başlık süzgeci: colFilter(key) okur, colFilter(key, metin) yazar ve tabloyu yeniler
+  colFilter: function (k, v) { if (arguments.length < 2) return colFlt[k] || ''; v = String(v || '').trim().toLocaleLowerCase('tr'); if (v) colFlt[k] = v; else delete colFlt[k]; $('#lvWrap').scrollTop = 0; renderTable(); return v; },
+  rowCount: function () { return lvRowCount; },
   // ayar JSON'una kaydedilmemiş çalışma kopyaları da yazılır; içe aktarılınca aynı çerçeve tipine geri yüklenir
   exportWork: function () { return work.map(function (w) { return w && w.dirty && w.rows ? { rows: w.rows } : null; }); },
   importWork: function (list) {
@@ -8937,6 +8950,26 @@ window.addEventListener('drop', function (e) {
 try { if (window.parent !== window && window.parent.MATViewTLM) window.parent.MATViewTLM.ready(window); } catch (e) {}
 })();
 
+/* Çözülen Veriler: sütun başlığındaki ▾ ile o sütunda içeren metne göre süzme (template sütunları) */
+(function () {
+  var pop = document.createElement('div'); pop.className = 'lvf-pop hidden'; document.body.appendChild(pop);
+  var L = window.TPLive && window.TPLive._colFlt;
+  document.addEventListener('mousedown', function (e) { if (e.target.closest && e.target.closest('.lvf')) { e.stopPropagation(); } else if (!pop.contains(e.target)) pop.classList.add('hidden'); }, true);
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.lvf'); if (!b) return; e.preventDefault(); e.stopPropagation();
+    var key = b.dataset.f, api = window.TPLive; if (!api || !api.colFilter) return;
+    pop.innerHTML = '<div class="lvf-h"></div><input type="search" class="inp" placeholder="İçeren metin…"><div class="lvf-r"><span class="lvf-n"></span><button type="button" class="btn sm">Temizle</button></div>';
+    pop.querySelector('.lvf-h').textContent = b.parentElement.textContent.replace(/▾/g, '').trim();
+    var inp = pop.querySelector('input'); inp.value = api.colFilter(key) || '';
+    var cnt = function () { pop.querySelector('.lvf-n').textContent = api.rowCount() + ' satır'; };
+    inp.addEventListener('input', function () { api.colFilter(key, inp.value); cnt(); });
+    pop.querySelector('button').addEventListener('click', function () { api.colFilter(key, ''); pop.classList.add('hidden'); });
+    pop.classList.remove('hidden'); var r = b.getBoundingClientRect(); pop.style.top = Math.round(r.bottom + 3) + 'px'; pop.style.left = Math.round(Math.max(4, Math.min(r.left - 120, innerWidth - 230))) + 'px';
+    cnt(); inp.focus();
+  }, true);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') pop.classList.add('hidden'); });
+  if (window.MVUI && MVUI.tableFilters) MVUI.tableFilters(document);
+})();
 /* tek satır araç çubukları + sabit genişlikli kayan yazılar + sayfa yakınlaştırması kapalı */
 (function () {
   if (!window.MVUI) return;
