@@ -45,6 +45,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.23', d: '.mat dosyalarında zaman vektöründen örnekleme', items: [
+    '.mat dosyasında zaman vektörü (zaman_s, zaman, time, t …) varsa örnekleme frekansı ondan alınır. Önceden bu vektör yok sayıldığından MATView\'den kaydedilen akustik kanallar 200 Hz kabul ediliyor, oynatma ×40 yavaşlıyor ve ses duyulmuyordu.',
+    'Zaman vektöründeki kayıp çerçeve boşlukları korunur: boşluktan sonraki örnekler grafikte doğru zamanda görünür.',
+    'Zaman vektörü ayrı bir kanal olarak listelenmez (eksen olarak kullanılır).']},
   {v: '2.22', d: 'Akustik oynatma ve çözümleme ilerlemesi düzeltmeleri', items: [
     'Akustik oynatma: ses çıkışı düğmeye tıklandığı anda açılır. Uzun hazırlık / temizleme sonrasında açılan ses çıkışı tarayıcı ya da MATView.exe tarafından askıda bırakıldığı için ses çalmıyordu; askıda kalırsa uyarı gösterilir ve ▶ ile yeniden başlatılabilir.',
     'MATView.exe: yerel pencerede ses kullanıcı etkileşimi beklenmeden çalabilir.',
