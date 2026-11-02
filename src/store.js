@@ -149,8 +149,28 @@ async function importFile(file, onProgress) {
     }
   }
   f.gcache = gcache;
+  await detectTimeVec(f);
   applyTiming(f);
   return f;
+}
+// Dosyada zaman vektörü varsa (zaman_s, zaman, time, t, …; MATView'in kaydettiği .mat dahil) örnekleme ondan alınır.
+// Kayıp çerçeve boşlukları paket haritasına (g) çevrilir: boşluktan sonraki örnekler doğru zamanda kalır.
+const TIME_RE = /^(zaman(_s)?|time(_s|_sec)?|t|ts|timestamps?|tvec|t_s|sure_s)$/i;
+async function detectTimeVec(f) {
+  const vi = f.vars.findIndex(v => v.numeric && TIME_RE.test(v.name) && v.dims.length === 2 && Math.min(v.dims[0], v.dims[1]) === 1 && v.count >= 16);
+  if (vi < 0) return;
+  let t; try { t = await MAT.load(f.mat, f.vars[vi]); } catch (_) { return; }
+  const n = t.length, d = new Float64Array(Math.min(n - 1, 200000)), st = Math.max(1, Math.floor((n - 1) / d.length));
+  for (let k = 0; k < d.length; k++) { const i = k * st; d[k] = t[i + 1] - t[i]; }
+  const ds = Float64Array.from(d).sort(), dt = ds[ds.length >> 1]; if (!(dt > 0) || !isFinite(dt)) return;
+  // tekdüze artmalı; büyük sıçramalar = kayıp paketler
+  const gaps = []; let bad = 0; for (let i = 1; i < n; i++) { const q = t[i] - t[i - 1]; if (!(q > 0)) { if (++bad > n * 0.001) return; } else if (q > 1.5 * dt) gaps.push(i); }
+  const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a; };
+  let spp = 0; for (const i of gaps) spp = gcd(spp, i); if (!(gaps.length && spp >= 2)) spp = 0;   // boşluk konumlarının ortak böleni = çerçeve başına örnek
+  const tv = {vi, n, t0: t[0], dt, name: f.vars[vi].name};
+  if (spp >= 2 && gaps.length) { const np = Math.ceil(n / spp), Tp = spp * dt, g = new Float64Array(np); for (let k = 0; k < np; k++) g[k] = Math.round((t[k * spp] - t[0]) / Tp); tv.g = g; tv.spp = spp; tv.Tpkt = Tp; tv.lost = countLost(g); }
+  f.tvec = tv;
+  f.channels = f.channels.filter(c => c.varIdx !== vi);   // zaman ekseni kanal olarak listelenmez
 }
 importFile.seq = 1;
 function countLost(g) { let c = 0; for (let k = 1; k < g.length; k++) if (g[k] - g[k - 1] > 1) c += g[k] - g[k - 1] - 1; return c; }
@@ -160,6 +180,8 @@ function applyTiming(f) {
   for (const ch of f.channels) {
     if (ch.derived || ch.bin || ch.spec || ch.tbl) continue;
     const gc = ch.devKey && f.gcache ? f.gcache[ch.devKey] : null;
+    const tv = f.tvec && f.tvec.n === ch.n ? f.tvec : null;
+    if (tv) { ch.t0 = tv.t0; if (tv.g) { ch.g = tv.g; ch.spp = tv.spp; ch.Tpkt = tv.Tpkt; ch.dtS = tv.dt; } else { ch.g = null; ch.dtS = tv.dt; ch.spp = 1; ch.Tpkt = tv.dt; } continue; }
     if (gc) { ch.g = gc.g; ch.spp = ch.n / gc.np; ch.Tpkt = f.Tpkt; ch.dtS = ch.Tpkt / ch.spp; }
     else { ch.g = null; ch.dtS = 1 / (f.baseFs * ch.n / (f.baseN || ch.n)); ch.spp = 1; ch.Tpkt = ch.dtS; }
   }
