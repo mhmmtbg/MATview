@@ -233,3 +233,158 @@ codeBuildView = function () {
   ed.addEventListener('keyup', e => { if (/^Arrow|Home|End|Page/.test(e.key) && !CED.ac) cedMarks(); });
   codeRefreshEd();
 };
+
+/* ---------- Faz 4: yazarken hata denetimi (lint) ----------
+   Kod durunca (~300 ms) ayrıştırılır: sözdizimi hataları (kırmızı) ve uyarılar (sarı) satırında dalgalı çizgiyle, satır
+   numarasında işaretle, editör altındaki Sorunlar listesinde gösterilir; imlecin bulunduğu satırın iletisi konum
+   satırında yazar. Uyarılar: tanımsız değişken / işlev, kullanılmayan değişken (işlevde), yerleşik işlevi gölgeleme,
+   işlevde ';' olmadığı için ekrana yazdırma. Çalışma sırasındaki hata da aynı biçimde işaretlenir. */
+const LINT = {t: 0, diags: [], text: null, known: null, run: null};
+const LINT_EXTRA = ['ans', 'varargin', 'varargout', 'nargin', 'nargout', 'true', 'false', 'pi', 'eps', 'Inf', 'inf', 'NaN', 'nan', 'i', 'j', 'e', 'end', 'realmax', 'realmin', 'intmax', 'intmin', 'NA', 'ch', 'addch', 'chlist', 'tlm', 'this'];
+function lintKnown() {
+  if (!LINT.known) { let b = []; try { b = Object.keys(codeMainLib().builtins); } catch (_) {} LINT.known = new Set([...b, ...LINT_EXTRA]); }
+  return LINT.known;
+}
+function lintLineStarts(t) { const s = [0]; for (let i = 0; i < t.length; i++) if (t[i] === '\n') s.push(i + 1); return s; }
+// satırdaki ad (kod içinde, dize / yorum değil) konumu
+function lintFind(text, starts, line, name) {
+  const a = starts[line - 1] || 0, b = line < starts.length ? starts[line] - 1 : text.length, m = cedMask(text), re = new RegExp('\\b' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'g'), seg = text.slice(a, b); let r;
+  while ((r = re.exec(seg))) if (m[a + r.index] === 1) return [a + r.index, a + r.index + name.length];
+  return null;
+}
+function lintLineRange(text, starts, line) {
+  const a = starts[Math.max(0, line - 1)] || 0, b = line < starts.length ? starts[line] - 1 : text.length; let s = a, e = b;
+  while (s < e && /\s/.test(text[s])) s++; const m = cedMask(text); let k = s; while (k < e && m[k] !== 0) k++; e = Math.max(s + 1, k); while (e > s + 1 && /\s/.test(text[e - 1])) e--;
+  return [s, Math.min(e, b)];
+}
+// "eksik end": kapanmamış blok başlangıcı
+function lintUnclosed(text) {
+  const st = [], m = cedMask(text), re = /\b(if|for|parfor|while|switch|try|function|do|end|until)\b/g; let r;
+  const lineOf = k => text.slice(0, k).split('\n').length;
+  while ((r = re.exec(text))) {
+    if (m[r.index] !== 1) continue; const w = r[1], prev = text.slice(Math.max(0, r.index - 1), r.index);
+    if (w === 'end') { const bal = text.slice(text.lastIndexOf('\n', r.index) + 1, r.index), depth = (bal.match(/[([{]/g) || []).length - (bal.match(/[)\]}]/g) || []).length; if (depth > 0 || prev === '.') continue; st.pop(); }
+    else if (w === 'until') st.pop(); else if (prev !== '.') st.push({w, line: lineOf(r.index)});
+  }
+  return st.filter(x => x.w !== 'function').pop() || st.pop() || null;
+}
+function codeLint(text) {
+  const out = [], starts = lintLineStarts(text), known = lintKnown();
+  const add = (sev, line, msg, rng) => out.push({sev, line, msg, rng: rng || lintLineRange(text, starts, line)});
+  let ast;
+  try { ast = codeMainLib().parse(text); }
+  catch (e) {
+    let line = e.mline || 1, msg = String(e.message || e);
+    if (/eksik end|dosya sonu/i.test(msg)) { const u = lintUnclosed(text); if (u) { line = u.line; msg = `'${u.w}' bloğu kapanmamış: eksik 'end'`; } }
+    if (line > starts.length) line = starts.length;
+    add('e', line, msg); return out;
+  }
+  // diğer sekmelerdeki işlev dosyaları ve çalışma alanı değişkenleri bilinir
+  const ext = new Set(); for (const d of CODE.docs || []) { const nm = String(d.name || '').replace(/\.m$/i, ''); if (nm) ext.add(nm); const mm = /^\s*function\s+(?:\[[^\]]*\]\s*=\s*|\w+\s*=\s*)?(\w+)/gm; let r; while ((r = mm.exec(d.text || ''))) ext.add(r[1]); }
+  for (const v of CODE.ws || []) if (v && v.name) ext.add(v.name);
+  const fnames = new Set((ast.funcs || []).map(f => f.name));
+  function scan(body, sc) {
+    const defs = new Map(), uses = [], prints = [];
+    const def = (n, line) => { if (!defs.has(n)) defs.set(n, line); };
+    const rootId = x => { while (x && (x.t === 'call' || x.t === 'field' || x.t === 'index' || x.t === 'cellidx' || x.t === 'dynfield')) { if (x.args) x.args.forEach(a => v(a)); x = x.f || x.a; } return x && x.t === 'id' ? x : null; };
+    function v(n, inAnon) {
+      if (!n || typeof n !== 'object') return;
+      if (Array.isArray(n)) { n.forEach(x => v(x, inAnon)); return; }
+      switch (n.t) {
+        case 'assign': for (const l of n.lhs || []) { const r = rootId(l); if (r) def(r.n, r.line); else v(l); } v(n.rhs); if (n.print && n.line) prints.push(n.line); return;
+        case 'for': { const r = rootId(n.v); if (r) def(r.n, r.line); v(n.e); v(n.body); return; }
+        case 'try': if (n.cv) def(n.cv, n.line); v(n.body); v(n.cb); return;
+        case 'global': case 'persistent': (n.names || []).forEach(x => def(x, n.line)); v(n.init); return;
+        case 'anon': { const sub = scan([{t: 'expr', e: n.body, print: false}], new Set([...sc, ...n.params, ...defs.keys()])); sub.uses.forEach(u => { if (!n.params.includes(u.n)) uses.push(u); }); return; }
+        case 'fh': if (n.name) uses.push({n: n.name, line: n.line, fn: true}); return;
+        case 'call': if (n.f && n.f.t === 'id') { uses.push({n: n.f.n, line: n.f.line || n.line, fn: true}); if (!n.cmd) v(n.args); } else { v(n.f); v(n.args); } return;
+        case 'expr': if (n.cmd) { if (n.e && n.e.f) uses.push({n: n.e.f.n, line: n.line, fn: true}); return; } v(n.e); return;
+        case 'id': uses.push({n: n.n, line: n.line}); return;
+        case 'field': v(n.a); if (n.e) v(n.e); return;
+      }
+      for (const k in n) if (k !== 'line' && k !== 't' && n[k] && typeof n[k] === 'object') v(n[k]);
+    }
+    v(body);
+    return {defs, uses, prints};
+  }
+  function check(body, base, isFn, f) {
+    const sc = new Set(base), r = scan(body, sc), defs = new Set([...sc, ...r.defs.keys()]), used = new Set(r.uses.map(u => u.n)), seen = new Set();
+    for (const u of r.uses) {
+      if (defs.has(u.n) || known.has(u.n) || ext.has(u.n) || fnames.has(u.n)) continue;
+      const k = u.n + '@' + u.line; if (seen.has(k)) continue; seen.add(k);
+      add('w', u.line, `'${u.n}' tanımsız: değişken ya da işlev bulunamadı` + (u.fn ? ' (kendi işlevinizse .m dosyasını Kod sekmesinde açın)' : ''), lintFind(text, starts, u.line, u.n));
+    }
+    for (const [n, line] of r.defs) {
+      if (known.has(n) && !LINT_EXTRA.includes(n) && !fnames.has(n)) add('w', line, `'${n}' yerleşik işlevini gölgeliyor: bu ad artık işlev olarak çağrılamaz`, lintFind(text, starts, line, n));
+      if (isFn && !used.has(n) && !(f.outs || []).includes(n) && !(f.ins || []).includes(n) && n !== 'varargout') add('w', line, `'${n}' atanıyor ama kullanılmıyor`, lintFind(text, starts, line, n));
+    }
+    if (isFn) for (const line of r.prints) add('i', line, "Çıktı ekrana yazdırılıyor: gizlemek için satır sonuna ';' ekleyin");
+  }
+  check(ast.body, [], false);
+  for (const f of ast.funcs || []) check(f.body, [...(f.ins || []), ...(f.outs || [])], true, f);
+  // çalışma sırasında alınan hata
+  if (CODE.errLine && LINT.run && LINT.run.text === text) add('e', CODE.errLine, LINT.run.msg);
+  out.sort((a, b) => a.line - b.line || (a.sev === 'e' ? -1 : 1));
+  return out;
+}
+function lintSchedule() { clearTimeout(LINT.t); LINT.t = setTimeout(lintRun, 300); }
+function lintRun() {
+  const ed = $('#codeEd'); if (!ed) return; const t = ed.value;
+  try { LINT.diags = t.length > 400000 ? [] : codeLint(t); } catch (e) { LINT.diags = []; }
+  LINT.text = t; CED.gutSig = ''; codeRefreshEd(); lintPanel();
+}
+function lintPanel() {
+  const box = $('#codeProbs'); if (!box) return; const D = LINT.diags, ne = D.filter(d => d.sev === 'e').length, nw = D.filter(d => d.sev === 'w').length, ni = D.length - ne - nw;
+  box.classList.toggle('hidden', !D.length); if (!D.length) { box.replaceChildren(); return; }
+  const head = h('div', {class: 'lph'}, h('b', null, 'Sorunlar'), h('span', {class: 'muted'}, `  ${ne} hata · ${nw} uyarı` + (ni ? ` · ${ni} bilgi` : '')));
+  const list = h('div', {class: 'lpl'}, ...D.slice(0, 200).map(d => h('div', {class: 'lpi ' + d.sev, title: 'Satıra git', onclick: () => { const ed = $('#codeEd'); ed.focus(); const [a, b] = d.rng || [0, 0]; ed.setSelectionRange(a, b); const lh = parseFloat(getComputedStyle(ed).lineHeight) || 19; ed.scrollTop = Math.max(0, (d.line - 4) * lh); codeRefreshEd(); }},
+    h('span', {class: 'lpd'}), h('span', {class: 'lpn'}, 'Satır ' + d.line), h('span', null, d.msg))));
+  box.replaceChildren(head, list);
+}
+// gutter, işaret katmanı ve konum satırı: lint bilgisini ekle
+(function () {
+  const ref0 = codeRefreshEd;
+  codeRefreshEd = function () {
+    const ed = $('#codeEd');
+    if (ed && LINT.text !== null && LINT.text !== ed.value) { /* metin değişti: eski işaretler kaydırılmasın diye gizlenir, denetim yeniden */ LINT.stale = true; } else LINT.stale = false;
+    ref0();
+    const gut = $('#codeGut'); if (!ed || !gut) return;
+    const D = LINT.stale ? [] : LINT.diags, by = new Map(); for (const d of D) { const o = by.get(d.line); if (!o || (o.sev !== 'e' && d.sev === 'e')) by.set(d.line, d); }
+    const sig = 'L' + ed.value.split('\n').length + '|' + CODE.errLine + '|' + [...by].map(([l, d]) => l + d.sev).join(',') + '|' + CED.gutSig;
+    if (gut._lsig !== sig) {
+      gut._lsig = sig; const lines = ed.value.split('\n'); let s = '';
+      for (let i = 1; i <= lines.length; i++) { const d = by.get(i); s += d ? '<span class="g' + (d.sev === 'e' ? 'err' : d.sev === 'w' ? 'warn' : 'info') + '" title="' + htmlEsc(d.msg) + '">' + i + '</span>\n' : (i === CODE.errLine ? '<span class="gerr">' + i + '</span>' : /^\s*%%/.test(lines[i - 1]) ? '<span class="gsec">' + i + '</span>' : i) + '\n'; }
+      gut.innerHTML = s; gut.scrollTop = ed.scrollTop;
+    }
+    const st = $('#codePos'); if (st && D.length) { const l = ed.value.slice(0, ed.selectionStart).split('\n').length, d = D.find(x => x.line === l), ne = D.filter(x => x.sev === 'e').length, nw = D.filter(x => x.sev === 'w').length; const add = (d ? '  ·  ' + (d.sev === 'e' ? '⛔ ' : '⚠ ') + d.msg : '') + `  ·  ${ne} hata, ${nw} uyarı`; if (!st.textContent.endsWith(add)) st.textContent = st.textContent.replace(/  ·  (⛔|⚠) .*$|  ·  \d+ hata, \d+ uyarı$/, '') + add; }
+    lintCurLine();
+  };
+  const mk0 = cedMarks;
+  cedMarks = function () {
+    mk0(); const ed = $('#codeEd'), mk = $('#codeMk'); if (!ed || !mk || LINT.stale || !LINT.diags.length) return;
+    // bul / ayraç işaretleri varsa onlar korunur, lint çizgileri yalnız işaret katmanı boşken eklenir
+    const t = ed.value, marks = LINT.diags.filter(d => d.rng && d.rng[1] > d.rng[0]).map(d => [d.rng[0], d.rng[1], 'lint-' + d.sev]);
+    if (mk.firstChild && mk.querySelector('.fm, .bm')) { const extra = []; if (CED.find.open && CED.find.hits.length) CED.find.hits.forEach(([a, b], i) => extra.push([a, b, i === CED.find.cur ? 'fm cur' : 'fm'])); if (ed.selectionStart === ed.selectionEnd) { const br = cedBracket(t, ed.selectionStart); if (br) { extra.push([br[0], br[0] + 1, br[1] < 0 ? 'bm bad' : 'bm']); if (br[1] >= 0) extra.push([br[1], br[1] + 1, 'bm']); } } marks.push(...extra); }
+    marks.sort((p, q) => p[0] - q[0]); let o = '', p = 0;
+    for (const [a, b, cls] of marks) { if (a < p) continue; o += htmlEsc(t.slice(p, a)) + '<span class="' + cls + '">' + htmlEsc(t.slice(a, b)) + '</span>'; p = b; }
+    o += htmlEsc(t.slice(p)) + '\n '; mk.innerHTML = o; mk.scrollTop = ed.scrollTop; mk.scrollLeft = ed.scrollLeft;
+  };
+})();
+// imlecin bulunduğu satır hafifçe vurgulanır (yazıyla hizalı arka plan şeridi)
+function lintCurLine() {
+  const ed = $('#codeEd'); if (!ed) return; const area = ed.parentElement; let bar = area.querySelector('.code-curl');
+  if (!bar) { bar = h('div', {class: 'code-curl', 'aria-hidden': 'true'}); area.insertBefore(bar, area.firstChild); }
+  const cs = getComputedStyle(ed), lh = parseFloat(cs.lineHeight) || 19, pt = parseFloat(cs.paddingTop) || 6, l = ed.value.slice(0, ed.selectionStart).split('\n').length;
+  bar.style.top = (pt + (l - 1) * lh - ed.scrollTop) + 'px'; bar.style.height = lh + 'px';
+}
+(function () {
+  const b0 = codeBuildView;
+  codeBuildView = function () {
+    b0(); const ed = $('#codeEd'); if (!ed || ed._lint) return; ed._lint = true;
+    const pos = $('#codePos'); if (pos && !$('#codeProbs')) pos.after(h('div', {id: 'codeProbs', class: 'codeprobs hidden'}));
+    ed.addEventListener('input', lintSchedule); ed.addEventListener('scroll', lintCurLine);
+    setTimeout(lintRun, 50);
+  };
+  const s0 = codeShowDoc;
+  codeShowDoc = function () { const r = s0.apply(this, arguments); LINT.run = null; setTimeout(lintRun, 0); return r; };
+})();

@@ -403,7 +403,7 @@ async function codeFinish(m) {
   if (m.err) {
     const e = m.err, fileTxt = e.file ? e.file + (e.fn && e.file.replace(/\.m$/i, '') !== e.fn ? ' › ' + e.fn : '') : (run && run.label) || '';
     codeOut(`Hata${fileTxt ? ' — ' + fileTxt : ''}${e.line ? ' (satır ' + e.line + ')' : ''}: ${e.msg}\n`, 'err');
-    if (e.line && run && run.label !== '>>') { const di = e.file ? CODE.docs.findIndex(d => d.name.toLowerCase() === e.file.toLowerCase()) : run.docIdx; if (di >= 0) codeGotoLine(di, e.line); }
+    if (e.line && run && run.label !== '>>') { const di = e.file ? CODE.docs.findIndex(d => d.name.toLowerCase() === e.file.toLowerCase()) : run.docIdx; if (di >= 0) { codeGotoLine(di, e.line); if (typeof LINT !== 'undefined') { LINT.run = {text: $('#codeEd').value, msg: 'Çalışma hatası: ' + e.msg}; lintRun(); } } }
   } else { CODE.errLine = 0; if (codeDoc()) codeDoc().errLine = 0; codeRefreshEd(); }
   CODE.ws = m.ws || []; codeRenderWs();
   if (m.added && m.added.length) { let n = 0; for (const a of m.added) { const src = CODE.srcFor && CODE.srcFor.find(c => c.n === a.y.length); const c = addDerived(cleanName(a.n), a.y, null); if (src && src.n === a.y.length && Math.abs(src.fs - a.fs) < 1e-9 * Math.max(1, a.fs)) c.copyTiming(src); else { c.g = null; c.t0 = 0; c.dtS = 1 / a.fs; } if (src && src.unit) c.unit = src.unit; n++; } toast(n + ' kanal eklendi (Türetilmiş kanallar)'); }
