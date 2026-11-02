@@ -123,7 +123,8 @@ class Plot {
   resize() {
     const p = this.cv.parentElement, w = p.clientWidth, hv = p.clientHeight;
     if (!w || !hv) return;
-    this.Hv = hv; const h = Math.max(hv, Math.ceil(this.contentH(hv, w)));
+    // yuvarlama artığı (birkaç px) kaydırma çubuğu açtırmaz: çubuk açılıp kapanınca genişlik değişir ve görünüm titrer
+    this.Hv = hv; const ch = this.contentH(hv, w), h = ch <= hv + 3 ? hv : Math.ceil(ch);
     let dpr = window.devicePixelRatio || 1; while (dpr > 1 && w * h * dpr * dpr > 6e7) dpr = Math.max(1, dpr / 1.5);   // çok uzun tuvalde bellek sınırı
     if (this.W === w && this.H === h && this.dpr === dpr && this.cv.width === Math.round(w * dpr)) { this.invalidate(); return; }
     this.dpr = dpr; this.W = w; this.H = h;
@@ -154,7 +155,7 @@ class Plot {
   // xtra = {ax, px}: bu alt grafiğin satırının altına (eksen yazılarından sonra) boş şerit — ör. ses oynatma çubuğu
   xtraPx() { return this.xtra && this.axes.includes(this.xtra.ax) ? this.xtra.px : 0; }
   // içerik yüksekliği değiştiyse tuvali yeniden boyutlandır (alt grafik eklendi / kaldırıldı / elle boyutlandı)
-  fitContent() { const p = this.cv.parentElement; if (!p || !this.Hv) return false; const need = Math.max(p.clientHeight, Math.ceil(this.contentH(p.clientHeight, p.clientWidth))); if (need !== this.H || p.clientWidth !== this.W) { this.resize(); return true; } return false; }
+  fitContent() { const p = this.cv.parentElement; if (!p || !this.Hv) return false; const ch = this.contentH(p.clientHeight, p.clientWidth), need = ch <= p.clientHeight + 3 ? p.clientHeight : Math.ceil(ch); if (need !== this.H || p.clientWidth !== this.W) { this.resize(); return true; } return false; }
   // ---------- yerleşim ----------
   layout(W, H) {
     const n = this.axes.length; if (!n) return;

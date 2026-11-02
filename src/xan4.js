@@ -45,6 +45,12 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.15', d: 'Arayüz kararlılığı', items: [
+    'Sayfa yakınlaştırması (Ctrl+tekerlek, Ctrl + / − / 0, sıkıştırma) kapatıldı; grafiklerin kendi yakınlaştırması aynen çalışır.',
+    'Araç satırları (Zaman/Spektrum sekmeleri, grafik araçları, Kod, Telemetri üst çubuğu, Çözülen Veriler başlığı) tek satırda kalır, seçenekler iki yana yaslıdır; yer daralınca önce yazılar gizlenir, sonra sığmayanlar "⋯" menüsüne geçer — alt satıra kayma ve yer oynaması yok.',
+    'Uzunluğu değişen yazılar (çerçeve, durum, dosya adı, istatistik satırı, kod konum satırı, kamera bilgisi) sabit genişlikte; sığmazsa kayan yazı olarak gösterilir, çevresindeki seçenekler kımıldamaz.',
+    'Akustik: oynatma çubuğu tıklanınca / imleç gezerken grafik boyutunun değişmesi ve titreme giderildi (yuvarlama artığı kaydırma çubuğu açtırmıyor, yazı değişimleri yerleşimi yeniden hesaplatmıyor).',
+    'Akustik: grafikteki oynatma çizgisi tutulup sürüklenerek konuma gidilir (sürüklerken ses duraklar, bırakınca sürer).']},
   {v: '2.14', d: 'Telemetri: zaman ekseni düzeltmeleri, yerel çıktı klasörü', items: [
     'Çöz ve MATView\'de aç: tek bir çerçevede bozulan çerçeve sayacı artık zaman eksenini binlerce çerçeve kaydırmıyor (önce 65 bin çerçevelik sahte boşluk oluşabiliyordu). Makul olmayan sıçramada (varsayılan > 10 s) zaman 1 çerçeve ilerler, kayıp sayılmaz; sonraki çerçeve beklenenle sürerse boşluk oluşmaz, yeni değerden sürerse sayaç sıfırlaması kabul edilir.',
     'Çöz ve MATView\'de aç: bir birimin yalnız bazı çerçeve tiplerinde bulunan parametreleri artık diğer çerçevelerde 0 ile doldurulmuyor (veri kesintili görünüyordu); kendi zaman ekseniyle yalnız gerçek örnekler gelir. Çerçeve tipleri arasında farklı bağlamda tanımlı parametreler de doğru zamanı alır. Dosyaya yazılan CSV / .mat değişmez.',

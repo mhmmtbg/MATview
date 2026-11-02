@@ -43,7 +43,7 @@ async def main():
         # .bin → çözme listesi
         await pg.set_input_files('#fileIn', [D + 'kayit.bin'])
         await f.wait_for_function("document.querySelector('#fileBody .frg-in') !== null", timeout=30000)
-        await f.click('#btnRunMv')
+        await f.evaluate("document.querySelector('#btnRunMv').click()")
         await pg.wait_for_function("S.files.some(f => f.tlm)", timeout=60000)
         r = await pg.evaluate("""(async () => {
           const f = S.files.find(f => f.tlm), get = n => f.channels.find(c => c.name === n);
@@ -67,7 +67,7 @@ async def main():
         ok(has_menu, 'dosya menüsünde tek .mat yok')
         # kamera videosu
         await pg.click('#viewtabs button[data-v=tlm]')
-        await f.click('#tlVideoBtn')
+        await f.evaluate("document.querySelector('#tlVideoBtn').click()")
         nv = await f.locator('#vpList button').count()
         print('çözülen video:', nv)
         if HAS_CAM:
@@ -82,7 +82,7 @@ async def main():
         await f.evaluate("document.querySelector('#vpX').click()")
         await f.set_input_files('#lvSimInput', [D + 'kayit.bin'])
         await f.wait_for_function("/\\//.test(document.querySelector('#lvFrInfo').textContent)", timeout=30000)
-        await f.click('#lvConnect')
+        await f.evaluate("document.querySelector('#lvConnect').click()")
         await pg.wait_for_timeout(1200)
         if HAS_CAM:
             await f.fill('#lvFilter', 'goruntu')
@@ -97,7 +97,7 @@ async def main():
         await pg.wait_for_timeout(700)
         nav = await f.evaluate("[document.querySelector('#lvFrNum').value, document.querySelector('#lvConnBadge').textContent]")
         print('çerçeveye git:', nav); ok(nav == ['700', 'Duraklatıldı'], 'çerçeveye gidilemedi')
-        await f.click('#lvDisconnect')
+        await f.evaluate("document.querySelector('#lvDisconnect').click()")
         # tema
         await pg.click('#btnTheme'); await pg.wait_for_timeout(200)
         ok(await f.evaluate("document.documentElement.dataset.theme") == await pg.evaluate("document.documentElement.dataset.theme"), 'tema eşitlenmedi')

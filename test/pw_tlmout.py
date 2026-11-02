@@ -39,7 +39,7 @@ async def main():
         await f.evaluate("TPUI.getS().singleMat = false; 0")
         await pg.set_input_files('#fileIn', [D + 'kayit.bin'])
         await f.wait_for_function("!document.querySelector('#btnRun').disabled", timeout=30000)
-        await f.click('#btnRun')
+        await f.evaluate("document.querySelector('#btnRun').click()")
         await f.wait_for_function("/tamamlandı/.test(document.querySelector('#result').textContent)", timeout=90000)
         made = [os.path.join(dp, x) for dp, _, fs in os.walk(OUT) for x in fs]
         print('yazılan dosyalar', len(made), sorted(os.path.basename(x) for x in made)[:6], 'istek', len(hits), 'seçici', await pg.evaluate('window.__picked'))

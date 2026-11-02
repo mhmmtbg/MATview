@@ -174,6 +174,7 @@ function codeBuildView() {
     h('select', {id: 'codeEx', title: 'Örnek betikler', onchange: e => { const i = +e.target.value; e.target.value = ''; if (i >= 0 && CODE_EXAMPLES[i]) { codeStoreCur(); codeNewDoc('ornek' + (i + 1) + '.m', CODE_EXAMPLES[i][1]); } }}, h('option', {value: ''}, 'Örnekler…'), CODE_EXAMPLES.map((e, i) => h('option', {value: i}, e[0]))),
     h('select', {id: 'codeLib', title: 'Kitaplığım (bu tarayıcıda saklanan betikler)', onchange: e => { const v = e.target.value; e.target.value = ''; const l = codeLibGet().find(x => x.name === v); if (l) { codeStoreCur(); codeNewDoc(/\.m$/i.test(l.name) ? l.name : l.name + '.m', l.code); } }}),
     btn('Kitaplığa ekle', codeSaveLib), btn('İşlevler', codeFuncDialog), btn('Çalışma alanını temizle', codeReset), fileIn, matIn);
+  setTimeout(() => { MVUI.ovbar(tb); const cp = $('#codePos'); if (cp) MVUI.fx(cp); }, 0);
   const tabs = h('div', {id: 'codeTabs', class: 'codetabs'});
   const gut = h('pre', {id: 'codeGut', class: 'codegut', 'aria-hidden': 'true'});
   const hl = h('pre', {id: 'codeHl', class: 'codehl', 'aria-hidden': 'true'});
