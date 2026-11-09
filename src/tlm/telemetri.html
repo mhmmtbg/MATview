@@ -690,7 +690,7 @@ main.tl-main > #lvRawCard { flex: none; }
   <div class="seg hidden" id="lvSource"><button type="button" data-src="sim">Dosyadan Oynat</button></div>
   <div class="lv-src" data-src="sim">
     <div class="tl-dform">
-      <div class="tl-dcell"><label>Kayıt dosyaları</label><div class="tl-drow"><button class="btn sm" type="button" id="lvSimPick">Dosya Seç</button><input type="file" id="lvSimInput" accept=".bin,.binary" multiple hidden><div class="file-chips" id="lvSimFiles"></div></div><div class="help">Birden fazla dosya sırayla tek akış olarak oynatılır; çözümleme de aynı dosyaları kullanır. Dosyayı bu panele ya da MATView'e sürükleyebilirsiniz.</div></div>
+      <div class="tl-dcell"><label>Kayıt dosyaları</label><div class="tl-drow"><button class="btn sm" type="button" id="lvSimPick">Dosya Seç</button><input type="file" id="lvSimInput" multiple hidden><div class="file-chips" id="lvSimFiles"></div></div><div class="help">Birden fazla dosya sırayla tek akış olarak oynatılır; çözümleme de aynı dosyaları kullanır. Dosyayı bu panele ya da MATView'e sürükleyebilirsiniz.</div></div>
       <div class="tl-dcell"><label for="lv_simPeriod">Çerçeve periyodu (ms)</label><input class="inp w-s" id="lv_simPeriod" type="number" min="0.1" step="any"><div class="help">Akış hızı = çerçeve uzunluğu / periyot.</div></div>
       <div class="tl-dcell"><label>Döngü</label><label class="switch"><input type="checkbox" id="lv_simLoop"><span class="tr"></span><span class="sl">Dosya bitince başa dön</span></label></div>
       <div class="tl-dcell tl-fmode" id="tlFmode"><label>Birden fazla dosya çözülürken</label><div class="fmode">
@@ -812,7 +812,7 @@ main.tl-main > #lvRawCard { flex: none; }
       </div>
     </div>
     <div class="card-b">
-      <input type="file" id="fileInput" accept=".bin,.binary" multiple hidden>
+      <input type="file" id="fileInput" multiple hidden>
       <div class="drop" id="dropZone">.bin / .binary dosyalarını buraya sürükleyin veya <b>Dosya Ekle</b> ile seçin. MATView penceresine ya da Klasör paneline bırakılan binary dosyalar da buraya gelir.</div>
       <div class="tbl-wrap">
         <table class="tbl">
@@ -977,6 +977,15 @@ main.tl-main > #lvRawCard { flex: none; }
             <div class="field"><input class="inp w-l mono" id="s_header" type="text" spellcheck="false" placeholder="EB 90"><div class="help">Byte dizisi olarak girin. Örn: <code>EB 90</code>, <code>0xEB 0x90</code> veya <code>EB90</code>. Header çerçeveye dahildir.</div><div class="ferr" id="e_header"></div></div>
             <label for="s_headerPos">Header konumu</label>
             <div class="field"><select class="inp w-m" id="s_headerPos"><option value="start">Çerçevenin başında</option><option value="end">Çerçevenin sonunda</option></select><div class="help">Header, gönderim sırasında çerçevenin ilk byte'ları mı yoksa son byte'ları mı?</div></div>
+            <label>Dikkate alınmayacak byte'lar</label>
+            <div class="field">
+              <label class="switch"><input type="checkbox" id="s_discardEnabled"><span class="tr"></span><span class="sl">Aktif</span></label>
+              <div class="inline-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+                <input class="inp w-s" id="s_discardCount" type="number" min="1" step="1" aria-label="Atılacak byte sayısı"><span>byte,</span>
+                <select class="inp w-m" id="s_discardPos" aria-label="Atılacak byte'ların yeri"><option value="before">header'dan önce</option><option value="after">header'dan sonra</option></select>
+              </div>
+              <div class="help">Bazı kayıt biçimlerinde (örn. <code>.cnv</code>) her çerçevede header'ın hemen önünde veya hemen arkasında çözülmemesi gereken byte'lar bulunur. Açıkken bu byte'lar kayıttaki çerçeve uzunluğuna eklenir ve çözümden önce atılır: 10000 byte'lık çerçevede 10 byte atılacaksa kayıtta çerçeve 10010 byte kabul edilir. Template byte konumları atılan byte'lar çıkarıldıktan sonraki çerçeveye göredir.</div>
+            </div>
             <label for="s_framePeriod">Çerçeve periyodu (ms)</label>
             <div class="field"><input class="inp w-s" id="s_framePeriod" type="number" min="0.001" step="any"><div class="help">Bir çerçevenin süresi. MATView'deki zaman ekseni ve tek .mat'teki <code>t</code> bu periyotla hesaplanır (kayıp çerçeveler sayaçtan bulunup boşluk olarak kalır; oversample <code>B2</code> / <code>60</code> değişkenlerin örnekleri çerçeve içine eşit aralıkla yerleşir).</div></div>
             <label>Sütun öncelikli yeniden düzenleme</label>
@@ -3425,54 +3434,73 @@ TP.makeColDrop = function (S, where) {
   };
 };
 
+/* Header'dan önce/sonra gelen, dikkate alınmayacak byte'lar (telemetryParser v4.8). Akıştaki çerçeve FL + D byte'tır;
+   D byte'lık blok header'ın hemen önünde ('before') veya hemen arkasında ('after') durur ve çözümden önce çıkarılır.
+   J: bloğun akıştaki çerçeve içindeki konumu, hOff: header'ın konumu, WFL: akıştaki çerçeve uzunluğu. */
+function byteDiscard(S, FL, h) {
+  var D = S.discardEnabled ? Math.max(0, parseInt(S.discardCount, 10) || 0) : 0;
+  var atStart = S.headerPos !== 'end', before = S.discardPos !== 'after';
+  var hPlain = atStart ? 0 : FL - h, J = before ? hPlain : hPlain + h;
+  return { D: D, J: J, hOff: hPlain + (D && before ? D : 0), WFL: FL + D };
+}
+TP.byteDiscard = byteDiscard;
 TP.createScanner = function (S, onFrame, onSkip) {
   var C = S.cols | 0, R = S.rows | 0, FL = C * R;
   var hdr = parseHexBytes(S.header).bytes || new Uint8Array(0), h = hdr.length;
-  var atStart = S.headerPos !== 'end', strict = !!S.strictSync;
+  var strict = !!S.strictSync;
+  var bd = byteDiscard(S, FL, h), D = bd.D, J = bd.J, hOff = bd.hOff, WFL = bd.WFL;
+  var dOut = D ? new Uint8Array(FL) : null;
+  // akıştaki WFL byte'lık çerçeveden atılacak byte'ları çıkarır (dönen tampon yeniden kullanılır)
+  function emit(work, s) {
+    if (!D) { onFrame(work.subarray(s, s + FL), wAbs + s); return; }
+    dOut.set(work.subarray(s, s + J), 0);
+    dOut.set(work.subarray(s + J + D, s + WFL), J);
+    onFrame(dOut, wAbs + s);
+  }
   var carry = new Uint8Array(0), searchFrom = 0, havePrev = false, wAbs = 0;
   function gap(n, at) { havePrev = false; onSkip(n, at, 'gap'); }
   function scan(work, fin) {
     var pos = 0, search = searchFrom, WL = work.length;
     for (;;) {
       if (h === 0) {
-        if (WL - pos >= FL) { onFrame(work.subarray(pos, pos + FL), wAbs + pos); pos += FL; continue; }
+        if (WL - pos >= WFL) { emit(work, pos); pos += WFL; continue; }
         if (fin && WL > pos) { onSkip(WL - pos, wAbs + pos, 'end'); pos = WL; }
         break;
       }
-      var minP = atStart ? pos : pos + FL - h;
+      var minP = pos + hOff;
       if (search < minP) search = minP;
       var p = findSeq(work, hdr, search, WL);
       if (p < 0) {
         if (fin) { if (WL > pos) onSkip(WL - pos, wAbs + pos, 'end'); pos = WL; }
         else {
-          var keepFrom = atStart ? Math.max(pos, WL - h + 1) : Math.max(pos, WL - FL + 1);
+          var keepFrom = Math.max(pos, WL - h + 1 - hOff);
           if (keepFrom > pos) { gap(keepFrom - pos, wAbs + pos); pos = keepFrom; }
         }
         search = Math.max(pos, WL - h + 1);
         break;
       }
-      var s = atStart ? p : p + h - FL;
-      if (s + FL > WL) {
+      var s = p - hOff;
+      if (s + WFL > WL) {
         if (fin) { onSkip(WL - pos, wAbs + pos, 'end'); pos = WL; break; }
         if (s > pos) { gap(s - pos, wAbs + pos); pos = s; }
         search = p; break;
       }
       if (strict && !(havePrev && s === pos)) {
-        var np = p + FL;
+        var np = p + WFL;
         if (np + h > WL && !fin) { if (s > pos) { gap(s - pos, wAbs + pos); pos = s; } search = p; break; }
         if (np + h <= WL && !matchAt(work, hdr, np)) { search = p + 1; continue; }
       }
       if (s > pos) gap(s - pos, wAbs + pos);
-      onFrame(work.subarray(s, s + FL), wAbs + s);
+      emit(work, s);
       havePrev = true;
-      pos = s + FL; search = pos;
+      pos = s + WFL; search = pos;
     }
     searchFrom = Math.max(0, search - pos);
     wAbs += pos;
     return work.subarray(pos);
   }
   return {
-    frameLen: FL,
+    frameLen: WFL,
     push: function (chunk, fin) {
       var work;
       if (carry.length) { work = new Uint8Array(carry.length + chunk.length); work.set(carry); work.set(chunk, carry.length); }
@@ -3954,6 +3982,7 @@ async function runJob(job, post) {
   }
 
   /* tarayıcı: header arama ve çerçeve kesme */
+  if (S.discardEnabled) log('BİLGİ', 'Header\'dan ' + (S.discardPos === 'after' ? 'sonraki ' : 'önceki ') + S.discardCount + ' byte dikkate alınmıyor; kayıttaki çerçeve ' + ((colDrop ? colDrop.total : S.cols) * S.rows + S.discardCount) + ' byte kabul ediliyor.');
   var scanner = TP.createScanner(colDrop ? colDrop.scanS : S, handleFrame, function (n, at, kind) {
     stats.skipped += n;
     if (kind === 'end') log('UYARI', 'Kayıt sonunda ' + n + ' byte tam çerçeve oluşturmadığı için atlandı (ofset ' + at + ')');
@@ -4070,7 +4099,7 @@ TP.runJob = runJob;
                     sayacına göre birleştirilir: bir dosyada eksik olan çerçeve başka bir dosyada varsa
                     eklenir; aynı çerçeve birden fazla dosyada varsa listedeki ilk (en güvenilir) dosyadaki
                     kullanılır. Birleşik kayıt merged_ ile başlayan alt klasöre çözülür. */
-function baseName(n) { return String(n).replace(/\.(bin|binary)$/i, ''); }
+function baseName(n) { return String(n).replace(/\.[^.\\/]*$/, ''); }
 /* Dosyadaki çerçevelerin sayaç değerleri ve dosya içindeki ofsetleri (ham, atılan sütunlar dahil). */
 async function indexFrames(S, f, onProgress) {
   var colDrop = TP.makeColDrop(S, 'file'), C = S.cols | 0, R = S.rows | 0, T = colDrop ? colDrop.total : C;
@@ -4097,7 +4126,7 @@ async function indexFrames(S, f, onProgress) {
     sc.push(new Uint8Array(await f.slice(o, e).arrayBuffer()), e >= f.size);
     if (onProgress) onProgress(e / f.size);
   }
-  return { cnt: cnt, off: off, frameLen: T * R, mod: Math.pow(2, ctp.bits) };
+  return { cnt: cnt, off: off, frameLen: sc.frameLen, mod: Math.pow(2, ctp.bits) };
 }
 /* Çerçeve dizini: dosyalar art arda tek akış olarak taranır, her çerçevenin akıştaki başlangıç ofseti
    (ham, atılan sütunlar dahil) döner. where: atılacak sütun ayarının yeri ('file' | 'sim').
@@ -4121,7 +4150,7 @@ async function scanFrames(S, files, where, onProgress) {
     }
   }
   sc.push(new Uint8Array(0), true);
-  return { off: off.slice(0, n), n: n, frameLen: T * (S.rows | 0), starts: starts, total: total };
+  return { off: off.slice(0, n), n: n, frameLen: sc.frameLen, starts: starts, total: total };
 }
 TP.scanFrames = scanFrames;
 /* Sayaç taşmalarını açarak dosya içindeki sıra numaraları (aynı değerin tekrarı atlanır). */
@@ -4570,6 +4599,7 @@ var FS_OK = !!NATIVE_FS || typeof window.showDirectoryPicker === 'function';
 function defaults() {
   return {
     version: 1, cols: 125, rows: 100, header: 'EB 90', headerPos: 'start', transpose: true, strictSync: false, streamInnerSearch: true,
+    discardEnabled: false, discardCount: 10, discardPos: 'before',
     frameIdEnabled: false, frameIdIndex: 8,
     frameTypes: [{ name: 'Çerçeve 0', id: '0x00', templateName: '', templateRows: null, loadedAt: '' }],
     counterEnabled: false, counterIndex: 1, counterType: 'uint16', counterEndian: 'little', counterToOutput: true,
@@ -4612,6 +4642,9 @@ function normalize(o) {
   s.frameIdIndex = Math.max(0, parseInt(s.frameIdIndex, 10) || 0);
   s.counterIndex = Math.max(0, parseInt(s.counterIndex, 10) || 0);
   if (['concat', 'separate', 'merge'].indexOf(s.fileMode) < 0) s.fileMode = 'concat';
+  s.discardCount = Math.max(1, parseInt(s.discardCount, 10) || 10);
+  if (s.discardPos !== 'after') s.discardPos = 'before';
+  s.discardEnabled = !!s.discardEnabled;
   s.live.source = 'sim';
   if (typeof s.singleMat !== 'boolean') s.singleMat = false;
   if (!(+s.framePeriodMs > 0)) s.framePeriodMs = +(o && o.live && o.live.sim && o.live.sim.periodMs) || 10;
@@ -4736,6 +4769,7 @@ function renderSummary() {
   var rows = [];
   rows.push(['Çerçeve', S.cols + ' sütun × ' + S.rows + ' satır = ' + fmtInt(FL) + ' byte']);
   rows.push(['Header', (h.error ? '<span style="color:var(--err)">geçersiz</span>' : (h.bytes.length ? '<code>' + esc(TP.hexStr(h.bytes, 0, h.bytes.length)) + '</code>' : '(yok)')) + ' · ' + (S.headerPos === 'end' ? 'çerçevenin sonunda' : 'çerçevenin başında')]);
+  if (S.discardEnabled) rows.push(['Atılan byte', esc(S.discardCount + " byte, header'dan " + (S.discardPos === 'after' ? 'sonra' : 'önce'))]);
   rows.push(['Yeniden düzenleme', S.transpose ? 'Sütun öncelikli (açık)' : 'Kapalı (gönderim sırası)']);
   if (S.colDrop.enabled && S.colDrop.file) rows.push(['Atılan sütunlar', esc(S.colDrop.total + ' sütundan ' + S.colDrop.list)]);
   var ftHtml = activeTypes().map(function (i) {
@@ -4781,7 +4815,7 @@ function renderFiles() {
    Her dosya eklendiğinde arka planda taranıp çerçeveleri sayılır (çerçeve dizini). Varsayılan olarak
    dosyanın tamamı çözülür; "Tümü" kapatılırsa girilen ilk-son çerçeve (1'den başlar) aralığı dosyadan
    kesilip yalnız o kısım çözülür. Çerçeve formatı değişirse dosyalar yeniden sayılır. */
-function ixSig() { var cd = S.colDrop || {}; return JSON.stringify([S.cols, S.rows, S.header, S.headerPos, !!S.strictSync, cd.enabled && cd.file ? [cd.total, cd.list] : null]); }
+function ixSig() { var cd = S.colDrop || {}; return JSON.stringify([S.cols, S.rows, S.header, S.headerPos, !!S.strictSync, !!S.discardEnabled && [S.discardCount, S.discardPos], cd.enabled && cd.file ? [cd.total, cd.list] : null]); }
 function rangeOk(f) { return f._ix && f._ixSig === ixSig(); }
 function rangeHtml(f) {
   if (!rangeOk(f)) return f._ixErr && f._ixSig === ixSig() ? '<span style="color:var(--err)" title="' + esc(f._ixErr) + '">sayılamadı</span>' : '<span class="frg-p">çerçeveler sayılıyor…</span>';
@@ -4925,11 +4959,12 @@ $('#fileBody').addEventListener('click', function (e) {
 function addFiles(list) {
   var skipped = [];
   Array.prototype.forEach.call(list, function (f) {
-    if (!/\.(bin|binary)$/i.test(f.name)) { skipped.push(f.name); return; }
+    // uzantı fark etmez (.bin, .binary, .cnv, .dat …): her dosya ham binary kayıt olarak çözülür; template / ayar / görüntü dosyaları atlanır
+    if (/\.(xlsx|xls|csv|json|mat|txt|h264|264|mp4|png|jpg|pdf)$/i.test(f.name)) { skipped.push(f.name); return; }
     if (files.some(function (x) { return x.name === f.name && x.size === f.size && x.lastModified === f.lastModified; })) return;
     files.push(f);
   });
-  if (skipped.length) uiLog('UYARI', 'Yalnızca .bin / .binary dosyaları eklenebilir. Atlanan: ' + skipped.join(', '));
+  if (skipped.length) uiLog('UYARI', 'Kayıt dosyası olmayan dosyalar atlandı: ' + skipped.join(', '));
   renderFiles();
 }
 $('#btnAddFile').onclick = function () { if (!running) $('#fileInput').click(); };
@@ -4945,7 +4980,7 @@ window.addEventListener('drop', function (e) { e.preventDefault(); });
 /* ---------- ayarlar paneli ---------- */
 var BIND = [
   ['s_cols', 'cols', 'int'], ['s_rows', 'rows', 'int'], ['s_header', 'header', 'str'], ['s_headerPos', 'headerPos', 'str'],
-  ['s_transpose', 'transpose', 'bool'], ['s_strict', 'strictSync', 'bool'], ['s_streamInner', 'streamInnerSearch', 'bool'], ['s_frameIdEnabled', 'frameIdEnabled', 'bool'],
+  ['s_transpose', 'transpose', 'bool'], ['s_strict', 'strictSync', 'bool'], ['s_discardEnabled', 'discardEnabled', 'bool'], ['s_discardCount', 'discardCount', 'int'], ['s_discardPos', 'discardPos', 'str'], ['s_streamInner', 'streamInnerSearch', 'bool'], ['s_frameIdEnabled', 'frameIdEnabled', 'bool'],
   ['s_frameIdIndex', 'frameIdIndex', 'int'], ['s_counterEnabled', 'counterEnabled', 'bool'], ['s_counterIndex', 'counterIndex', 'int'],
   ['s_counterType', 'counterType', 'str'], ['s_counterEndian', 'counterEndian', 'str'], ['s_counterToOutput', 'counterToOutput', 'bool'],
   ['s_matEnabled', 'matEnabled', 'bool'], ['s_singleMat', 'singleMat', 'bool'], ['s_framePeriod', 'framePeriodMs', 'num']
@@ -4957,7 +4992,8 @@ function fillForm() {
 }
 function updateDerived() {
   var FL = S.cols * S.rows;
-  $('#s_flen').textContent = fmtInt(FL) + ' byte';
+  $('#s_flen').textContent = fmtInt(FL) + ' byte' + (S.discardEnabled ? ' (+ ' + fmtInt(S.discardCount) + ' atılan byte → kayıtta ' + fmtInt(FL + S.discardCount) + ' byte)' : '');
+  $('#s_discardCount').disabled = $('#s_discardPos').disabled = !S.discardEnabled;
   var h = TP.parseHexBytes(S.header);
   $('#e_header').textContent = h.error ? h.error : (h.bytes.length ? h.bytes.length + ' byte: ' + TP.hexStr(h.bytes, 0, h.bytes.length) : '');
   $('#e_header').style.color = h.error ? 'var(--err)' : 'var(--muted)';
@@ -4978,7 +5014,7 @@ BIND.forEach(function (b) {
   var el = $('#' + b[0]);
   var handler = function () {
     var v = b[2] === 'bool' ? el.checked : b[2] === 'int' ? parseInt(el.value, 10) : b[2] === 'num' ? parseFloat(el.value) : el.value;
-    if (b[2] === 'int') { if (isNaN(v)) return; v = Math.max(b[1] === 'cols' || b[1] === 'rows' ? 1 : 0, v); }
+    if (b[2] === 'int') { if (isNaN(v)) return; v = Math.max(b[1] === 'cols' || b[1] === 'rows' || b[1] === 'discardCount' ? 1 : 0, v); }
     if (b[2] === 'num' && !(v > 0)) return;
     S[b[1]] = v;
     onChanged(b[1] === 'frameIdEnabled');
@@ -5536,7 +5572,7 @@ async function runDecode(toMv) {
       uiLog('UYARI', 'Klasör kullanılamadı (' + e.message + '); çıktılar ZIP olarak indirilecek'); dir = null;
     }
   }
-  var base = files[0].name.replace(/\.(bin|binary)$/i, '').replace(/[\\/:*?"<>|]/g, '_');
+  var base = files[0].name.replace(/\.[^.\\/]*$/, '').replace(/[\\/:*?"<>|]/g, '_');
   var folder = stamp() + '_' + base;
   var runFiles = filesForRun(), total = runFiles.reduce(function (a, f) { return a + f.size; }, 0);
   running = true; runStart = Date.now(); lastResult = null;
@@ -5962,7 +5998,7 @@ function onData(u8) {
   catch (e) { U.uiLog('HATA', 'Canlı ayrıştırma hatası: ' + e.message); }
 }
 function onFrame(F, absOff) {
-  var s = S(), now = Date.now(), FL = F.length;
+  var s = S(), now = Date.now(), FL = scanner ? scanner.frameLen : F.length;   // akıştaki uzunluk (atılan byte'lar dahil)
   if (!scrubbing) { cnt.frames++; cnt.frameBytes += FL; }
   if (colDrop) F = colDrop.strip(F);
   // sütun atılarak kayıtta yalnız bulunan çerçeveler, atılmış sütunlarla yazılır
@@ -6012,7 +6048,7 @@ var simFiles = [];
    Akış duraklatılabilir ve seek(g) ile birleşik akışın herhangi bir byte'ına atlanabilir. */
 async function connectSim() {
   if (!simFiles.length) throw new Error('Oynatılacak kayıt dosyası seçilmedi');
-  var s = S(), c = s.live.sim, FL = (colDrop ? colDrop.total : s.cols) * s.rows, period = Math.max(0.1, +c.periodMs || 10), loop = !!c.loop;
+  var s = S(), c = s.live.sim, FL = (colDrop ? colDrop.total : s.cols) * s.rows + (s.discardEnabled ? Math.max(0, parseInt(s.discardCount, 10) || 0) : 0), period = Math.max(0.1, +c.periodMs || 10), loop = !!c.loop;
   var rate = FL * 1000 / period, fi = 0, off = 0, buf = null, bpos = 0, sent = 0, t0 = performance.now(), busy = false, stopped = false, hold = false, timer;
   var starts = [], tot = 0, gpos = 0, gen = 0;
   simFiles.forEach(function (f) { starts.push(tot); tot += f.size; });
@@ -6069,7 +6105,7 @@ async function connectSim() {
    Kaydırıcı, ◀ ▶ veya numara ile bir çerçeveye gidilince akış duraklar ve yalnız o çerçeve çözülür;
    Devam Et seçilen çerçeveden sonrasını oynatır. Bağlı değilken gezinmek bağlantıyı duraklatılmış açar. */
 var simIx = null, simIxSig = null, simIxJob = null, simBlob = null, simCur = -1, simJumped = false, seekBusy = false, seekWant = -1, navDrag = false;
-function simSig() { var s = S(), cd = s.colDrop || {}; return JSON.stringify([s.cols, s.rows, s.header, s.headerPos, !!s.strictSync, cd.enabled && cd.sim ? [cd.total, cd.list] : null, simFiles.map(function (f) { return f.name + ':' + f.size + ':' + f.lastModified; })]); }
+function simSig() { var s = S(), cd = s.colDrop || {}; return JSON.stringify([s.cols, s.rows, s.header, s.headerPos, !!s.strictSync, !!s.discardEnabled && [s.discardCount, s.discardPos], cd.enabled && cd.sim ? [cd.total, cd.list] : null, simFiles.map(function (f) { return f.name + ':' + f.size + ':' + f.lastModified; })]); }
 function simIndex() {
   var sig = simSig();
   if (simIxJob) { if (simIxJob.sig === sig) return; simIxJob.job.cancel(); simIxJob = null; }
@@ -8058,7 +8094,7 @@ FORM.forEach(function (f) {
 });
 $('#lvSimPick').onclick = function () { $('#lvSimInput').click(); };
 $('#lvSimInput').onchange = function () {
-  simFiles = Array.prototype.filter.call(this.files, function (f) { return /\.(bin|binary)$/i.test(f.name); });
+  simFiles = Array.prototype.slice.call(this.files);   // uzantı fark etmez (.bin, .cnv, .dat …)
   this.value = '';
   simFilesChanged();
 };
@@ -8656,7 +8692,7 @@ window.TPLive = {
   },
   setSimFiles: function (list) {
     if (connState !== 'idle') { U.uiLog('UYARI', 'Oynatma sürerken dosya değiştirilemez; önce Durdur'); return false; }
-    simFiles = Array.prototype.filter.call(list, function (f) { return /\.(bin|binary)$/i.test(f.name); });
+    simFiles = Array.prototype.filter.call(list, function (f) { return !/\.(xlsx|xls|csv|json|mat|txt|h264|264|mp4)$/i.test(f.name); });
     simFilesChanged();
     return simFiles.length > 0;
   },
@@ -8714,7 +8750,7 @@ async function frameToXls(k) {
     sheets.push({ name: (ft.name || ('Çerçeve ' + i)).replace(/[\[\]:*?\/\\]/g, '_').slice(0, 31), rows: [['Kayıt', names], ['Çerçeve', (k + 1) + ' / ' + simIx.n], ['Çerçeve tipi', ft.name + ' (' + ft.id + ')'], ['Dışa aktarma', new Date().toLocaleString('tr-TR')], [], ['#', 'Birim', 'Etiket', 'Değişken', 'Tip', 'Eleman', 'Sonuç', 'Ham', 'Hex']].concat(rows) });
   });
   if (!sheets.length) { U.showModal("Çerçeveyi Excel'e aktar", '<div class="notice warn">Çerçeve ' + (k + 1) + ' içinde çözülen değer bulunamadı (çerçeve tipine template yüklü mü?).</div>'); return; }
-  var base = (simFiles[0] ? simFiles[0].name.replace(/\.(bin|binary)$/i, '') : 'kayit') + '_cerceve' + (k + 1) + '.xlsx';
+  var base = (simFiles[0] ? simFiles[0].name.replace(/\.[^.\\/]*$/, '') : 'kayit') + '_cerceve' + (k + 1) + '.xlsx';
   var blob = await host.writeXlsx(sheets); await host.saveFile(base, blob);
   U.uiLog('TAMAM', base + ": çerçeve " + (k + 1) + " değerleri Excel'e aktarıldı (" + sheets.map(function (x) { return x.name + ' ' + (x.rows.length - 6) + ' değer'; }).join(', ') + ')');
 }
@@ -8969,7 +9005,7 @@ window.addEventListener('keydown', function (e) {   // F11 MATView penceresine i
 window.addEventListener('drop', function (e) {
   var t = e.target, zone = t && t.closest && t.closest('#dropZone, #vpDrop, #mvWsPane');
   if (zone || !e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
-  var fl = Array.prototype.slice.call(e.dataTransfer.files), bins = fl.filter(function (f) { return /\.(bin|binary)$/i.test(f.name); });
+  var fl = Array.prototype.slice.call(e.dataTransfer.files), bins = fl.filter(function (f) { return !/\.(xlsx|xls|csv|json|mat|txt|h264|264|mp4)$/i.test(f.name); });
   if (t && t.closest && t.closest('#tabLive, #tlDrawer, #mainTabs') && bins.length) { window.TPLive.setSimFiles(bins); return; }
   try { if (window.parent !== window && window.parent.MATViewTLM) window.parent.MATViewTLM.dropFiles(Array.prototype.slice.call(e.dataTransfer.files)); } catch (x) {}
 });

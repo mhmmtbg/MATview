@@ -45,6 +45,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.25', d: 'Telemetri: telemetryParser v4.8 uyumu (1) — atılacak byte, her uzantıdan kayıt', items: [
+    'Ayarlar > Çerçeve Formatı: “Dikkate alınmayacak byte’lar”. Her çerçevede header’ın hemen önünde ya da arkasında bulunan N byte (örn. .cnv kayıtları) çözümden önce atılır; kayıttaki çerçeve uzunluğu FL + N kabul edilir. Dosya çözme, Çöz ve MATView’de aç, dosyadan oynatma, çerçeve sayımı / aralık seçimi, kopya birleştirme ve özet bunu kullanır.',
+    'Kayıt dosyasının uzantısı fark etmez: .bin dışındaki dosyalar (.cnv, .dat, .raw …) telemetri kaydı olarak eklenebilir; telemetri template’i yüklüyken MATView’in tanımadığı uzantılar doğrudan Telemetri’ye gider.',
+    'telemetryParser v4.8 ayar dosyalarındaki yeni alanlar içe aktarılır.']},
   {v: '2.24', d: 'Akustik oynatma: yedek ses oynatıcı', items: [
     'Oynatma başladıktan sonra Web Audio saati ilerlemiyorsa (bazı Windows / WebView2 ses aygıtı durumlarında süre 0,00\'da kalıyor ve ses gelmiyordu) ses otomatik olarak tarayıcının standart ses oynatıcısıyla (<audio>) çalınır; sarma, duraklatma, döngü ve ses düzeyi aynı çalışır. Geçiş ve nedeni Dinle günlüğüne yazılır.',
     'Ses hiç açılamazsa hata mesajı gösterilir (ses çıkış aygıtını denetleme önerisiyle).',
