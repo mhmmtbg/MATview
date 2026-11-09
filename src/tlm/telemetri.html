@@ -1257,6 +1257,7 @@ if errorlevel 1 pause
                 <span class="ro" id="outDirLabel" style="padding-top:0"></span>
                 <button class="btn sm" type="button" id="btnPickDir">Klasör Seç</button>
                 <button class="btn sm" type="button" id="btnResetDir">Sıfırla</button>
+                <button class="btn sm" type="button" id="btnOpenOut" title="Çıktı klasörünün içeriğini gösterir (MATView.exe'de Windows Gezgini'nde açar)">Klasörü aç</button>
               </div>
               <div class="help" id="outDirHelp"></div>
             </div>
@@ -5356,7 +5357,7 @@ function buildFrameView(i) {
   var rowsN, colsN;
   if (S.transpose) { rowsN = R; colsN = C; }
   else { rowsN = FL; colsN = 1; }
-  return { i: i, C: C, R: R, FL: FL, own: own, multi: multi, defs: defs, labels: labels, rowsN: rowsN, colsN: colsN, q: '', hoverLabel: -1 };
+  return { i: i, C: C, R: R, FL: FL, own: own, multi: multi, defs: defs, labels: labels, rowsN: rowsN, colsN: colsN, q: '', hoverLabel: -1, zoom: 1, panX: 0, panY: 0 };
 }
 function fvLayout(W, H) {
   var g = fv;
@@ -5385,11 +5386,21 @@ function drawFrameView() {
   if (!W || !H) return;
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   var ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
-  var L = fvLayout(W, H); g.L = L;
-  var cw = L.cw, ch = L.ch, x0 = L.left, y0 = L.top, filt = fvFilterOn(), nMatch = 0, matched = {};
+  var L = fvLayout(W, H), z = g.zoom || 1;
+  // zoom ve kaydırma: hücreler z kat büyür, içerik pan kadar kayar; satır/sütun numaraları kenarda sabit kalır
+  L.bcw = L.cw; L.bch = L.ch; L.cw *= z; L.ch *= z;
+  var viewW = W - L.left - 6, viewH = H - L.top - 4;
+  g.panX = Math.max(0, Math.min(g.panX, g.colsN * L.cw - viewW));
+  g.panY = Math.max(0, Math.min(g.panY, g.rowsN * L.ch - viewH));
+  L.x0 = L.left - g.panX; L.y0 = L.top - g.panY; L.W = W; L.H = H; g.L = L;
+  var cw = L.cw, ch = L.ch, x0 = L.x0, y0 = L.y0, filt = fvFilterOn(), nMatch = 0, matched = {};
   var blank = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#ffffff';
+  // görünen hücre aralığı
+  var cA = Math.max(0, Math.floor((L.left - x0) / cw)), cB = Math.min(g.colsN, Math.ceil((W - x0) / cw));
+  var rA = Math.max(0, Math.floor((L.top - y0) / ch)), rB = Math.min(g.rowsN, Math.ceil((H - y0) / ch));
+  ctx.save(); ctx.beginPath(); ctx.rect(L.left, L.top, W - L.left, H - L.top); ctx.clip();
   // hücreler
-  for (var c = 0; c < g.colsN; c++) for (var r = 0; r < g.rowsN; r++) {
+  for (var c = cA; c < cB; c++) for (var r = rA; r < rB; r++) {
     var l = c * g.rowsN + r; if (l >= g.FL) break;
     var o = g.own[l], x = x0 + c * cw, y = y0 + r * ch, col;
     if (o >= 0) col = fvColor(g.defs[o].li); else if (o < -1) col = '#c9ced6'; else col = blank;
@@ -5399,13 +5410,13 @@ function drawFrameView() {
   ctx.globalAlpha = 1;
   if (cw >= 5 && ch >= 4) {
     ctx.strokeStyle = 'rgba(0,0,0,.07)'; ctx.lineWidth = 1; ctx.beginPath();
-    for (c = 0; c <= g.colsN; c++) { ctx.moveTo(Math.round(x0 + c * cw) + .5, y0); ctx.lineTo(Math.round(x0 + c * cw) + .5, y0 + g.rowsN * ch); }
-    for (r = 0; r <= g.rowsN; r++) { ctx.moveTo(x0, Math.round(y0 + r * ch) + .5); ctx.lineTo(x0 + g.colsN * cw, Math.round(y0 + r * ch) + .5); }
+    for (c = cA; c <= cB; c++) { ctx.moveTo(Math.round(x0 + c * cw) + .5, y0 + rA * ch); ctx.lineTo(Math.round(x0 + c * cw) + .5, y0 + rB * ch); }
+    for (r = rA; r <= rB; r++) { ctx.moveTo(x0 + cA * cw, Math.round(y0 + r * ch) + .5); ctx.lineTo(x0 + cB * cw, Math.round(y0 + r * ch) + .5); }
     ctx.stroke();
   }
   // parçalar: aynı sütunda ardışık aynı sahipli byte'lar; her parametrenin adı en büyük parçasına yazılır
   var runs = [], best = {};
-  for (c = 0; c < g.colsN; c++) {
+  for (c = cA; c < cB; c++) {
     var r0 = 0;
     for (r = 1; r <= g.rowsN; r++) {
       var la = c * g.rowsN + r0, lb = c * g.rowsN + r, oa = la < g.FL ? g.own[la] : -1, ob = (r < g.rowsN && lb < g.FL) ? g.own[lb] : -9;
@@ -5441,19 +5452,23 @@ function drawFrameView() {
     });
     g.defs.forEach(function (d, k) { if (fvMatches(k) && !d.d.isSlot) nMatch++; });
   }
-  // satır / sütun numaraları
+  ctx.restore();
+  // satır / sütun numaraları (kenarda sabit)
   ctx.fillStyle = '#7a838d'; ctx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
   ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
   var rs = Math.max(1, Math.ceil(12 / ch)); rs = rs <= 1 ? 1 : rs <= 2 ? 2 : rs <= 5 ? 5 : rs <= 10 ? 10 : Math.ceil(rs / 25) * 25;
-  for (r = 0; r < g.rowsN; r += rs) ctx.fillText(String(r), x0 - 4, y0 + (r + .5) * ch);
+  for (r = Math.floor(rA / rs) * rs; r < rB; r += rs) { var ry = y0 + (r + .5) * ch; if (ry >= L.top) ctx.fillText(String(r), L.left - 4, ry); }
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   var cs = Math.max(1, Math.ceil((L.cl * 6.5 + 6) / cw)); cs = cs <= 1 ? 1 : cs <= 2 ? 2 : cs <= 5 ? 5 : cs <= 10 ? 10 : Math.ceil(cs / 25) * 25;
-  for (c = 0; c < g.colsN; c += cs) { var ct = String(S.transpose ? c : c * g.rowsN), cx = x0 + (c + .5) * cw; if (cx + ctx.measureText(ct).width / 2 <= W) ctx.fillText(ct, cx, y0 - 5); }
-  $('#fvCount').textContent = fv.q ? nMatch + ' parametre eşleşti' : '';
+  for (c = Math.floor(cA / cs) * cs; c < cB; c += cs) { var ct = String(S.transpose ? c : c * g.rowsN), cx = x0 + (c + .5) * cw, tw2 = ctx.measureText(ct).width / 2; if (cx - tw2 >= L.left - 2 && cx + tw2 <= W) ctx.fillText(ct, cx, L.top - 5); }
+  $('#fvCount').textContent = (fv.q ? nMatch + ' parametre eşleşti' : '') + (z > 1.001 ? (fv.q ? ' · ' : '') + 'zoom ' + (Math.round(z * 10) / 10) + '× (çift tık: sığdır)' : '');
+  cv.style.cursor = fvDrag ? 'grabbing' : z > 1.001 ? 'grab' : '';
 }
+var fvDrag = null;
 function fvCellAt(e) {
   var g = fv, L = g && g.L; if (!L) return -1;
-  var rc = $('#fvCanvas').getBoundingClientRect(), x = e.clientX - rc.left - L.left, y = e.clientY - rc.top - L.top;
+  var rc = $('#fvCanvas').getBoundingClientRect(), mx = e.clientX - rc.left, my = e.clientY - rc.top, x = mx - L.x0, y = my - L.y0;
+  if (mx < L.left || my < L.top) return -1;
   var c = Math.floor(x / L.cw), r = Math.floor(y / L.ch);
   if (x < 0 || y < 0 || c >= g.colsN || r >= g.rowsN) return -1;
   var l = c * g.rowsN + r; return l < g.FL ? l : -1;
@@ -5477,6 +5492,32 @@ function showFrameView(i) {
   drawFrameView();
   $('#fvSearch').focus();
 }
+// tekerle zoom (imlecin altındaki hücre yerinde kalır), basılı tutup sürükleyerek kaydırma, çift tıkla sığdırma
+$('#fvCanvas').addEventListener('wheel', function (e) {
+  var g = fv, L = g && g.L; if (!L) return;
+  e.preventDefault();
+  var rc = this.getBoundingClientRect(), mx = Math.max(L.left, e.clientX - rc.left), my = Math.max(L.top, e.clientY - rc.top);
+  var maxZ = Math.max(1, 60 / Math.max(0.01, Math.min(L.bcw, L.bch)));
+  var nz = Math.max(1, Math.min(maxZ, g.zoom * Math.pow(1.0015, -e.deltaY * (e.deltaMode === 1 ? 33 : 1))));
+  if (nz === g.zoom) return;
+  var ux = (mx - L.x0) / L.cw, uy = (my - L.y0) / L.ch;
+  g.zoom = nz;
+  g.panX = L.left + ux * L.bcw * nz - mx; g.panY = L.top + uy * L.bch * nz - my;
+  $('#fvTip').classList.add('hidden');
+  drawFrameView();
+}, { passive: false });
+$('#fvCanvas').addEventListener('mousedown', function (e) {
+  if (!fv || e.button !== 0) return;
+  fvDrag = { x: e.clientX, y: e.clientY, px: fv.panX, py: fv.panY };
+  $('#fvTip').classList.add('hidden'); e.preventDefault(); drawFrameView();
+});
+window.addEventListener('mousemove', function (e) {
+  if (!fvDrag || !fv) return;
+  fv.panX = fvDrag.px - (e.clientX - fvDrag.x); fv.panY = fvDrag.py - (e.clientY - fvDrag.y);
+  drawFrameView();
+});
+window.addEventListener('mouseup', function () { if (fvDrag) { fvDrag = null; if (fv) drawFrameView(); } });
+$('#fvCanvas').addEventListener('dblclick', function () { if (fv) { fv.zoom = 1; fv.panX = fv.panY = 0; drawFrameView(); } });
 function hideFrameView() { $('#fvOverlay').classList.add('hidden'); $('#fvTip').classList.add('hidden'); fv = null; }
 $('#fvX').onclick = hideFrameView;
 $('#fvOverlay').addEventListener('mousedown', function (e) { if (e.target === this) hideFrameView(); });
@@ -5488,8 +5529,13 @@ $('#fvLegend').addEventListener('mouseleave', function () { if (fv && fv.hoverLa
 $('#fvCanvas').addEventListener('mousemove', function (e) {
   var tip = $('#fvTip'), l = fvCellAt(e);
   if (l < 0) { tip.classList.add('hidden'); return; }
+  if (fvDrag) { tip.classList.add('hidden'); return; }
   var g = fv, r = l % g.rowsN, c = Math.floor(l / g.rowsN), os = g.multi.get(l) || (g.own[l] !== -1 ? [g.own[l]] : []);
-  tip.innerHTML = '<div class="h">byte ' + l + ' · satır ' + r + ', sütun ' + (S.transpose ? c : c + ' (' + c * g.rowsN + '…)') + '</div>' + (os.length ? os.map(fvOwnerHtml).join('') : '<div class="o" style="color:var(--faint)">Kullanılmıyor</div>');
+  // çerçevedeki (R satır × C sütun) yeri ve iki sıralamaya göre ofseti; sütun öncelikli kapalıysa byte gönderim sırasıdır
+  var fr = S.transpose ? r : Math.floor(l / g.C), fc = S.transpose ? c : l % g.C;
+  tip.innerHTML = '<div class="h">byte ' + l + ' · satır ' + r + ', sütun ' + (S.transpose ? c : c + ' (' + c * g.rowsN + '…)') + '</div>' +
+    '<div class="h" style="font-weight:400">Satır öncelikli ofset: <b>' + (fr * g.C + fc) + '</b> · Sütun öncelikli ofset: <b>' + (fc * g.R + fr) + '</b>' + (S.transpose ? '' : ' <small>(çerçevede satır ' + fr + ', sütun ' + fc + ')</small>') + '</div>' +
+    (os.length ? os.map(fvOwnerHtml).join('') : '<div class="o" style="color:var(--faint)">Kullanılmıyor</div>');
   tip.classList.remove('hidden');
   var tw = tip.offsetWidth, th = tip.offsetHeight;
   tip.style.left = Math.min(e.clientX + 14, window.innerWidth - tw - 8) + 'px';
@@ -5597,6 +5643,7 @@ $('#lfNone').onclick = function () { S.labelFilter.labels = []; save(); renderLa
 function renderOutDir() {
   $('#outDirLabel').textContent = FS_OK ? (outDir ? (outDir.__native ? outDir.path : outDir.name) : 'Seçilmedi') : 'Desteklenmiyor';
   $('#btnPickDir').disabled = !FS_OK; $('#btnResetDir').disabled = !FS_OK || !outDir;
+  $('#btnOpenOut').disabled = !FS_OK || !outDir;
   $('#outDirHelp').innerHTML = NATIVE_FS ? 'Klasör Windows klasör seçicisiyle seçilir ve hatırlanır; her klasöre (masaüstü, sürücü kökü, ağ klasörü …) yazılabilir. Çıktılar <code>YYYY-AA-GG_SS-DD-ss_kayıtadı</code> klasörüne yazılır.' : FS_OK
     ? 'Tarayıcı güvenliği nedeniyle sayfanın bulunduğu klasör otomatik bilinemez; klasörü bir kez seçmeniz yeterlidir, seçim hatırlanır. Seçilmezse Çöz\'e basıldığında sorulur. Çıktılar <code>YYYY-AA-GG_SS-DD-ss_kayıtadı</code> klasörüne yazılır.'
     : 'Bu tarayıcı klasöre doğrudan yazmayı desteklemiyor. Çıktılar aynı klasör yapısıyla ZIP olarak indirilir. Klasöre doğrudan yazmak için Chrome veya Edge kullanın.';
@@ -5617,6 +5664,74 @@ async function pickDir() {
   return d;
 }
 $('#btnPickDir').onclick = function () { pickDir().catch(function (e) { if (e.name !== 'AbortError') uiLog('HATA', 'Klasör seçilemedi: ' + e.message); }); };
+/* çıktı klasörünü göster: MATView.exe'de Windows Gezgini (son çözümün klasörü varsa o), tarayıcıda klasör içeriği penceresi (telemetryParser v4.8) */
+async function openOut(sub) {
+  if (outDir && outDir.__native && NATIVE_FS && typeof NATIVE_FS.mvOpenFolder === 'function') {
+    var base = outDir.path, sep = base.indexOf('\\') >= 0 ? '\\' : '/', p = sub ? base.replace(/[\\/]+$/, '') + sep + sub : base;
+    var ok = await NATIVE_FS.mvOpenFolder(p); if (!ok && sub) ok = await NATIVE_FS.mvOpenFolder(base);
+    if (!ok) uiLog('UYARI', 'Klasör açılamadı: ' + p);
+    return;
+  }
+  return openOutDirWindow();
+}
+async function openOutDirWindow() {
+  if (!FS_OK) { uiLog('UYARI', 'Bu tarayıcı klasöre yazmayı desteklemiyor; çıktılar ZIP olarak indirilir'); return; }
+  if (!outDir) { uiLog('UYARI', 'Henüz çıktı klasörü seçilmedi (Ayarlar > Çıktı veya Çöz)'); return; }
+  var root = outDir, w = null;
+  try {
+    if (!(await ensureDirPermission(root))) { uiLog('UYARI', 'Çıktı klasörüne erişim izni verilmedi'); return; }
+    w = window.open('', '_blank', 'width=960,height=680');
+    if (!w) { uiLog('UYARI', 'Yeni pencere açılamadı; düğmeye tekrar basın (açılır pencere engelleyicisi açıksa bu siteye izin verin)'); return; }
+    var path = [root];
+    if (lastResult && lastResult.folder) { try { path.push(await root.getDirectoryHandle(lastResult.folder)); } catch (e) {} }
+    var d = w.document;
+    d.open();
+    d.write('<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Çıktı klasörü</title><style>' +
+      'body{margin:0;font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1f2329;background:#fff}' +
+      'header{position:sticky;top:0;background:#f6f7f9;border-bottom:1px solid #dde1e6;padding:10px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}' +
+      'header button{border:1px solid #cfd5dc;background:#fff;border-radius:4px;padding:4px 10px;cursor:pointer;font:inherit}' +
+      '.crumb a{color:#1f4e8c;cursor:pointer;text-decoration:none}.crumb a:hover{text-decoration:underline}.crumb span{color:#8a929b;margin:0 4px}' +
+      'table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:6px 14px;border-bottom:1px solid #eef0f3;white-space:nowrap}' +
+      'th{font-size:11.5px;color:#6b737c;font-weight:600;background:#fafbfc;position:sticky;top:45px}td.n{width:100%}td.r{text-align:right;font-variant-numeric:tabular-nums;color:#555}' +
+      'tr.it{cursor:pointer}tr.it:hover td{background:#f1f5fa}.ic{display:inline-block;width:18px}.empty{padding:20px 14px;color:#8a929b}' +
+      '</style></head><body><header><button id="up" type="button">↑ Üst klasör</button><button id="rf" type="button">Yenile</button><div class="crumb" id="cr"></div></header>' +
+      '<table><thead><tr><th>Ad</th><th style="text-align:right">Boyut</th><th>Değiştirilme</th></tr></thead><tbody id="tb"></tbody></table></body></html>');
+    d.close();
+    var tb = d.getElementById('tb'), cr = d.getElementById('cr');
+    async function render() {
+      var cur = path[path.length - 1], items = [];
+      w.document.title = path.map(function (h) { return h.name; }).join('/');
+      cr.innerHTML = path.map(function (h, i) { return '<a data-i="' + i + '">' + esc(h.name) + '</a>'; }).join('<span>/</span>');
+      tb.innerHTML = '<tr><td class="empty" colspan="3">Yükleniyor…</td></tr>';
+      for await (var e of cur.values()) {
+        var it = { h: e, name: e.name, dir: e.kind === 'directory', size: 0, mod: 0 };
+        if (!it.dir) { try { var f = await e.getFile(); it.size = f.size; it.mod = f.lastModified; } catch (er) {} }
+        items.push(it);
+      }
+      items.sort(function (a, b) { return a.dir !== b.dir ? (a.dir ? -1 : 1) : b.name.localeCompare(a.name, 'tr', { numeric: true }) * (a.dir ? 1 : -1); });
+      tb.innerHTML = items.length ? items.map(function (it, i) {
+        return '<tr class="it" data-k="' + i + '"><td class="n"><span class="ic">' + (it.dir ? '📁' : '📄') + '</span>' + esc(it.name) + '</td><td class="r">' + (it.dir ? '' : fmtBytes(it.size)) + '</td><td>' + (it.mod ? new Date(it.mod).toLocaleString('tr-TR') : '') + '</td></tr>';
+      }).join('') : '<tr><td class="empty" colspan="3">Klasör boş</td></tr>';
+      tb.onclick = async function (ev) {
+        var tr = ev.target.closest('tr.it'); if (!tr) return;
+        var it = items[+tr.dataset.k];
+        if (it.dir) { path.push(it.h); render(); return; }
+        var f = await it.h.getFile(), url = URL.createObjectURL(f), a = d.createElement('a');
+        a.href = url; a.download = it.name; d.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+      };
+      d.getElementById('up').disabled = path.length < 2;
+    }
+    cr.onclick = function (ev) { var a = ev.target.closest('a[data-i]'); if (a) { path.length = +a.dataset.i + 1; render(); } };
+    d.getElementById('up').onclick = function () { if (path.length > 1) { path.pop(); render(); } };
+    d.getElementById('rf').onclick = render;
+    await render();
+  } catch (e) {
+    try { if (w) w.close(); } catch (er) {}
+    if (e.name !== 'AbortError') uiLog('HATA', 'Çıktı klasörü açılamadı: ' + e.message);
+  }
+}
+$('#btnOpenOut').onclick = function () { openOut(lastResult && lastResult.folder); };
 $('#btnResetDir').onclick = function () { outDir = null; idbSet('outDir', null).catch(function () {}); renderOutDir(); renderSummary(); };
 async function ensureDirPermission(d) {
   var o = { mode: 'readwrite' };
@@ -5824,13 +5939,14 @@ function onMsg(m, client) {
     if (m.blob) {
       html += '<div class="notice ok">Çözümleme tamamlandı. ' + m.files.length + ' dosya <code>' + esc(m.folder) + '.zip</code> içinde. <button class="btn sm" type="button" id="btnZip" style="margin-left:8px">ZIP İndir (' + fmtBytes(m.blob.size) + ')</button></div>';
     } else {
-      html += '<div class="notice ok">Çözümleme tamamlandı. ' + m.files.length + ' dosya <code>' + esc((outDir ? outDir.name + '/' : '') + m.folder) + '</code> klasörüne yazıldı.</div>';
+      html += '<div class="notice ok">Çözümleme tamamlandı. ' + m.files.length + ' dosya <code>' + esc((outDir ? outDir.name + '/' : '') + m.folder) + '</code> klasörüne yazıldı.' + (outDir ? ' <button class="btn sm" type="button" id="btnOpenRes" style="margin-left:8px">Klasörü aç</button>' : '') + '</div>';
     }
     if (m.jobs) html += '<table class="tbl" style="margin-top:10px"><thead><tr><th>Kayıt</th><th>Klasör</th><th class="num">Çerçeve</th><th class="num">Kayıp</th><th class="num">Atlanan byte</th><th class="num">Dosya</th></tr></thead><tbody>' + m.jobs.map(function (j) {
       return '<tr' + (j.merged ? ' style="font-weight:600"' : '') + '><td>' + esc(j.label) + '</td><td class="mono">' + esc(j.folder) + '/</td><td class="num">' + fmtInt(j.stats.frames) + '</td><td class="num">' + fmtInt(j.stats.lost) + '</td><td class="num">' + fmtInt(j.stats.skipped) + '</td><td class="num">' + j.files + '</td></tr>';
     }).join('') + '</tbody></table>';
     html += '<ul>' + m.files.map(function (f) { return '<li>' + esc(f) + '</li>'; }).join('') + '</ul>';
     $('#result').innerHTML = html;
+    if ($('#btnOpenRes')) $('#btnOpenRes').onclick = function () { openOut(m.folder); };
     if (m.blob) {
       $('#btnZip').onclick = function () { download(m.folder + '.zip', m.blob); };
       download(m.folder + '.zip', m.blob);

@@ -123,6 +123,7 @@ func runNative(u, dir string) (ok bool) {
 			return p
 		})
 		w.Bind("mvAllowDir", func(p string) bool { return fsb.allow(p) })
+		w.Bind("mvOpenFolder", func(p string) bool { return fsb.openFolder(p) })
 	}
 	// canlı telemetri: UDP ve seri port (tarayıcı UDP soketi açamaz; PowerShell köprüsü gerekmez)
 	if lv, err := live.Start(); err == nil {
