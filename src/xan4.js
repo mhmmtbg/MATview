@@ -45,6 +45,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.28', d: 'Çerçeve görünümü ve çıktı klasörü', items: [
+    'Telemetri › Çerçeve görünümü: fare tekerleğiyle yakınlaştırma, sürükleyerek kaydırma, çift tıkla sığdırma.',
+    'Çerçeve görünümü ipucu her hücre için satır öncelikli ve sütun öncelikli byte ofsetini birlikte gösterir.',
+    'Telemetri ayarları › Çıktı: “Klasörü aç” düğmesi. MATView.exe’de Windows Gezgini’nde açar (çözüm bittiğinde bildirimden de son çözümün klasörü açılabilir); tarayıcıda klasör içeriği penceresini gösterir.'
+  ]},
   {v: '2.27', d: 'Canlı dinle (akustik sensör)', items: [
     'Aç menüsü › “Canlı dinle (akustik sensör)…”: ayrı, taşınabilir bir pencere. Telemetri canlı akışındaki (seri port, UDP ya da dosyadan oynatma) seçilen parametrenin her çerçevedeki tüm örnekleri sırayla, kesintisiz ses olarak çalınır; Akustik sekmesi değişmedi.',
     'Örnekleme hızı gelen akıştan otomatik alınır (ya da elle girilir); katsayı, seviye normalleştirme, ses düzeyi.',

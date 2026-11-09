@@ -30,6 +30,7 @@ var (
 	pCoCreateInstance   = ole32.NewProc("CoCreateInstance")
 	pCoTaskMemFree      = ole32.NewProc("CoTaskMemFree")
 	pSHCreateItemFromPN = shell32.NewProc("SHCreateItemFromParsingName")
+	pShellExecuteW      = shell32.NewProc("ShellExecuteW")
 )
 
 type guid struct {
@@ -210,4 +211,19 @@ func startFsBridge() *fsBridge {
 	b := &fsBridge{token: hex.EncodeToString(k), port: ln.Addr().(*net.TCPAddr).Port}
 	go http.Serve(ln, b)
 	return b
+}
+
+// openFolder: izin verilen bir klasörü (ya da altını) Windows Gezgini'nde açar
+func (b *fsBridge) openFolder(p string) bool {
+	c, ok := b.inside(p)
+	if !ok {
+		return false
+	}
+	if st, err := os.Stat(c); err != nil || !st.IsDir() {
+		return false
+	}
+	verb, _ := syscall.UTF16PtrFromString("open")
+	path, _ := syscall.UTF16PtrFromString(c)
+	r, _, _ := pShellExecuteW.Call(0, uintptr(unsafe.Pointer(verb)), uintptr(unsafe.Pointer(path)), 0, 0, 1 /*SW_SHOWNORMAL*/)
+	return r > 32
 }
