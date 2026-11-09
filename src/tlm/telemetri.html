@@ -6103,6 +6103,15 @@ function applyDecode(i, it, b, dv, base, now) {
   }
   s.hex = r.hex; s.seen = now;
   if (any) s.last = now;
+  if (audTap && !paused && audTap.i === i && audTap.id === it.id) audTapPush(r.val);
+}
+/* canlı dinleme (MATView › Aç › Canlı dinle): dinlenen parametrenin her çözümündeki tüm örnekler sıraya eklenir,
+   MATView penceresi audioPull ile alır. Fazla birikirse (pencere kapalı / yavaş) eski örnekler atılır. */
+var audTap = null;
+function audTapPush(val) {
+  var q = audTap.q;
+  for (var k = 0; k < val.length; k++) { var v = val[k]; if (typeof v === 'bigint') v = Number(v); if (typeof v === 'number' && isFinite(v)) q.push(v); }
+  if (q.length > 4000000) q.splice(0, q.length - 2000000);
 }
 
 /* ---------- undersample birleştirici ---------- */
@@ -8959,6 +8968,26 @@ window.TPLive = {
   colFilter: function (k, v) { if (arguments.length < 2) return colFlt[k] || ''; v = String(v || '').trim().toLocaleLowerCase('tr'); if (v) colFlt[k] = v; else delete colFlt[k]; $('#lvWrap').scrollTop = 0; renderTable(); return v; },
   rowCount: function () { return lvRowCount; },
   connState: function () { return connState; },
+  audioSignals: function () {
+    var out = [], fts = S().frameTypes || [];
+    liveComp.forEach(function (c, i) {
+      if (!c || !c.info || !work[i]) return;
+      work[i].ids.forEach(function (id) {
+        var d = c.info[id] && c.info[id].useDef; if (!d || !d.type || ['int', 'float', 'bit'].indexOf(d.type.kind) < 0) return;
+        out.push({ key: i + ':' + id, ft: (fts[i] && fts[i].name) || ('Çerçeve ' + i), name: d.unit + '/' + d.name, n: (d.n || 1) * (d.perSample || 1) * (d.reps ? d.reps.length : 1) });
+      });
+    });
+    return out;
+  },
+  audioTap: function (key) {
+    if (!key) { audTap = null; return true; }
+    var p = String(key).split(':'), i = +p[0], id = p.slice(1).join(':'), c = liveComp[i];
+    if (!c || !c.info) return false;
+    var ok = Object.keys(c.info).some(function (k) { return String(k) === id; }); if (!ok) return false;
+    var idv = work[i].ids.filter(function (x) { return String(x) === id; })[0];
+    audTap = { i: i, id: idv, q: [] }; return true;
+  },
+  audioPull: function () { if (!audTap) return null; var q = audTap.q; audTap.q = []; return Float32Array.from(q); },
   setSource: function (src) { if (src === 'live') src = S().live.source === 'udp' ? 'udp' : 'serial'; if (connState !== 'idle' || ['sim', 'serial', 'udp'].indexOf(src) < 0) return false; S().live.source = src; U.save(); fillConnForm(); drawerSet(true); if (src === 'serial') refreshComPorts(); return true; },
   liveStats: function () { return { frames: cnt.frames, bytes: cnt.bytes, lost: cnt.lost, skipped: cnt.skipped, label: conn ? conn.label : '' }; },
   // değer listesi süzgeci: colEqual(key) okur, colEqual(key, değer|null) yazar; colValues(key) → [{v, n}] (o sütundaki farklı değerler)
