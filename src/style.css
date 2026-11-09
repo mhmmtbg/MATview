@@ -380,3 +380,22 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .codeprobs .lpi:hover{background:var(--hover)}
 .codeprobs .lpd{width:8px;height:8px;border-radius:50%;flex:none;background:#e5484d}.codeprobs .lpi.w .lpd{background:#d29a00}.codeprobs .lpi.i .lpd{background:var(--accent)}
 .codeprobs .lpn{color:var(--muted);flex:none;min-width:5.5em;font-variant-numeric:tabular-nums}
+/* canlı dinle penceresi (sade: kenarlık, gölge yok) */
+.la-win{position:fixed;right:16px;top:96px;z-index:70;width:404px;background:var(--panel);border:1px solid var(--border);border-radius:6px;display:flex;flex-direction:column;max-height:calc(100vh - 110px)}
+.la-h{display:flex;align-items:baseline;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);cursor:move;user-select:none}
+.la-sub{font-size:11px;color:var(--muted)}.la-flex{flex:1}
+.la-x{border:none;background:none;font-size:16px;line-height:1;padding:0 4px}
+.la-b{padding:8px 10px 10px;overflow:auto;display:flex;flex-direction:column;gap:7px}
+.la-r{display:flex;align-items:center;gap:8px}.la-r>span{width:52px;color:var(--muted)}.la-r select{flex:1;min-width:0}
+.la-g{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}.la-g>label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted)}
+.la-g input[type=text]{width:96px}
+.la-cb{flex-direction:row!important;align-items:center;gap:5px!important;color:var(--fg)!important}
+.la-vl{flex-direction:row!important;align-items:center;gap:6px!important}.la-vl input{width:110px}
+.la-btns{display:flex;gap:6px}
+.la-st{font-size:12px;color:var(--muted);min-height:16px}.la-err{font-size:12px;color:var(--danger)}.la-err:empty{display:none}
+.la-hd{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-top:1px solid var(--border);padding-top:7px}
+.la-seg button{padding:3px 8px;font-size:12px}.la-seg button.active{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.la-s{display:flex;align-items:center;gap:8px;font-size:12px}.la-s>span{width:72px;color:var(--muted)}.la-s input{flex:1}.la-s b{width:90px;text-align:right;font-weight:400}
+.la-auto{display:flex;flex-direction:column;gap:2px}.la-ai{font-size:11px;color:var(--muted)}
+.la-spec{display:block;border:1px solid var(--border);border-radius:4px}
+.la-note{font-size:11px;color:var(--muted)}

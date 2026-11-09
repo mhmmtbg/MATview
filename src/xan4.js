@@ -45,6 +45,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.27', d: 'Canlı dinle (akustik sensör)', items: [
+    'Aç menüsü › “Canlı dinle (akustik sensör)…”: ayrı, taşınabilir bir pencere. Telemetri canlı akışındaki (seri port, UDP ya da dosyadan oynatma) seçilen parametrenin her çerçevedeki tüm örnekleri sırayla, kesintisiz ses olarak çalınır; Akustik sekmesi değişmedi.',
+    'Örnekleme hızı gelen akıştan otomatik alınır (ya da elle girilir); katsayı, seviye normalleştirme, ses düzeyi.',
+    'Gürültü temizleme: bant / alçak / yüksek geçiren (yoğunluk 12–96 dB/oktav) ve Oto temizleme (DC, 20 Hz altı, yüksek frekans ve otomatik bulunan 50 / 60 Hz şebeke gürültüsüyle harmoniklerine çentik). Süzgeçler parça parça gelen veride kesintisiz çalışır.',
+    'Canlı spektrum: ham ve temizlenmiş hâl üst üste, şebeke harmonikleri kesikli çizgi; durum satırında gelen örnek hızı, gecikme, atlanan örnekler.']},
   {v: '2.26', d: 'Telemetri: canlı bağlantı — seri port (COM) ve Ethernet (UDP)', items: [
     'Telemetri çekmecesinde kaynak seçimi: Dosyadan Oynat · Seri Port (COM) · Ethernet (UDP). Seçilen kaynağın adı üst çubuktaki düğmede görünür; canlı kaynakta Oynat yerine Bağlan, Durdur yerine Bağlantıyı kes.',
     'MATView.exe seri portu ve UDP portunu doğrudan açar: COM port listesi, baud, data bits, parity, stop bits, akış kontrolü; UDP portu, yerel arayüz, kaynak IP süzgeci, multicast. PowerShell köprüsü gerekmez.',
