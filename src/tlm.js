@@ -212,7 +212,8 @@ new MutationObserver(() => { if (TLM.ready) { try { TLM.win.TPHost.setTheme(docu
 
 (function tlmBind() {
   const b = document.getElementById('btnTlm'); if (b) b.onclick = () => tlmShow('file');
-  const p = document.getElementById('btnTlmPlay'); if (p) p.onclick = () => { tlmShow('live'); };
+  const p = document.getElementById('btnTlmPlay'); if (p) p.onclick = () => { tlmShow('live'); tlmCall(H => H.liveSource && H.liveSource('sim')); };
+  const lc = document.getElementById('btnTlmLive'); if (lc) lc.onclick = () => { tlmShow('live'); tlmCall(H => { if (H.liveSource && !H.liveSource('live')) toast('Önce mevcut bağlantıyı / oynatmayı durdurun', 5000); }); };
   const w = document.getElementById('wTlm'); if (w) w.onclick = () => tlmShow('file');
 })();
 // "Grafiği temizle" sonrası telemetri tablosundaki grafik işaretleri hemen söner

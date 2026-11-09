@@ -10,7 +10,7 @@ const IC = {
   plus: '<path d="M8 3v10M3 8h10"/>', close: '<path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/>', trash: '<path d="M3 4h10M6 4V2h4v2M5 4l.5 10h5L11 4"/>',
   up: '<path d="M4 10l4-4 4 4"/>', down: '<path d="M4 6l4 4 4-4"/>', expand: '<path d="M9 2h5v5M7 14H2V9M14 2L9 7M2 14l5-5"/>',
   eye: '<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>', merge: '<path d="M2 3h4l4 5h4M2 13h4l4-5"/>',
-  play: '<path d="M5 3l8 5-8 5z"/>', stop: '<path d="M4 4h8v8H4z"/>', download: '<path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/>',
+  play: '<path d="M5 3l8 5-8 5z"/>', live: '<circle cx="8" cy="8" r="1.6"/><path d="M5.2 5.2a4 4 0 000 5.6M10.8 5.2a4 4 0 010 5.6M3 3a7 7 0 000 10M13 3a7 7 0 010 10"/>', speaker: '<path d="M2.5 6h2.5l3.5-3v10L5 10H2.5zM11 5.5a3.5 3.5 0 010 5M12.8 3.7a6 6 0 010 8.6"/>', stop: '<path d="M4 4h8v8H4z"/>', download: '<path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/>',
   wand: '<path d="M3 13L11 5M10 2v3M8.5 3.5h3M13 8v2M12 9h2"/>', search: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>', chart: '<path d="M2 12l4-5 3 3 5-7"/>',
   table: '<path d="M2 3h12v10H2zM2 7h12M6 3v10"/>', copy: '<path d="M5 5h8v9H5zM3 11V2h8"/>', fx: '<path d="M10 2.5C7 2.5 8 6 7 8s-1 5.5-4 5.5M4 7h6"/>',
   acoustic: '<path d="M2 6h3l4-3v10l-4-3H2zM11 5.5a3.5 3.5 0 010 5M13 3.5a6 6 0 010 9"/>', traces: '<path d="M1.5 11l3-5 3 3 3-6 3 4"/>',
