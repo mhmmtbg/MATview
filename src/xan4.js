@@ -45,6 +45,12 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.26', d: 'Telemetri: canlı bağlantı — seri port (COM) ve Ethernet (UDP)', items: [
+    'Telemetri çekmecesinde kaynak seçimi: Dosyadan Oynat · Seri Port (COM) · Ethernet (UDP). Seçilen kaynağın adı üst çubuktaki düğmede görünür; canlı kaynakta Oynat yerine Bağlan, Durdur yerine Bağlantıyı kes.',
+    'MATView.exe seri portu ve UDP portunu doğrudan açar: COM port listesi, baud, data bits, parity, stop bits, akış kontrolü; UDP portu, yerel arayüz, kaynak IP süzgeci, multicast. PowerShell köprüsü gerekmez.',
+    'Tarayıcıda (matview.html): seri port Chrome / Edge’in seri port erişimiyle; UDP telemetryParser v4.8 ile aynı köprüyle (Köprüyü indir).',
+    'Gelen veri dosyadan oynatmayla aynı yoldan akar: Çözülen Veriler, Zaman sekmesindeki canlı grafikler, duraklatma, .bin kaydı, kayıp çerçeve sayacı; bağlantı koparsa uyarı.',
+    'Aç menüsü: “Telemetri: canlı bağlantı (seri port / UDP)…”.']},
   {v: '2.25', d: 'Telemetri: telemetryParser v4.8 uyumu (1) — atılacak byte, her uzantıdan kayıt', items: [
     'Ayarlar > Çerçeve Formatı: “Dikkate alınmayacak byte’lar”. Her çerçevede header’ın hemen önünde ya da arkasında bulunan N byte (örn. .cnv kayıtları) çözümden önce atılır; kayıttaki çerçeve uzunluğu FL + N kabul edilir. Dosya çözme, Çöz ve MATView’de aç, dosyadan oynatma, çerçeve sayımı / aralık seçimi, kopya birleştirme ve özet bunu kullanır.',
     'Kayıt dosyasının uzantısı fark etmez: .bin dışındaki dosyalar (.cnv, .dat, .raw …) telemetri kaydı olarak eklenebilir; telemetri template’i yüklüyken MATView’in tanımadığı uzantılar doğrudan Telemetri’ye gider.',

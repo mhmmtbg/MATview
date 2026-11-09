@@ -536,6 +536,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .tl-drw[aria-expanded=false] { color: var(--muted); }
 .tl-drawer { flex: none; background: var(--panel); border-bottom: 1px solid var(--line); padding: 8px 14px 10px; }
 .tl-drawer.hidden { display: none; }
+.tl-srcrow { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.tl-srcl { font-size: 12px; color: var(--muted); }
 .tl-dform { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: flex-start; }
 .tl-dcell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tl-dcell > label:first-child { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
@@ -687,7 +689,28 @@ main.tl-main > #lvRawCard { flex: none; }
 </nav>
 
 <div class="tl-drawer" id="tlDrawer">
-  <div class="seg hidden" id="lvSource"><button type="button" data-src="sim">Dosyadan Oynat</button></div>
+  <div class="tl-srcrow"><span class="tl-srcl">Kaynak</span><div class="seg" id="lvSource"><button type="button" data-src="sim">Dosyadan Oynat</button><button type="button" data-src="serial">Seri Port (COM)</button><button type="button" data-src="udp">Ethernet (UDP)</button></div></div>
+  <div class="lv-src hidden" data-src="serial">
+    <div class="tl-dform">
+      <div class="tl-dcell" id="lvComCell"><label for="lv_com">Port</label><div class="tl-drow"><select class="inp w-m" id="lv_com"></select><button class="btn sm" type="button" id="lvComRefresh" title="Port listesini yenile">Yenile</button></div></div>
+      <div class="tl-dcell"><label for="lv_baud">Baud rate</label><input class="inp w-m" id="lv_baud" type="number" min="1" step="1" list="dlBaud"><datalist id="dlBaud"><option value="9600"><option value="115200"><option value="460800"><option value="921600"><option value="1000000"><option value="2000000"><option value="3000000"><option value="4000000"></datalist></div>
+      <div class="tl-dcell"><label for="lv_dataBits">Data bits</label><select class="inp w-s" id="lv_dataBits"><option value="8">8</option><option value="7">7</option></select></div>
+      <div class="tl-dcell"><label for="lv_parity">Parity</label><select class="inp w-s" id="lv_parity"><option value="none">None</option><option value="even">Even</option><option value="odd">Odd</option></select></div>
+      <div class="tl-dcell"><label for="lv_stopBits">Stop bits</label><select class="inp w-s" id="lv_stopBits"><option value="1">1</option><option value="2">2</option></select></div>
+      <div class="tl-dcell"><label for="lv_flow">Akış kontrolü</label><select class="inp w-m" id="lv_flow"><option value="none">Yok</option><option value="hardware">Donanım (RTS/CTS)</option></select></div>
+    </div>
+    <div class="help" id="lvSerialHint"></div>
+  </div>
+  <div class="lv-src hidden" data-src="udp">
+    <div class="tl-dform">
+      <div class="tl-dcell"><label for="lv_udpPort">Dinleme portu</label><input class="inp w-s" id="lv_udpPort" type="number" min="1" max="65535" step="1"></div>
+      <div class="tl-dcell"><label for="lv_udpLocal">Yerel arayüz IP</label><input class="inp w-m mono" id="lv_udpLocal" type="text" spellcheck="false" placeholder="boş = tüm arayüzler"></div>
+      <div class="tl-dcell"><label for="lv_udpSrc">Kaynak IP süzgeci</label><input class="inp w-m mono" id="lv_udpSrc" type="text" spellcheck="false" placeholder="boş = süzgeç yok"></div>
+      <div class="tl-dcell"><label for="lv_udpMcast">Multicast grubu</label><input class="inp w-m mono" id="lv_udpMcast" type="text" spellcheck="false" placeholder="boş = kullanılmıyor"></div>
+      <div class="tl-dcell" id="lvBridgeCell"><label for="lv_bridgePort">Köprü portu</label><div class="tl-drow"><input class="inp w-s" id="lv_bridgePort" type="number" min="1" max="65535" step="1"><button class="btn sm" type="button" id="lvBridgeDl" title="udp_kopru_baslat.cmd ve udp_kopru.ps1 (Windows, kurulum gerekmez)">Köprüyü indir</button></div></div>
+    </div>
+    <div class="help" id="lvUdpHint"></div>
+  </div>
   <div class="lv-src" data-src="sim">
     <div class="tl-dform">
       <div class="tl-dcell"><label>Kayıt dosyaları</label><div class="tl-drow"><button class="btn sm" type="button" id="lvSimPick">Dosya Seç</button><input type="file" id="lvSimInput" multiple hidden><div class="file-chips" id="lvSimFiles"></div></div><div class="help">Birden fazla dosya sırayla tek akış olarak oynatılır; çözümleme de aynı dosyaları kullanır. Dosyayı bu panele ya da MATView'e sürükleyebilirsiniz.</div></div>
@@ -706,6 +729,151 @@ main.tl-main > #lvRawCard { flex: none; }
     <div class="help" id="lvFrHelp">Üst çubuktaki kaydırıcı, ◀ ▶ veya çerçeve numarası ile istediğiniz çerçeveye gidilir; akış otomatik duraklar. <b>Devam Et</b> seçilen çerçeveden itibaren oynatır.</div>
   </div>
 </div>
+
+<!-- UDP köprüsü (kopru/ klasöründeki dosyalarla aynı içerik) -->
+<script type="text/plain" id="tp-bridge-ps1">
+<#
+  Telemetri Çözümleyici - UDP -> WebSocket köprüsü
+
+  Tarayıcılar güvenlik nedeniyle UDP soketi açamaz. Bu betik UDP paketlerini dinler
+  ve telemetryParser.html sayfasına yerel bir WebSocket (ws://localhost:8766)
+  üzerinden iletir. Ek kurulum gerektirmez; Windows PowerShell 5.1 ile çalışır.
+
+  Çalıştırma : udp_kopru_baslat.cmd dosyasına çift tıklayın.
+  Ayarlar    : Dinlenecek UDP portu ve filtreler sayfadaki
+               Canlı Telemetri > Ethernet (UDP) bölümünden gelir.
+  Kapatma    : Pencereyi kapatın veya Ctrl+C.
+#>
+param([int]$KopruPort = 8766)
+
+$ErrorActionPreference = 'Stop'
+try { $Host.UI.RawUI.WindowTitle = "Telemetri UDP Köprüsü - ws://localhost:$KopruPort" } catch { }
+
+function Yaz([string]$Mesaj, [string]$Renk = 'Gray') {
+  Write-Host ('[{0}] {1}' -f (Get-Date -Format 'HH:mm:ss'), $Mesaj) -ForegroundColor $Renk
+}
+
+function HataMetni($Hata) {
+  $e = $Hata.Exception
+  while ($e.InnerException) { $e = $e.InnerException }
+  return $e.Message
+}
+
+function MetinGonder($Ws, [string]$Tur, [string]$Mesaj) {
+  $json = (@{ type = $Tur; msg = $Mesaj } | ConvertTo-Json -Compress)
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+  $seg = New-Object 'System.ArraySegment[byte]' -ArgumentList (, $bytes)
+  $Ws.SendAsync($seg, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, [System.Threading.CancellationToken]::None).GetAwaiter().GetResult() | Out-Null
+}
+
+$dinleyici = New-Object System.Net.HttpListener
+$dinleyici.Prefixes.Add("http://localhost:$KopruPort/")
+try {
+  $dinleyici.Start()
+} catch {
+  Yaz ("Köprü başlatılamadı: " + (HataMetni $_)) 'Red'
+  Yaz "Port $KopruPort başka bir program tarafından kullanılıyor olabilir. Sayfadaki köprü portunu ve bu betiğin portunu değiştirin." 'Yellow'
+  Read-Host 'Kapatmak için Enter tuşuna basın' | Out-Null
+  exit 1
+}
+
+Yaz "Köprü hazır: ws://localhost:$KopruPort" 'Green'
+Yaz 'Tarayıcıda Canlı Telemetri > Ethernet (UDP) > Bağlan butonuna basın. Kapatmak için pencereyi kapatın.'
+
+while ($dinleyici.IsListening) {
+  $ctx = $dinleyici.GetContext()
+  if (-not $ctx.Request.IsWebSocketRequest) {
+    $cevap = [System.Text.Encoding]::UTF8.GetBytes('Telemetri UDP koprusu calisiyor.')
+    $ctx.Response.ContentType = 'text/plain; charset=utf-8'
+    $ctx.Response.OutputStream.Write($cevap, 0, $cevap.Length)
+    $ctx.Response.Close()
+    continue
+  }
+
+  $q = $ctx.Request.QueryString
+  $ws = $null
+  $sock = $null
+  try {
+    $ws = $ctx.AcceptWebSocketAsync([NullString]::Value).GetAwaiter().GetResult().WebSocket
+
+    $port = 0
+    if (-not [int]::TryParse([string]$q['port'], [ref]$port) -or $port -lt 1 -or $port -gt 65535) { throw "Geçersiz UDP portu: '$($q['port'])'" }
+    $yerel = [System.Net.IPAddress]::Any
+    if ($q['local']) { $yerel = [System.Net.IPAddress]::Parse($q['local']) }
+    $kaynak = $null
+    if ($q['src']) { $kaynak = [System.Net.IPAddress]::Parse($q['src']) }
+
+    $sock = New-Object System.Net.Sockets.Socket([System.Net.Sockets.AddressFamily]::InterNetwork, [System.Net.Sockets.SocketType]::Dgram, [System.Net.Sockets.ProtocolType]::Udp)
+    $sock.SetSocketOption([System.Net.Sockets.SocketOptionLevel]::Socket, [System.Net.Sockets.SocketOptionName]::ReuseAddress, $true)
+    $sock.ReceiveBufferSize = 16MB
+    $sock.Bind((New-Object System.Net.IPEndPoint($yerel, $port)))
+    $aciklama = "UDP $($yerel):$port dinleniyor"
+    if ($q['mcast']) {
+      $grup = [System.Net.IPAddress]::Parse($q['mcast'])
+      $uyelik = New-Object System.Net.Sockets.MulticastOption($grup, $yerel)
+      $sock.SetSocketOption([System.Net.Sockets.SocketOptionLevel]::IP, [System.Net.Sockets.SocketOptionName]::AddMembership, $uyelik)
+      $aciklama += ", multicast grubu $grup"
+    }
+    if ($kaynak) { $aciklama += ", yalnızca kaynak $kaynak" }
+
+    Yaz "Tarayıcı bağlandı. $aciklama" 'Green'
+    MetinGonder $ws 'status' $aciklama
+
+    $buf = New-Object byte[] 65536
+    $out = New-Object System.IO.MemoryStream
+    $rbuf = New-Object byte[] 1024
+    $rseg = New-Object 'System.ArraySegment[byte]' -ArgumentList (, $rbuf)
+    $rtask = $ws.ReceiveAsync($rseg, [System.Threading.CancellationToken]::None)
+    [System.Net.EndPoint]$uzak = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, 0)
+    $paket = 0; $toplam = [long]0; $elenen = 0
+    $sonRapor = [DateTime]::Now
+
+    while ($ws.State -eq [System.Net.WebSockets.WebSocketState]::Open -and -not $rtask.IsCompleted) {
+      if ($sock.Poll(200000, [System.Net.Sockets.SelectMode]::SelectRead)) {
+        do {
+          $n = $sock.ReceiveFrom($buf, [ref]$uzak)
+          if ($null -eq $kaynak -or $uzak.Address.Equals($kaynak)) {
+            $out.Write($buf, 0, $n); $paket++; $toplam += $n
+          } else { $elenen++ }
+        } while ($sock.Available -gt 0 -and $out.Length -lt 262144)
+        if ($out.Length -gt 0) {
+          $seg = New-Object 'System.ArraySegment[byte]' -ArgumentList $out.GetBuffer(), 0, ([int]$out.Length)
+          $ws.SendAsync($seg, [System.Net.WebSockets.WebSocketMessageType]::Binary, $true, [System.Threading.CancellationToken]::None).GetAwaiter().GetResult() | Out-Null
+          $out.SetLength(0)
+        }
+      }
+      if (([DateTime]::Now - $sonRapor).TotalSeconds -ge 5) {
+        $ek = ''
+        if ($elenen) { $ek = ", $elenen paket kaynak filtresiyle elendi" }
+        Yaz ('{0:N0} paket, {1:N0} byte iletildi{2}' -f $paket, $toplam, $ek)
+        $sonRapor = [DateTime]::Now
+      }
+    }
+    Yaz 'Tarayıcı bağlantısı kapandı. Yeni bağlantı bekleniyor.' 'Yellow'
+  } catch {
+    $m = HataMetni $_
+    Yaz "Hata: $m" 'Red'
+    if ($ws -and $ws.State -eq [System.Net.WebSockets.WebSocketState]::Open) { try { MetinGonder $ws 'error' $m } catch { } }
+  } finally {
+    if ($sock) { $sock.Close() }
+    if ($ws) {
+      try {
+        if ($ws.State -eq [System.Net.WebSockets.WebSocketState]::Open -or $ws.State -eq [System.Net.WebSockets.WebSocketState]::CloseReceived) {
+          $ws.CloseAsync([System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure, '', [System.Threading.CancellationToken]::None).Wait(1000) | Out-Null
+        }
+      } catch { }
+      $ws.Dispose()
+    }
+  }
+}
+</script>
+<script type="text/plain" id="tp-bridge-cmd">
+@echo off
+rem Telemetri Cozumleyici - UDP koprusu baslatici
+rem Bu dosyaya cift tiklayin. Pencere acik kaldigi surece kopru calisir.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0udp_kopru.ps1" %*
+if errorlevel 1 pause
+</script>
 
 <main id="tabLive" class="tabpage tl-main">
   <section class="card span2 hidden" id="lvRawCard">
@@ -4645,7 +4813,8 @@ function normalize(o) {
   s.discardCount = Math.max(1, parseInt(s.discardCount, 10) || 10);
   if (s.discardPos !== 'after') s.discardPos = 'before';
   s.discardEnabled = !!s.discardEnabled;
-  s.live.source = 'sim';
+  if (['sim', 'serial', 'udp'].indexOf(s.live.source) < 0) s.live.source = 'sim';
+  if (!s.live.serial.com) s.live.serial.com = '';
   if (typeof s.singleMat !== 'boolean') s.singleMat = false;
   if (!(+s.framePeriodMs > 0)) s.framePeriodMs = +(o && o.live && o.live.sim && o.live.sim.periodMs) || 10;
   return s;
@@ -6043,6 +6212,95 @@ function onFrame(F, absOff) {
 
 /* ---------- kaynaklar ---------- */
 /* MATView: canlı telemetri (seri port / UDP) bu sürümde yoktur; kaynak her zaman dosyadan oynatmadır. */
+/* ---------- canlı kaynaklar: seri port ve UDP ----------
+   MATView.exe içinde ikisi de uygulamanın kendisinden gelir (mvLiveInfo: 127.0.0.1 üzerinde anahtarlı WebSocket).
+   Tarayıcıda seri port Web Serial (Chrome / Edge) ile, UDP ise telemetryParser v4.8 ile aynı PowerShell köprüsüyle okunur. */
+function hex4(n) { return ('000' + (n || 0).toString(16).toUpperCase()).slice(-4); }
+var nativeLive = null;
+async function liveNative() {
+  if (nativeLive) return nativeLive;
+  var w = window.parent && window.parent !== window ? window.parent : window, fn = window.mvLiveInfo || (w && w.mvLiveInfo);
+  if (typeof fn !== 'function') return null;
+  try { var r = await fn.call(w); if (r && r.port && r.token) nativeLive = r; } catch (e) { }
+  return nativeLive;
+}
+function wsSource(url, label, failMsg) {
+  return new Promise(function (resolve, reject) {
+    var ws; try { ws = new WebSocket(url); } catch (e) { reject(new Error(failMsg)); return; }
+    ws.binaryType = 'arraybuffer';
+    var opened = false, byUser = false, firstErr = null;
+    var to = setTimeout(function () { if (!opened) { try { ws.close(); } catch (e) { } reject(new Error(failMsg)); } }, 5000);
+    ws.onopen = function () { opened = true; };
+    ws.onmessage = function (e) {
+      if (typeof e.data !== 'string') { onData(new Uint8Array(e.data)); return; }
+      var m; try { m = JSON.parse(e.data); } catch (x) { return; }
+      if (m.type === 'error') {
+        if (!firstErr && to) { firstErr = m.msg; clearTimeout(to); to = 0; byUser = true; try { ws.close(); } catch (x) { } reject(new Error(m.msg)); return; }
+        U.uiLog('HATA', label + ': ' + m.msg); lost(m.msg);
+      } else {
+        U.uiLog('BİLGİ', label + ': ' + m.msg);
+        if (to) { clearTimeout(to); to = 0; resolve({ label: m.msg, close: function () { byUser = true; try { ws.close(); } catch (x) { } } }); }
+      }
+    };
+    ws.onclose = function () { if (to) { clearTimeout(to); to = 0; reject(new Error(firstErr || failMsg)); } else if (!byUser) lost(label + ' bağlantısı kapandı'); };
+  });
+}
+async function connectSerial() {
+  var c = S().live.serial, nl = await liveNative();
+  if (nl) {
+    if (!c.com) throw new Error('Seri port seçilmedi. Kaynak > Seri Port bölümünden portu seçin (liste boşsa cihazın takılı olduğunu denetleyip Yenile\'ye basın).');
+    var q = 't=' + nl.token + '&com=' + encodeURIComponent(c.com) + '&baud=' + (+c.baud) + '&dataBits=' + (+c.dataBits) + '&parity=' + encodeURIComponent(c.parity) + '&stopBits=' + (+c.stopBits) + '&flow=' + encodeURIComponent(c.flow);
+    return wsSource('ws://127.0.0.1:' + nl.port + '/serial?' + q, 'Seri port', c.com + ' açılamadı');
+  }
+  if (!navigator.serial) throw new Error('Bu pencerede seri port erişimi yok. MATView.exe ile ya da Chrome / Edge tarayıcısında açın.');
+  var port = await navigator.serial.requestPort();
+  await port.open({ baudRate: +c.baud, dataBits: +c.dataBits, stopBits: +c.stopBits, parity: c.parity, flowControl: c.flow, bufferSize: 1 << 20 });
+  var closed = false, reader = null, info = port.getInfo ? port.getInfo() : {};
+  (async function () {
+    while (!closed && port.readable) {
+      reader = port.readable.getReader();
+      try { for (;;) { var r = await reader.read(); if (r.done) break; onData(r.value); } }
+      catch (e) { if (!closed) U.uiLog('UYARI', 'Seri port okuma hatası: ' + e.message + (e.name === 'BufferOverrunError' ? ' (tampon taştı, veri kaybı olabilir)' : '')); }
+      finally { try { reader.releaseLock(); } catch (e2) { } }
+    }
+    if (!closed) lost('Seri port bağlantısı koptu');
+  })();
+  return {
+    label: 'Seri port' + (info.usbVendorId ? ' USB ' + hex4(info.usbVendorId) + ':' + hex4(info.usbProductId) : '') + ' · ' + c.baud + ' baud · ' + c.dataBits + (c.parity === 'none' ? 'N' : c.parity === 'even' ? 'E' : 'O') + c.stopBits,
+    close: async function () { closed = true; try { if (reader) await reader.cancel(); } catch (e) { } try { await port.close(); } catch (e) { } }
+  };
+}
+async function connectUdp() {
+  var c = S().live.udp, nl = await liveNative();
+  var qs = 'port=' + encodeURIComponent(c.port) + '&local=' + encodeURIComponent(c.local || '') + '&src=' + encodeURIComponent(c.src || '') + '&mcast=' + encodeURIComponent(c.mcast || '');
+  if (nl) return wsSource('ws://127.0.0.1:' + nl.port + '/udp?t=' + nl.token + '&' + qs, 'UDP', 'UDP portu açılamadı (' + c.port + ')');
+  var failMsg = 'UDP köprüsüne bağlanılamadı (ws://localhost:' + c.bridgePort + '). Köprüyü indirip udp_kopru_baslat.cmd dosyasını çalıştırın ve pencereyi açık bırakın; köprü portunun aynı olduğundan emin olun. MATView.exe ile açtığınızda köprü gerekmez.';
+  // PowerShell köprüsü: telemetryParser v4.8 protokolü (ilk mesaj bilgi; hata metin mesajı)
+  return new Promise(function (resolve, reject) {
+    var ws; try { ws = new WebSocket('ws://localhost:' + c.bridgePort + '/?' + qs); } catch (e) { reject(new Error(failMsg)); return; }
+    ws.binaryType = 'arraybuffer';
+    var opened = false, byUser = false;
+    var to = setTimeout(function () { if (!opened) { try { ws.close(); } catch (e) { } reject(new Error(failMsg)); } }, 4000);
+    ws.onopen = function () {
+      opened = true; clearTimeout(to);
+      resolve({ label: 'UDP ' + (c.local || 'tüm arayüzler') + ':' + c.port + (c.src ? ' · kaynak ' + c.src : '') + (c.mcast ? ' · multicast ' + c.mcast : '') + ' (köprü)', close: function () { byUser = true; try { ws.close(); } catch (e) { } } });
+    };
+    ws.onmessage = function (e) {
+      if (typeof e.data !== 'string') { onData(new Uint8Array(e.data)); return; }
+      var m; try { m = JSON.parse(e.data); } catch (x) { return; }
+      if (m.type === 'error') { U.uiLog('HATA', 'UDP köprüsü: ' + m.msg); lost('Köprü hatası: ' + m.msg); }
+      else U.uiLog('BİLGİ', 'UDP köprüsü: ' + m.msg);
+    };
+    ws.onclose = function () { clearTimeout(to); if (!opened) reject(new Error(failMsg)); else if (!byUser) lost('UDP köprüsü bağlantısı kapandı'); };
+  });
+}
+async function refreshComPorts() {
+  var sel = $('#lv_com'); if (!sel) return;
+  var nl = await liveNative(), c = S().live.serial, list = [];
+  if (nl) { try { list = await (await fetch('http://127.0.0.1:' + nl.port + '/ports?t=' + nl.token)).json() || []; } catch (e) { list = []; } }
+  sel.innerHTML = list.length ? list.map(function (p) { return '<option value="' + esc(p) + '">' + esc(p) + '</option>'; }).join('') : '<option value="">(seri port bulunamadı)</option>';
+  if (list.indexOf(c.com) >= 0) sel.value = c.com; else if (list.length) { c.com = list[0]; sel.value = c.com; U.save(); }
+}
 var simFiles = [];
 /* Dosyadan oynatma: dosyalar art arda tek akış olarak, çerçeve periyoduna göre gerçek hızda verilir.
    Akış duraklatılabilir ve seek(g) ile birleşik akışın herhangi bir byte'ına atlanabilir. */
@@ -6265,8 +6523,8 @@ async function connect() {
   liveState = []; hist = [];
   vfigs.forEach(vfReset);
   try {
-    s.live.source = 'sim';
-    conn = await connectSim();
+    var src = s.live.source;
+    conn = src === 'udp' ? await connectUdp() : src === 'serial' ? await connectSerial() : await connectSim();
     if (paused && conn.pause) conn.pause();
     cnt.t0 = Date.now();
     setConn('connected');
@@ -8074,7 +8332,9 @@ function startTick() {
 
 /* ---------- bağlantı formu ---------- */
 var FORM = [
-  ['lv_simPeriod', 'sim', 'periodMs', 'num'], ['lv_simLoop', 'sim', 'loop', 'bool']
+  ['lv_simPeriod', 'sim', 'periodMs', 'num'], ['lv_simLoop', 'sim', 'loop', 'bool'],
+  ['lv_baud', 'serial', 'baud', 'int'], ['lv_dataBits', 'serial', 'dataBits', 'int'], ['lv_parity', 'serial', 'parity', 'str'], ['lv_stopBits', 'serial', 'stopBits', 'int'], ['lv_flow', 'serial', 'flow', 'str'],
+  ['lv_udpPort', 'udp', 'port', 'int'], ['lv_udpLocal', 'udp', 'local', 'str'], ['lv_udpSrc', 'udp', 'src', 'str'], ['lv_udpMcast', 'udp', 'mcast', 'str'], ['lv_bridgePort', 'udp', 'bridgePort', 'int']
 ];
 function fillConnForm() {
   var lv = S().live;
@@ -8082,7 +8342,7 @@ function fillConnForm() {
   $$('#lvSource button').forEach(function (b) { b.classList.toggle('active', b.dataset.src === lv.source); });
   $$('.lv-src').forEach(function (d) { d.classList.toggle('hidden', d.dataset.src !== lv.source); });
   chartSecEl.value = lv.chartSeconds;
-  renderSimNav();
+  renderSimNav(); srcUi();
 }
 FORM.forEach(function (f) {
   var el = $('#' + f[0]);
@@ -8104,13 +8364,54 @@ function simFilesChanged() {
   simBlob = null; simCur = -1; simIndex();
   if (U.setFiles) U.setFiles(simFiles);
   var tot = simFiles.reduce(function (a, f) { return a + f.size; }, 0), sum = $('#tlFilesSum');
-  if (sum) { sum.textContent = simFiles.length ? (simFiles.length === 1 ? simFiles[0].name : simFiles.length + ' dosya') + ' · ' + fmtBytes(tot) : 'Dosya seçilmedi'; sum.title = simFiles.map(function (f) { return f.name; }).join('\n') || 'Seçili kayıt dosyası yok'; }
+  simFilesChanged.sum = function () { if (sum) { sum.textContent = simFiles.length ? (simFiles.length === 1 ? simFiles[0].name : simFiles.length + ' dosya') + ' · ' + fmtBytes(tot) : 'Dosya seçilmedi'; sum.title = simFiles.map(function (f) { return f.name; }).join('\n') || 'Seçili kayıt dosyaları'; } };
+  if (sum && S().live.source === 'sim') { sum.textContent = simFiles.length ? (simFiles.length === 1 ? simFiles[0].name : simFiles.length + ' dosya') + ' · ' + fmtBytes(tot) : 'Dosya seçilmedi'; sum.title = simFiles.map(function (f) { return f.name; }).join('\n') || 'Seçili kayıt dosyası yok'; }
   var fm = $('#tlFmode'); if (fm) fm.classList.toggle('hidden', simFiles.length < 2);
-  if (!simFiles.length) drawerSet(true);
+  if (!simFiles.length && S().live.source === 'sim') drawerSet(true);
 }
-function drawerSet(open) { var d = $('#tlDrawer'), b = $('#tlDrawerBtn'); if (!d) return; d.classList.toggle('hidden', !open); b.setAttribute('aria-expanded', String(open)); b.textContent = (open ? '▾' : '▸') + ' Dosyadan Oynatma'; }
+var SRC_NAME = { sim: 'Dosyadan Oynatma', serial: 'Seri Port', udp: 'Ethernet (UDP)' };
+function drawerSet(open) { var d = $('#tlDrawer'), b = $('#tlDrawerBtn'); if (!d) return; d.classList.toggle('hidden', !open); b.setAttribute('aria-expanded', String(open)); b.textContent = (open ? '▾' : '▸') + ' ' + (SRC_NAME[S().live.source] || SRC_NAME.sim); }
 $('#tlDrawerBtn').onclick = function () { drawerSet($('#tlDrawer').classList.contains('hidden')); };
-$('#lvConnect').addEventListener('click', function () { if (simFiles.length) drawerSet(false); });
+$('#lvConnect').addEventListener('click', function () { if (simFiles.length || S().live.source !== 'sim') drawerSet(false); });
+// kaynak: Dosyadan Oynat | Seri Port | Ethernet (UDP) — üst çubuktaki düğme adları ve özet kaynağa göre değişir
+function srcUi() {
+  var src = S().live.source, sim = src === 'sim', c = S().live;
+  var b = $('#lvConnect'); b.textContent = sim ? '▶ Oynat' : '▶ Bağlan'; b.title = sim ? 'Kaydı gerçek zamanlı akış gibi oynat' : (src === 'serial' ? 'Seri porta bağlan ve gelen veriyi canlı çöz' : 'UDP portunu dinle ve gelen veriyi canlı çöz');
+  var dc = $('#lvDisconnect'); dc.textContent = sim ? '■ Durdur' : '■ Bağlantıyı kes';
+  var nav = $('#lvSimNav'); if (nav) nav.classList.toggle('hidden', !sim);
+  var sum = $('#tlFilesSum');
+  if (sum && !sim) { sum.textContent = src === 'serial' ? (c.serial.com || 'Seri port') + ' · ' + c.serial.baud + ' baud' : 'UDP :' + c.udp.port + (c.udp.mcast ? ' · ' + c.udp.mcast : ''); sum.title = sum.textContent; }
+  else if (sum) simFilesChanged.sum && simFilesChanged.sum();
+  drawerSet(!$('#tlDrawer').classList.contains('hidden'));
+  liveNative().then(function (nl) {
+    var com = $('#lvComCell'), br = $('#lvBridgeCell');
+    if (com) com.classList.toggle('hidden', !nl);
+    if (br) br.classList.toggle('hidden', !!nl);
+    $('#lvSerialHint').textContent = nl ? 'MATView.exe seri portu doğrudan açar.' : (navigator.serial ? 'Bağlan\'a basınca port seçme penceresi açılır (Chrome / Edge).' : 'Bu pencerede seri port erişimi yok: MATView.exe ile ya da Chrome / Edge tarayıcısında açın.');
+    $('#lvUdpHint').textContent = nl ? 'MATView.exe UDP portunu doğrudan dinler; köprü gerekmez. İlk bağlantıda Windows Güvenlik Duvarı izin isteyebilir.' : 'Tarayıcı UDP soketi açamaz: köprüyü indirip udp_kopru_baslat.cmd ile çalıştırın (telemetryParser v4.8 köprüsüyle aynı). MATView.exe ile açtığınızda köprü gerekmez.';
+    if (nl && src === 'serial' && !$('#lv_com').options.length) refreshComPorts();
+  });
+}
+$('#lvSource').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-src]'); if (!b || connState !== 'idle') return;
+  S().live.source = b.dataset.src; U.save(); fillConnForm(); srcUi();
+  if (b.dataset.src === 'serial') refreshComPorts();
+});
+$('#lvComRefresh').onclick = function () { refreshComPorts(); };
+$('#lv_com').addEventListener('change', function () { S().live.serial.com = this.value; U.save(); srcUi(); });
+['#lv_baud', '#lv_udpPort', '#lv_udpMcast'].forEach(function (q) { $(q).addEventListener('change', function () { setTimeout(srcUi, 0); }); });
+$('#lvBridgeDl').onclick = function () {
+  var ps1 = document.getElementById('tp-bridge-ps1').textContent.replace(/^\n/, '').replace(/\r?\n/g, '\r\n');
+  var cmd = document.getElementById('tp-bridge-cmd').textContent.replace(/^\n/, '').replace(/\r?\n/g, '\r\n');
+  var enc = new TextEncoder(), bom = new Uint8Array([0xEF, 0xBB, 0xBF]), p = enc.encode(ps1), ps = new Uint8Array(bom.length + p.length);
+  ps.set(bom); ps.set(p, bom.length);
+  var readme = ['MATVIEW / TELEMETRİ - UDP KÖPRÜSÜ', '', 'Tarayıcılar UDP soketi açamadığı için canlı Ethernet verisi bu küçük köprü üzerinden gelir.', 'MATView.exe ile çalışırken köprü GEREKMEZ (UDP doğrudan dinlenir).', 'Kurulum gerekmez; Windows\'ta yüklü PowerShell ile çalışır.', '', '1) Bu iki dosyayı aynı klasöre çıkarın.', '2) udp_kopru_baslat.cmd dosyasına çift tıklayın. Açılan pencereyi kapatmayın.', '3) İlk çalıştırmada Windows Güvenlik Duvarı izin isteyebilir; özel ağlar için izin verin.', '4) MATView > Telemetri > Kaynak: Ethernet (UDP) > Bağlan.', '', 'Köprü portu varsayılan 8766\'dır. Değiştirmek için: udp_kopru_baslat.cmd -KopruPort 9000', ''].join('\r\n');
+  U.download('udp_kopru.zip', TP.zipStore([
+    { name: 'udp_kopru/udp_kopru.ps1', data: ps },
+    { name: 'udp_kopru/udp_kopru_baslat.cmd', data: enc.encode(cmd) },
+    { name: 'udp_kopru/OKUBENI.txt', data: enc.encode(readme) }
+  ]), 'application/zip');
+};
 // canlı durum kutusu (lejant gibi aç / kapat)
 function statusSet(open) { $('#tlStatus').classList.toggle('hidden', !open); $('#tlStatusBtn').setAttribute('aria-pressed', String(open)); try { localStorage.setItem('telemetryParser.status', open ? '1' : '0'); } catch (e) {} }
 $('#tlStatusBtn').onclick = function () { statusSet($('#tlStatus').classList.contains('hidden')); };
@@ -8657,6 +8958,9 @@ window.TPLive = {
   // başlık süzgeci: colFilter(key) okur, colFilter(key, metin) yazar ve tabloyu yeniler
   colFilter: function (k, v) { if (arguments.length < 2) return colFlt[k] || ''; v = String(v || '').trim().toLocaleLowerCase('tr'); if (v) colFlt[k] = v; else delete colFlt[k]; $('#lvWrap').scrollTop = 0; renderTable(); return v; },
   rowCount: function () { return lvRowCount; },
+  connState: function () { return connState; },
+  setSource: function (src) { if (src === 'live') src = S().live.source === 'udp' ? 'udp' : 'serial'; if (connState !== 'idle' || ['sim', 'serial', 'udp'].indexOf(src) < 0) return false; S().live.source = src; U.save(); fillConnForm(); drawerSet(true); if (src === 'serial') refreshComPorts(); return true; },
+  liveStats: function () { return { frames: cnt.frames, bytes: cnt.bytes, lost: cnt.lost, skipped: cnt.skipped, label: conn ? conn.label : '' }; },
   // değer listesi süzgeci: colEqual(key) okur, colEqual(key, değer|null) yazar; colValues(key) → [{v, n}] (o sütundaki farklı değerler)
   colEqual: function (k, v) { if (arguments.length < 2) return colEq[k] != null ? colEq[k] : null; if (v == null) delete colEq[k]; else colEq[k] = String(v); $('#lvWrap').scrollTop = 0; renderTable(); return colEq[k] != null ? colEq[k] : null; },
   colValues: function (k) { var cd = COLMAP[k], w = work[liveTab]; if (!cd || cd.tpl == null || !w || !w.rows) return []; var m = new Map(); w.ids.forEach(function (id, i) { var row = w.rows[i + 1]; if (TP.isSheetMark(row)) return; var v = row[cd.tpl] == null ? '' : String(row[cd.tpl]).trim(); m.set(v, (m.get(v) || 0) + 1); });
@@ -8985,6 +9289,7 @@ window.TPHost = {
   playVideo: function (f) { U.showTab('video'); window.TPVideo.pick(f); },
   addTemplateFiles: function (list) { return U.addTemplates(list); },
   showTab: function (t) { U.showTab(t); },
+  liveSource: function (src) { U.showTab('live'); return window.TPLive.setSource(src); },
   hasTemplates: function () { return U.hasTemplates(); },
   isRunning: function () { return U.isRunning(); },
   setTheme: function (t) {

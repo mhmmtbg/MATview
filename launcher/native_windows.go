@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"unsafe"
 
+	"matview/live"
+
 	webview2 "github.com/jchv/go-webview2"
 	"github.com/jchv/go-webview2/webviewloader"
 )
@@ -121,6 +123,11 @@ func runNative(u, dir string) (ok bool) {
 			return p
 		})
 		w.Bind("mvAllowDir", func(p string) bool { return fsb.allow(p) })
+	}
+	// canlı telemetri: UDP ve seri port (tarayıcı UDP soketi açamaz; PowerShell köprüsü gerekmez)
+	if lv, err := live.Start(); err == nil {
+		defer lv.Close()
+		w.Bind("mvLiveInfo", func() map[string]interface{} { return map[string]interface{}{"port": lv.Port, "token": lv.Token} })
 	}
 	w.Init("window.__MATVIEW_NATIVE__ = true;")
 	w.SetTitle("MATView")
