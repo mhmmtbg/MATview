@@ -32,7 +32,14 @@ const DSPW = (() => {
     });
   }
   // işçi ölmüşse/yoksa ana iş parçacığında: hata durumunda veri (aktarıldıysa) kaybolmasın diye fallback args ile çalışır
-  return {run, get active() { return !!w; }, get dead() { return dead; }, start};
+  // İptal: işçi sonlandırılır (uzun bir hesap ortasında da durur), bekleyen işler Cancelled ile reddedilir; sonraki
+  // istekte yeni işçi açılır
+  function cancel() {
+    if (!w) return; try { w.terminate(); } catch (_) {} w = null;
+    const err = typeof Cancelled === 'function' ? new Cancelled() : new Error('İşlem iptal edildi');
+    for (const [, p] of pend) { try { p.rej(err); } catch (_) {} } pend.clear();
+  }
+  return {run, cancel, get active() { return !!w; }, get dead() { return dead; }, start};
 })();
 
 /* ---------- D3: hata günlüğü ---------- */
@@ -45,6 +52,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.31', d: 'Uzun işlerde iptal; akustikte temizleme sonucunun yeniden kullanılması', items: [
+    'Yarım saniyeden uzun süren her işte ilerleme penceresinde “İptal” düğmesi görünür (Esc de iptal eder): .mat kaydetme, akustik temizleme ve analizler, dosya çözme, spektrum vb. İptal edilen kaydetmenin yarım kalan dosyası silinir.',
+    'Akustik: otomatik temizlemeden sonra “▶ Temizlenmiş” artık yeniden temizlemez, önceki sonucu çalar (ayar ya da aralık değişmediyse). …_temiz kanalı seçiliyken de yeniden temizlenmez.',
+    'Akustik otomatik analiz ve tık temizleme arka planda (işçide) çalışır: arayüz donmaz, iptal edilebilir.'
+  ]},
   {v: '2.30', d: 'Çok dosyalı sol panel ve büyük .mat açma', items: [
     'Sol panel: birden çok dosya açıkken yalnız bir dosyanın listesi açık durur ve panelin tamamını kullanır; başlığa tıklamak o dosyayı açıp diğerlerini kapatır (Ctrl+tık: birlikte açık). Aramada eşleşmesi olmayan dosyalar soluk görünür.',
     'Yeni liste düzeni “Parametreye göre”: aynı adlı parametre tüm dosyalarda tek satırda (kaç dosyada olduğu yazar), altında dosyalar. Çift tık tüm dosyalardakini aynı grafikte karşılaştırır; lejantta dosya adları görünür. Seçim hatırlanır.',

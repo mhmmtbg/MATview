@@ -392,7 +392,7 @@ async function acAuto(add) {
   await busy('Parazitler analiz ediliyor…', async () => {
     const {tr, ax} = acGetSeg(), ch = tr.ch; await ensureLoaded(ch); const [a, b] = specRange(tr, ax, sv('acScope'));
     if (b - a < 1024) throw new Error('Aralık çok kısa');
-    const x = DSP.segment(ch.data, ch.del, a, b), r = DSP.autoClean(x, ch.fs), p = r.plan;
+    const x = DSP.segment(ch.data, ch.del, a, b), r = await DSPW.run('autoClean', [x, ch.fs]), p = r.plan;
     $('#acDc').value = p.dc; $('#acHpOn').checked = !!p.hp; if (p.hp) $('#acHp').value = p.hp; $('#acLpOn').checked = !!p.lp; if (p.lp) $('#acLp').value = p.lp;
     $('#acNOn').checked = !!p.notch; if (p.notch) { $('#acNf').value = p.notch; $('#acNq').value = p.nq; $('#acNh').value = p.nh; }
     if (p.dnMode === 'min') { $('#acN0').value = ''; $('#acN1').value = ''; S.acNoise = null; acBands(); }
@@ -418,13 +418,28 @@ async function preChain(x, fs, o, log) {
   if (o.notch) y = await DSPW.run('filtfilt', [DSP.design('notch', {f1: o.notch, Q: o.nq, harmonics: o.nh}, fs), y], own());
   return y;
 }
+// Temizlenmiş sonuç önbelleği: aynı kanal, aralık ve ayarlarla yeniden istenirse (ör. otomatik temizlemeden sonra
+// "temiz oynat") hesap tekrarlanmaz
+function acKey(ch, a, b) { return JSON.stringify([ch.uid || ch.name, ch.n, a, b, opts(), num('acN0'), num('acN1')]); }
+function acCached(clean) {
+  if (!clean) return false;
+  try { const {tr, ax} = acGetSeg(), ch = tr.ch; if (ch.acClean) return true; if (!ch.data) return false; const [a, b] = specRange(tr, ax, sv('acScope')); return !!S.acCache && S.acCache.key === acKey(ch, a, b); } catch (_) { return false; }
+}
 async function acPrepare(clean) {
   const {tr, ax} = acGetSeg(), ch = tr.ch; await ensureLoaded(ch); const fs = ch.fs; const [a, b] = specRange(tr, ax, sv('acScope'));
   if (b - a < 256) throw new Error('Aralık çok kısa');
+  // seçili iz zaten temizlenmiş kanal (…_temiz): yeniden temizlenmez, olduğu gibi kullanılır
+  if (clean && ch.acClean) { const r = await acPrepare0(false, ch, fs, a, b, ax); r.log.push('Seçili kanal zaten temizlenmiş: olduğu gibi kullanıldı'); return r; }
+  if (clean) { const key = acKey(ch, a, b), c = S.acCache; if (c && c.key === key && c.ch === ch) return Object.assign({}, c.res, {ax, log: c.res.log.concat(['(önceki temizleme sonucu kullanıldı)'])}); }
+  const res = await acPrepare0(clean, ch, fs, a, b, ax);
+  if (clean) S.acCache = {key: acKey(ch, a, b), ch, res};
+  return res;
+}
+async function acPrepare0(clean, ch, fs, a, b, ax) {
   let x = DSP.segment(ch.data, ch.del, a, b), log = [];
   if (!clean) { let m = 0; for (const v of x) m += v; m /= x.length; return {y: x.map(v => v - m), fs, a, b, ch, log, raw: x, ax}; }
   const o = opts(); let y = await preChain(x, fs, o);
-  if (o.click) { const r = DSP.declick(y, o.ck, o.cs, 2, o.protect ? Math.round(fs * 0.002) : 0); y = r.y; log.push(`Tık temizleme: ${r.events} olay, ${fmtCnt(r.count)} örnek düzeltildi` + (r.kept ? `, ${r.kept} darbe olayı korundu` : '')); }
+  if (o.click) { const r = await DSPW.run('declick', [y, o.ck, o.cs, 2, o.protect ? Math.round(fs * 0.002) : 0]); y = r.y; log.push(`Tık temizleme: ${r.events} olay, ${fmtCnt(r.count)} örnek düzeltildi` + (r.kept ? `, ${r.kept} darbe olayı korundu` : '')); }
   const pre = y;   // gürültü profili için (çıtırtı dahil arka plan)
   if (o.crackle) { const r = await DSPW.run('decrackle', [y, fs, {thrDb: o.crDb, keepDb: o.protect ? 30 : 200}]); y = r.y; log.push(`Çıtırtı bastırma: ${fmtCnt(r.bursts)} kısa patlama (saniyede ${r.rate.toFixed(0)})` + (o.protect && r.kept ? `, ${fmtCnt(r.kept)} uzun / güçlü olay korundu` : '')); }
   if (o.dn && o.dnM !== 'wiener') {
@@ -542,7 +557,7 @@ async function acCtxReady(c) {
 async function acPlay(clean) {
   const ctx0 = acCtx();
   acStop();
-  await busy(clean ? 'Temizleniyor…' : 'Hazırlanıyor…', async () => {
+  await busy(clean && !acCached(true) ? 'Temizleniyor…' : 'Hazırlanıyor…', async () => {
     const p = await acPrepare(clean); $('#acLog').textContent = p.log.join('\n');
     let y = p.y, fs = p.fs, dec = 1; while (fs / dec > 96000) dec++; if (dec > 1) { const o = new Float64Array(Math.floor(y.length / dec)); for (let i = 0; i < o.length; i++) o[i] = y[i * dec]; y = o; fs /= dec; }
     let speed = Math.max(0.05, num('acSpeed') || 1), forced = false; if (fs * speed < 8000) { speed = Math.ceil(8000 / fs); forced = true; $('#acSpeed').value = speed; toast('Hız çarpanı ×' + speed + ' olarak ayarlandı (örnekleme çok düşük)'); }
@@ -651,7 +666,7 @@ window.addEventListener('keydown', e => {
 async function acAddClean() {
   await busy('Temizleniyor…', async () => {
     const p = await acPrepare(true); $('#acLog').textContent = p.log.join('\n');
-    S.opDesc = 'akustik otomatik/elle temizleme'; const c = addDerived(p.ch.name + '_temiz', p.y, p.ch, p.a, p.a === 0 && p.b === p.ch.n); await addDerivedToPlot(c, activeAxes());
+    S.opDesc = 'akustik otomatik/elle temizleme'; const c = addDerived(p.ch.name + '_temiz', p.y, p.ch, p.a, p.a === 0 && p.b === p.ch.n); c.acClean = true; await addDerivedToPlot(c, activeAxes());
   });
 }
 async function acCompare() {
@@ -677,7 +692,7 @@ async function acAutoRun() {
   await acAuto(false);
   await busy('Temizleniyor…', async () => {
     const o = await acPrepare(false), c = await acPrepare(true), m = acDrawCompare(o, c), p = opts();
-    const ch = c.ch, d = addDerived(ch.name + '_temiz', c.y, ch, c.a, c.a === 0 && c.b === ch.n); await addDerivedToPlot(d, activeAxes()); switchView('spec');
+    const ch = c.ch, d = addDerived(ch.name + '_temiz', c.y, ch, c.a, c.a === 0 && c.b === ch.n); d.acClean = true; await addDerivedToPlot(d, activeAxes()); switchView('spec');
     const lines = [$('#acLog').textContent, '', 'UYGULANAN: ' + [p.dc !== 'none' ? 'DC' : '', p.hp ? 'HP ' + p.hp + ' Hz' : '', p.lp ? 'LP ' + p.lp + ' Hz' : '', p.notch ? 'Notch ' + p.notch + ' Hz×' + p.nh : '', p.click ? 'tık temizleme' : '', p.crackle ? 'çıtırtı bastırma' : '', p.dn ? (p.dnM === 'wiener' ? 'Wiener ' : 'OM-LSA ') + p.dnDb + ' dB' : '', p.protect ? 'olay koruma' : ''].filter(Boolean).join(', '),
       ...c.log, 'ETKİ (ölçülen):', `  Toplam RMS: ${m.rmsO.toPrecision(4)} → ${m.rmsC.toPrecision(4)} (${(100 * (m.rmsC / m.rmsO - 1)).toFixed(1)} %)`, `  Gürültü tabanı (medyan PSD): ${m.floorDb.toFixed(1)} dB`];
     if (p.notch) { let mx = -Infinity; for (let i = 0; i < m.wo.f.length; i++) if (Math.abs(m.wo.f[i] - p.notch) < 1.5) mx = Math.max(mx, 10 * Math.log10(m.wc.y[i] / m.wo.y[i])); if (isFinite(mx)) lines.push(`  ${p.notch} Hz tepesi: ${mx.toFixed(1)} dB`); }

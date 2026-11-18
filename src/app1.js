@@ -14,12 +14,40 @@ const S = {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function toast(msg, ms = 3500, act) { const t = $('#toast'); t.replaceChildren(msg); if (act) t.append(' ', h('button', {class: 'tact', onclick: () => { t.classList.add('hidden'); act.fn(); }}, act.t)); t.classList.remove('hidden'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), ms); }
 function errHint(m) { m = String(m || ''); if (/memory|bellek|allocation|array length/i.test(m)) return ' — Bellek yetmedi: Ayarlar ▸ Belleği boşalt ile kullanılmayan kanalları atıp tekrar deneyin.'; if (/not a valid|geçersiz|unsupported|desteklen/i.test(m)) return ' — Dosya biçimi tanınmadı: .mat (v5/v7.3), .unv ya da Excel çerçeveli binary olmalı.'; return ' — Sorun sürerse dosyayı yeniden açın.'; }
+/* Uzun işler: ilerleme penceresi ve İptal. İptal düğmesi her işte (yarım saniyeden uzun sürerse) görünür; Esc de iptal eder.
+   İptal edilince: ilerleme bildirimi (prog) Cancelled fırlatır, DSP işçisi ve kayıtlı iptal kancaları (onCancel) durdurulur.
+   İş en çok 1,5 sn içinde durmazsa pencere yine kapanır; iş durduğunda sonucu kullanılmaz. İç içe busy çağrısı ayrı
+   pencere açmaz, dıştakinin içinde çalışır. */
+class Cancelled extends Error { constructor() { super('İşlem iptal edildi'); this.name = 'Cancelled'; } }
+const isCancel = e => !!e && (e.name === 'Cancelled' || (e.name === 'AbortError' && S.cancel));
+function checkCancel() { if (S.cancel) throw new Cancelled(); }
+function onCancel(fn) { if (S.busyDepth) S.cancelHooks.push(fn); }
+function requestCancel() {
+  if (!S.busyDepth || S.cancel) return;
+  S.cancel = true; const btn = $('#busyCancelBtn'); btn.disabled = true; btn.textContent = 'Durduruluyor…';
+  for (const f of S.cancelHooks.splice(0)) { try { f(); } catch (_) {} }
+  if (typeof DSPW !== 'undefined' && DSPW.cancel) DSPW.cancel();
+  if (S.cancelWake) S.cancelWake();
+}
 async function busy(txt, fn, opt) {
-  const b = $('#busy'); $('#busytxt').textContent = txt; $('#busybar').style.width = '0%'; b.classList.remove('hidden'); S.cancel = false;
-  const cb = $('#busycancel'); if (cb) { cb.style.display = opt && opt.cancel ? '' : 'none'; $('#busyCancelBtn').disabled = false; } await sleep(30);
-  try { return await fn(p => { $('#busybar').style.width = Math.round(p * 100) + '%'; }); }
-  catch (e) { console.error(e); if (typeof logErr === 'function') logErr('işlem', (e && e.message) || e, e && e.stack); toast('Hata: ' + (e.message || e) + errHint(e.message || e), 9000); }
-  finally { b.classList.add('hidden'); }
+  opt = opt || {};
+  const setP = p => { if (S.cancel) throw new Cancelled(); $('#busybar').style.width = Math.round(Math.max(0, Math.min(1, p)) * 100) + '%'; };
+  if (S.busyDepth) { $('#busytxt').textContent = txt; S.busyDepth++; try { return await fn(setP); } finally { S.busyDepth--; } }
+  const b = $('#busy'); $('#busytxt').textContent = txt; $('#busybar').style.width = '0%'; b.classList.remove('hidden');
+  S.cancel = false; S.cancelHooks = []; S.busyDepth = 1;
+  const cb = $('#busycancel'), btn = $('#busyCancelBtn'); cb.style.display = 'none'; btn.disabled = false; btn.textContent = 'İptal';
+  const showT = opt.cancel === false ? 0 : setTimeout(() => { cb.style.display = ''; }, opt.cancel ? 0 : 500);
+  const woke = new Promise(r => { S.cancelWake = r; });
+  await sleep(30);
+  const run = Promise.resolve().then(() => fn(setP)); run.catch(() => {});
+  try {
+    const r = await Promise.race([run, woke.then(() => Promise.race([run, sleep(1500)]))]);
+    if (S.cancel) throw new Cancelled();
+    return r;
+  } catch (e) {
+    if (S.cancel || isCancel(e)) { toast('İşlem iptal edildi', 3500); return; }
+    console.error(e); if (typeof logErr === 'function') logErr('işlem', (e && e.message) || e, e && e.stack); toast('Hata: ' + (e.message || e) + errHint(e.message || e), 9000);
+  } finally { clearTimeout(showT); S.busyDepth = 0; S.cancelHooks = []; S.cancelWake = null; b.classList.add('hidden'); }
 }
 function modal(title, body, buttons) {
   $('#mtitle').textContent = title; const mb = $('#mbody'); mb.replaceChildren(body); const f = $('#mfoot'); f.replaceChildren();
@@ -35,7 +63,8 @@ async function nativeSaveBlob(blob, name) {
   const fi = await window.mvFsInfo(), step = 16 << 20;
   const put = async (body, a) => { const r = await fetch('http://127.0.0.1:' + fi.port + '/write?t=' + fi.token + '&a=' + a + '&p=' + encodeURIComponent(p), {method: 'PUT', body}); if (!r.ok) throw new Error('Yerel yazma hatası (' + r.status + '): ' + (await r.text())); };
   if (!blob.size) await put(new Uint8Array(0), 0);
-  for (let o = 0; o < blob.size; o += step) await put(blob.slice(o, o + step), o ? 1 : 0);
+  try { for (let o = 0; o < blob.size; o += step) { checkCancel(); await put(blob.slice(o, o + step), o ? 1 : 0); } checkCancel(); }
+  catch (e) { try { await fetch('http://127.0.0.1:' + fi.port + '/remove?t=' + fi.token + '&p=' + encodeURIComponent(p), {method: 'POST'}); } catch (_) {} throw e; }
   toast(p + ' kaydedildi', 5000); return true;
 }
 async function saveBlob(blob, name) {

@@ -108,6 +108,14 @@ func (b *fsBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+	case "/remove":
+		// iptal edilen yazımın yarım kalan dosyası: yalnız dosya (klasör değil) ve yalnız izinli klasörlerin içinde
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			if err := os.Remove(p); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
 	default:
 		http.NotFound(w, r)
 		return
