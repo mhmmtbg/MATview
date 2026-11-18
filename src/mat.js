@@ -5,7 +5,7 @@ const MAT = (() => {
   const NUMERIC = new Set([6,7,8,9,10,11,12,13,14,15]);
 
   async function inflate(u8, maxBytes) {
-    const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate'));
+    const stream = (u8 instanceof Blob ? u8 : new Blob([u8])).stream().pipeThrough(new DecompressionStream('deflate'));
     const reader = stream.getReader();
     const chunks = []; let total = 0;
     for (;;) {
@@ -93,7 +93,7 @@ const MAT = (() => {
 
   // struct / cell içindeki sayısal öğeleri düz bir listeye açar (tamamı bellekte çözülmüş bayt dizisi üzerinden)
   function walkContainer(bytes, le, prefix, top, out, depth) {
-    if (depth > 6 || out.length > 5000) return;
+    if (depth > 6 || out.length > MAXV) return;
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), t = readTag(dv, 0, le); if (t.type !== 14) return;
     let o = t.data; const fl = readTag(dv, o, le), cls = dv.getUint32(fl.data, le) & 0xFF, complex = !!(dv.getUint32(fl.data, le) & 0x800); o = fl.next;
     const dt = readTag(dv, o, le), dims = []; for (let i = 0; i < dt.size / 4; i++) dims.push(dv.getInt32(dt.data + 4 * i, le)); o = dt.next;
@@ -109,6 +109,67 @@ const MAT = (() => {
     for (const [nm, b] of children) walkContainer(b, le, nm, top, out, depth + 1);
   }
 
+  const MAXV = 200000;
+  /* Büyük dosyalar (≥ lazyMin, varsayılan 1,5 GB): tamamı belleğe alınmaz (tarayıcı tek parça okumada ~2 GB sınırına
+     takılır). Yalnız etiketler ve değişken başlıkları parça parça okunur; veri, kanal çizilince kendi aralığından okunur. */
+  const rd = async (file, off, len) => new Uint8Array(await file.slice(off, Math.min(file.size, off + len)).arrayBuffer());
+  function hdrOf(b, le) {   // miMATRIX başlığı: sınıf, boyutlar, ad; yapı ise alan adlarının bittiği yer
+    const dv = new DataView(b.buffer, b.byteOffset, b.byteLength), t = readTag(dv, 0, le); if (t.type !== 14) return null;
+    if (t.size === 0) return {t, empty: true};
+    let o = t.data; const fl = readTag(dv, o, le), flags = dv.getUint32(fl.data, le); o = fl.next;
+    const dt = readTag(dv, o, le), dims = []; for (let i = 0; i < dt.size / 4; i++) dims.push(dv.getInt32(dt.data + 4 * i, le)); o = dt.next;
+    const nt = readTag(dv, o, le); let name = ''; for (let i = 0; i < nt.size; i++) name += String.fromCharCode(dv.getUint8(nt.data + i)); o = nt.next;
+    return {t, dv, cls: flags & 0xFF, complex: !!(flags & 0x800), dims, name, o};
+  }
+  async function walkLazy(file, off, le, prefix, top, out, depth) {
+    let b = await rd(file, off, 512); let hd = hdrOf(b, le); if (!hd) return -1;
+    const end = off + hd.t.next; if (hd.empty) return end;
+    const name = prefix || hd.name, cls = hd.cls, dims = hd.dims, count = dims.reduce((a, c) => a * c, 1);
+    const info = {name, cls, clsName: CLS[cls] || ('cls' + cls), dims, complex: hd.complex, numeric: NUMERIC.has(cls), count, off, endOff: end, compressed: false};
+    if (top) info.top = top;
+    if (info.numeric) { if (top == null || count >= 1) out.push(info); return end; }
+    if (top == null) out.push(info);
+    if (depth > 6 || out.length > MAXV || (cls !== 1 && cls !== 2)) return end;
+    const tp = top || name, kids = [];
+    let o = hd.o;
+    if (cls === 2) {
+      if (o + 16 > b.length) { b = await rd(file, off, o + 16); hd = hdrOf(b, le); }
+      let dv = hd.dv; const ln = readTag(dv, o, le), L = dv.getInt32(ln.data, le); o = ln.next;
+      let fn = readTag(dv, o, le);
+      if (fn.next > b.length) { b = await rd(file, off, fn.next + 8); hd = hdrOf(b, le); dv = hd.dv; fn = readTag(dv, o, le); }
+      const nf = L > 0 ? Math.floor(fn.size / L) : 0, names = [];
+      for (let i = 0; i < nf; i++) { let nm = ''; for (let j = 0; j < L; j++) { const ch = dv.getUint8(fn.data + i * L + j); if (!ch) break; nm += String.fromCharCode(ch); } names.push(nm); }
+      o = fn.next;
+      for (let k = 0; k < count; k++) for (let i = 0; i < nf; i++) kids.push(name + (count > 1 ? '(' + (k + 1) + ')' : '') + '.' + names[i]);
+    } else for (let k = 0; k < count; k++) kids.push(name + '{' + (k + 1) + '}');
+    let p = off + o;
+    for (const nm of kids) {
+      if (p + 8 > end || out.length > MAXV) break;
+      const e = await walkLazy(file, p, le, nm, tp, out, depth + 1); if (e <= p) break; p = e;
+    }
+    return end;
+  }
+  async function openLazy(file, pre) {
+    const le = !(pre[126] === 0x4D && pre[127] === 0x49), head = new TextDecoder('latin1').decode(pre.subarray(0, 116)), vars = [];
+    let o = 128;
+    while (o + 8 <= file.size) {
+      const tb = await rd(file, o, 8), t = readTag(new DataView(tb.buffer), 0, le), next = o + t.next;
+      if (t.type === 15) {
+        const d0 = o + t.data, info = parseMatrix(await inflate(file.slice(d0, d0 + t.size), 600), le, false);
+        if (info) { info.compOff = d0; info.compSize = t.size; info.compressed = true; vars.push(info);
+          if ((info.cls === 1 || info.cls === 2) && t.size < 1.2e9) { try { walkContainer(await inflate(file.slice(d0, d0 + t.size)), le, info.name, info.name, vars, 0); } catch (e) { info.walkErr = String(e.message || e); } } }
+      } else if (t.type === 14) await walkLazy(file, o, le, null, null, vars, 0);
+      if (next <= o) break;
+      o = next;
+    }
+    return {file, lazy: true, le, vars, header: head.trim()};
+  }
+  async function lazyBytes(m, v) {
+    if (v.compressed) return inflate(m.file.slice(v.compOff, v.compOff + v.compSize));
+    if (v.endOff - v.off > 2.1e9) throw new Error(v.name + ' tek parçada okunamayacak kadar büyük (' + ((v.endOff - v.off) / 1e9).toFixed(1) + ' GB)');
+    return rd(m.file, v.off, v.endOff - v.off);
+  }
+
   async function open(file) {
     const pre = new Uint8Array(await file.slice(0, 2048).arrayBuffer()); const hasSig = p => pre.length >= p + 4 && pre[p] === 0x89 && pre[p + 1] === 0x48 && pre[p + 2] === 0x44 && pre[p + 3] === 0x46;
     const head0 = new TextDecoder('latin1').decode(pre.subarray(0, 116));
@@ -116,6 +177,7 @@ const MAT = (() => {
       const big = file.size > 1.5e9; // çok büyük dosyalar parça parça okunur
       const m = await H5.open(file, big ? null : new Uint8Array(await file.arrayBuffer())); m.h5 = true; return m;
     }
+    if (file.size >= api.lazyMin) return openLazy(file, pre);
     const buf = await file.arrayBuffer();
     const u8 = new Uint8Array(buf);
     const head = new TextDecoder('latin1').decode(u8.subarray(0, 116));
@@ -145,6 +207,7 @@ const MAT = (() => {
   async function load(m, v) {
     if (m.h5) return H5.load(m, v);
     if (v.inline) return parseMatrix(v.inline, m.le, true).data;
+    if (m.lazy) return parseMatrix(await lazyBytes(m, v), m.le, true).data;
     let bytes;
     if (v.compressed) bytes = await inflate(m.u8.subarray(v.compOff, v.compOff + v.compSize));
     else bytes = m.u8.subarray(v.off, v.endOff);
@@ -191,6 +254,14 @@ const MAT = (() => {
   }
   async function readAll(m, only) {
     if (m.h5) { const t = await H5.readTrees(m); return only ? t.filter(x => only.includes(x.name)) : t; }
+    if (m.lazy) {
+      const out = [];
+      for (const v of m.vars) {
+        if (v.top != null || (only && !only.includes(v.name))) continue;
+        const b = await lazyBytes(m, v); out.push(treeAt(new DataView(b.buffer, b.byteOffset, b.byteLength), 0, m.le, 0));
+      }
+      return out;
+    }
     const u8 = m.u8, dv0 = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), out = []; let o = 128;
     while (o + 8 <= u8.length) {
       const t = readTag(dv0, o, m.le);
@@ -201,6 +272,7 @@ const MAT = (() => {
     return out;
   }
   globalThis.MATinflate = inflate; globalThis.MATreadNumeric = readNumeric;
-  return {open, load, inflate, readAll};
+  const api = {open, load, inflate, readAll, lazyMin: 1.5e9};
+  return api;
 })();
 if (typeof module !== 'undefined') module.exports = MAT;
