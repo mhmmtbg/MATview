@@ -146,16 +146,17 @@ function renderTree() {
   syncTreeMode(multi);
   if (multi && S.treeMode === 'param') renderTreeParam(box, filtering, virt);
   else for (const f of files) {
-    const chs = f.channels.filter(chMatches);
-    const fop = S.fopen.has(f.id) || files.length === 1, grp = h('div', {class: 'fgrp' + (fop ? ' open' : '') + (filtering && !chs.length ? ' nomatch' : '')}), body = h('div', {class: 'tbody', 'data-f': f.id});
+    const chs = f.channels.filter(chMatches), vids = camVideos(f, filtering);
+    const fop = S.fopen.has(f.id) || files.length === 1, grp = h('div', {class: 'fgrp' + (fop ? ' open' : '') + (filtering && !chs.length && !vids.length ? ' nomatch' : '')}), body = h('div', {class: 'tbody', 'data-f': f.id});
     // tık: yalnız bu dosya açık · Ctrl+tık: diğerlerini kapatmadan aç/kapat
     const tog = e => { if (S.fopen.has(f.id)) S.fopen.delete(f.id); else { if (!(e && (e.ctrlKey || e.metaKey))) S.fopen.clear(); S.fopen.add(f.id); } renderTree(); };
     grp.append(h('div', {class: 'tfile', tabindex: 0, role: 'button', 'aria-expanded': fop, title: f.name + ' — aç/kapat (Ctrl+tık: diğerlerini kapatmadan; sağ tık: dışa aktar)', oncontextmenu: e => { e.preventDefault(); fileMenu(f, e.clientX, e.clientY); }, onclick: e => { if (!e.target.closest('button')) tog(e); }, onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(e); } }},
-      h('span', {class: 'twisty'}, fop ? '▼' : '▶'), h('span', {class: 'nm'}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
+      h('span', {class: 'twisty'}, fop ? '▼' : '▶'), h('span', {class: 'nm'}, f.name), h('span', {class: 'muted'}, f.videoOnly ? vids.length + ' video' : chs.length + '/' + f.channels.length),
       f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => matDlg(f, {t: 'all'})}, '.mat') : null,
       f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
     if (!fop) { box.append(grp); continue; }
     const items = [], devs = new Map();
+    camTreeItems(f, vids, items, filtering);
     for (const c of chs) { if (!devs.has(c.dev)) devs.set(c.dev, new Map()); const bm = devs.get(c.dev); if (!bm.has(c.base)) bm.set(c.base, []); bm.get(c.base).push(c); }
     for (const [dev, bm] of devs) {
       const dk = f.id + '/' + dev, open = filtering || S.open.has(dk);
@@ -216,6 +217,7 @@ function renderTreeParam(box, filtering, virt) {
       if (bo) for (const c of list) items.push({k: 'ch', c, label: fileShort(c.file), sub: true});
     }
   }
+  { const vv = []; for (const f of allFiles()) for (const v of camVideos(f, filtering)) vv.push({f, v}); if (vv.length) camTreeItems(null, vv, items, filtering); }
   items.forEach((it, i) => { if (it.k === 'ch') { S.rowOrder.push(it.c); S.treeIdx.set(it.c.uid, {body, i}); } });
   body._items = items;
   grp.append(h('div', {class: 'tfile static'}, h('span', {class: 'nm'}, 'Tüm dosyalar'), h('span', {class: 'muted'}, nf + ' dosya')));
@@ -248,8 +250,29 @@ function treeFocusUid(uid) {
   if (body._top) { const y = i * TREE_RH; if (y < body.scrollTop || y + TREE_RH > body.scrollTop + body.clientHeight) body.scrollTop = Math.max(0, y - body.clientHeight / 2); treeSlice(body); }
   const r = [...body.querySelectorAll('.trow')].find(x => x._uid === uid); if (r) r.focus(); return r;
 }
+// kamera videoları: dosyanın en üstünde "Kamera" grubu; satıra tık / ▶ → kamera penceresi
+function camVideos(f, filtering) {
+  const vs = (f && f.videos) || []; if (!vs.length) return [];
+  const q = filtering && S.q ? S.q.toLowerCase() : ''; if (filtering && !q) return [];
+  return q ? vs.filter(v => (v.name || '').toLowerCase().includes(q) || 'kamera video'.includes(q)) : vs;
+}
+function camTreeItems(f, list, items, filtering) {
+  if (!list.length) return;
+  const dk = (f ? f.id : 'P') + '/#kamera', open = filtering || !S.open.has(dk + '#kapali');
+  items.push({k: 'dev', dev: 'Kamera', dk: dk + '#kapali', open, total: list.length, meta: list.length + ' video', inv: true});
+  if (open) for (const x of list) items.push(f ? {k: 'vid', f, v: x} : {k: 'vid', f: x.f, v: x.v, label: (x.v.name || 'video') + '  — ' + fileShort(x.f)});
+}
+function vidRow(it) {
+  const {f, v} = it, on = typeof CAMV !== 'undefined' && CAMV.current && CAMV.current.v === v;
+  const play = () => CAMV.open(f, v);
+  return h('div', {class: 'trow vidrow' + (on ? ' sel' : ''), tabindex: 0, title: (v.summary || '') + (v.sync ? ' · kanal zamanıyla eşli' : '') + ' — tık: kamera penceresinde oynat', onclick: e => { if (!e.target.closest('button')) play(); }, onkeydown: e => { if (e.key === 'Enter') play(); }},
+    h('span', {class: 'twisty'}), icEl('video', 14), h('span', {class: 'nm'}, it.label || v.name || 'video'), h('span', {class: 'meta'}, v.dur ? fmtNum(v.dur, 4) + ' s' : ''),
+    h('button', {class: 'add', 'data-ic': 'play', title: 'Kamera penceresinde oynat', onclick: e => { e.stopPropagation(); play(); }}));
+}
 function treeItemEl(it) {
   if (it.k === 'ch') return chRow(it.c, it.label, it.sub);
+  if (it.k === 'vid') return vidRow(it);
+  if (it.k === 'dev' && it.inv) { const {dev, dk, open} = it; return h('div', {class: 'tdev', onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + it.meta + ')')); }
   if (it.k === 'dev') { const {dev, dk, open, total, f} = it; return h('div', {class: 'tdev', oncontextmenu: e => { e.preventDefault(); if (f) devMenu(f, dev, e.clientX, e.clientY); }, onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + (it.meta || total) + ')')); }
   const {base, bk, bo, list} = it;
   return h('div', {class: 'trow', title: it.tip || null, ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
@@ -291,7 +314,8 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 async function openFiles(files) {
   files = [...files];
   { // Telemetri: çerçeve tipli binary, telemetryParser ayar JSON'u, kamera videosu
-    const vids = files.filter(f => /\.(h264|264|mp4)$/i.test(f.name)); if (vids.length && typeof tlmPlayVideo === 'function') { tlmPlayVideo(vids[0]); files = files.filter(f => !vids.includes(f)); }
+    const mp4 = files.filter(f => /\.mp4$/i.test(f.name)); if (mp4.length) { mp4.forEach(camAddFile); files = files.filter(f => !mp4.includes(f)); }
+    const vids = files.filter(f => /\.(h264|264)$/i.test(f.name)); if (vids.length && typeof tlmPlayVideo === 'function') { tlmPlayVideo(vids[0]); files = files.filter(f => !vids.includes(f)); }
     const js = files.filter(f => /\.json$/i.test(f.name)); for (const j of js) { files = files.filter(f => f !== j); if (tlmIsSettingsJson(await j.text())) await tlmImportSettings(j); else toast(j.name + ': tanınmayan JSON (telemetri ayar dosyası değil)', 6000); }
     // telemetryParser biçimli template: Telemetri'de çerçeve tipi tanımlıysa ya da görünüm açıksa oraya, değilse (geriye uyum) Excel çerçeve akışına
     const tpl = [], toTlm = typeof tlmPrefers === 'function' && tlmPrefers();
@@ -322,6 +346,7 @@ async function openFiles(files) {
 }
 const _seenFiles = new Set();
 function closeFile(f) {
+  if (f && f.videos && typeof CAMV !== 'undefined') CAMV.release(f);
   for (const ax of [...S.plot.axes]) { ax.traces = ax.traces.filter(t => t.ch.file !== f); if (!ax.traces.length) S.plot.removeAxes(ax); }
   S.undo = S.undo.filter(g => g.every(e => e.ch.file !== f)); S.redo = [];
   S.files = S.files.filter(x => x !== f); renderChips(); renderTree(); refreshAll();
