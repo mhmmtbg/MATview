@@ -406,6 +406,11 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .la-auto{display:flex;flex-direction:column;gap:2px}.la-ai{font-size:11px;color:var(--muted)}
 .la-spec{display:block;border:1px solid var(--border);border-radius:4px}
 .la-note{font-size:11px;color:var(--muted)}
+
+/* sol panel: liste düzeni (çok dosya) */
+.tmode{margin:0 10px 6px}.tmode button{flex:1;padding:2px 6px;font-size:12px}
+.fgrp.nomatch>.tfile{opacity:.55}
+.tfile.static{cursor:default}.tfile.static:hover{background:var(--bg)}
 </style>
 </head>
 <body>
@@ -442,6 +447,7 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
     <div id="lp-data" class="lpane">
     <div class="search"><input id="q" type="search" placeholder="Ara (kanal adı)…"></div>
     <div id="chips" class="chips"></div>
+    <div id="tmode" class="seg tmode hidden" role="group" aria-label="Liste düzeni"><button data-m="file" class="noic" title="Her dosya ayrı başlık altında; bir dosyaya tıklayınca yalnız o açılır (Ctrl+tık: birden çok)">Dosyaya göre</button><button data-m="param" class="noic" title="Aynı adlı parametre tüm dosyalarda tek satır; altında hangi dosyalarda olduğu. Çift tık: tüm dosyalardakini aynı grafikte karşılaştır">Parametreye göre</button></div>
     <div id="tree" class="tree"></div>
     <div id="selbar" class="selbar">
       <span id="selinfo">Seçili: 0</span>
@@ -710,7 +716,7 @@ const MAT = (() => {
   const NUMERIC = new Set([6,7,8,9,10,11,12,13,14,15]);
 
   async function inflate(u8, maxBytes) {
-    const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate'));
+    const stream = (u8 instanceof Blob ? u8 : new Blob([u8])).stream().pipeThrough(new DecompressionStream('deflate'));
     const reader = stream.getReader();
     const chunks = []; let total = 0;
     for (;;) {
@@ -798,7 +804,7 @@ const MAT = (() => {
 
   // struct / cell içindeki sayısal öğeleri düz bir listeye açar (tamamı bellekte çözülmüş bayt dizisi üzerinden)
   function walkContainer(bytes, le, prefix, top, out, depth) {
-    if (depth > 6 || out.length > 5000) return;
+    if (depth > 6 || out.length > MAXV) return;
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), t = readTag(dv, 0, le); if (t.type !== 14) return;
     let o = t.data; const fl = readTag(dv, o, le), cls = dv.getUint32(fl.data, le) & 0xFF, complex = !!(dv.getUint32(fl.data, le) & 0x800); o = fl.next;
     const dt = readTag(dv, o, le), dims = []; for (let i = 0; i < dt.size / 4; i++) dims.push(dv.getInt32(dt.data + 4 * i, le)); o = dt.next;
@@ -814,6 +820,67 @@ const MAT = (() => {
     for (const [nm, b] of children) walkContainer(b, le, nm, top, out, depth + 1);
   }
 
+  const MAXV = 200000;
+  /* Büyük dosyalar (≥ lazyMin, varsayılan 1,5 GB): tamamı belleğe alınmaz (tarayıcı tek parça okumada ~2 GB sınırına
+     takılır). Yalnız etiketler ve değişken başlıkları parça parça okunur; veri, kanal çizilince kendi aralığından okunur. */
+  const rd = async (file, off, len) => new Uint8Array(await file.slice(off, Math.min(file.size, off + len)).arrayBuffer());
+  function hdrOf(b, le) {   // miMATRIX başlığı: sınıf, boyutlar, ad; yapı ise alan adlarının bittiği yer
+    const dv = new DataView(b.buffer, b.byteOffset, b.byteLength), t = readTag(dv, 0, le); if (t.type !== 14) return null;
+    if (t.size === 0) return {t, empty: true};
+    let o = t.data; const fl = readTag(dv, o, le), flags = dv.getUint32(fl.data, le); o = fl.next;
+    const dt = readTag(dv, o, le), dims = []; for (let i = 0; i < dt.size / 4; i++) dims.push(dv.getInt32(dt.data + 4 * i, le)); o = dt.next;
+    const nt = readTag(dv, o, le); let name = ''; for (let i = 0; i < nt.size; i++) name += String.fromCharCode(dv.getUint8(nt.data + i)); o = nt.next;
+    return {t, dv, cls: flags & 0xFF, complex: !!(flags & 0x800), dims, name, o};
+  }
+  async function walkLazy(file, off, le, prefix, top, out, depth) {
+    let b = await rd(file, off, 512); let hd = hdrOf(b, le); if (!hd) return -1;
+    const end = off + hd.t.next; if (hd.empty) return end;
+    const name = prefix || hd.name, cls = hd.cls, dims = hd.dims, count = dims.reduce((a, c) => a * c, 1);
+    const info = {name, cls, clsName: CLS[cls] || ('cls' + cls), dims, complex: hd.complex, numeric: NUMERIC.has(cls), count, off, endOff: end, compressed: false};
+    if (top) info.top = top;
+    if (info.numeric) { if (top == null || count >= 1) out.push(info); return end; }
+    if (top == null) out.push(info);
+    if (depth > 6 || out.length > MAXV || (cls !== 1 && cls !== 2)) return end;
+    const tp = top || name, kids = [];
+    let o = hd.o;
+    if (cls === 2) {
+      if (o + 16 > b.length) { b = await rd(file, off, o + 16); hd = hdrOf(b, le); }
+      let dv = hd.dv; const ln = readTag(dv, o, le), L = dv.getInt32(ln.data, le); o = ln.next;
+      let fn = readTag(dv, o, le);
+      if (fn.next > b.length) { b = await rd(file, off, fn.next + 8); hd = hdrOf(b, le); dv = hd.dv; fn = readTag(dv, o, le); }
+      const nf = L > 0 ? Math.floor(fn.size / L) : 0, names = [];
+      for (let i = 0; i < nf; i++) { let nm = ''; for (let j = 0; j < L; j++) { const ch = dv.getUint8(fn.data + i * L + j); if (!ch) break; nm += String.fromCharCode(ch); } names.push(nm); }
+      o = fn.next;
+      for (let k = 0; k < count; k++) for (let i = 0; i < nf; i++) kids.push(name + (count > 1 ? '(' + (k + 1) + ')' : '') + '.' + names[i]);
+    } else for (let k = 0; k < count; k++) kids.push(name + '{' + (k + 1) + '}');
+    let p = off + o;
+    for (const nm of kids) {
+      if (p + 8 > end || out.length > MAXV) break;
+      const e = await walkLazy(file, p, le, nm, tp, out, depth + 1); if (e <= p) break; p = e;
+    }
+    return end;
+  }
+  async function openLazy(file, pre) {
+    const le = !(pre[126] === 0x4D && pre[127] === 0x49), head = new TextDecoder('latin1').decode(pre.subarray(0, 116)), vars = [];
+    let o = 128;
+    while (o + 8 <= file.size) {
+      const tb = await rd(file, o, 8), t = readTag(new DataView(tb.buffer), 0, le), next = o + t.next;
+      if (t.type === 15) {
+        const d0 = o + t.data, info = parseMatrix(await inflate(file.slice(d0, d0 + t.size), 600), le, false);
+        if (info) { info.compOff = d0; info.compSize = t.size; info.compressed = true; vars.push(info);
+          if ((info.cls === 1 || info.cls === 2) && t.size < 1.2e9) { try { walkContainer(await inflate(file.slice(d0, d0 + t.size)), le, info.name, info.name, vars, 0); } catch (e) { info.walkErr = String(e.message || e); } } }
+      } else if (t.type === 14) await walkLazy(file, o, le, null, null, vars, 0);
+      if (next <= o) break;
+      o = next;
+    }
+    return {file, lazy: true, le, vars, header: head.trim()};
+  }
+  async function lazyBytes(m, v) {
+    if (v.compressed) return inflate(m.file.slice(v.compOff, v.compOff + v.compSize));
+    if (v.endOff - v.off > 2.1e9) throw new Error(v.name + ' tek parçada okunamayacak kadar büyük (' + ((v.endOff - v.off) / 1e9).toFixed(1) + ' GB)');
+    return rd(m.file, v.off, v.endOff - v.off);
+  }
+
   async function open(file) {
     const pre = new Uint8Array(await file.slice(0, 2048).arrayBuffer()); const hasSig = p => pre.length >= p + 4 && pre[p] === 0x89 && pre[p + 1] === 0x48 && pre[p + 2] === 0x44 && pre[p + 3] === 0x46;
     const head0 = new TextDecoder('latin1').decode(pre.subarray(0, 116));
@@ -821,6 +888,7 @@ const MAT = (() => {
       const big = file.size > 1.5e9; // çok büyük dosyalar parça parça okunur
       const m = await H5.open(file, big ? null : new Uint8Array(await file.arrayBuffer())); m.h5 = true; return m;
     }
+    if (file.size >= api.lazyMin) return openLazy(file, pre);
     const buf = await file.arrayBuffer();
     const u8 = new Uint8Array(buf);
     const head = new TextDecoder('latin1').decode(u8.subarray(0, 116));
@@ -850,6 +918,7 @@ const MAT = (() => {
   async function load(m, v) {
     if (m.h5) return H5.load(m, v);
     if (v.inline) return parseMatrix(v.inline, m.le, true).data;
+    if (m.lazy) return parseMatrix(await lazyBytes(m, v), m.le, true).data;
     let bytes;
     if (v.compressed) bytes = await inflate(m.u8.subarray(v.compOff, v.compOff + v.compSize));
     else bytes = m.u8.subarray(v.off, v.endOff);
@@ -896,6 +965,14 @@ const MAT = (() => {
   }
   async function readAll(m, only) {
     if (m.h5) { const t = await H5.readTrees(m); return only ? t.filter(x => only.includes(x.name)) : t; }
+    if (m.lazy) {
+      const out = [];
+      for (const v of m.vars) {
+        if (v.top != null || (only && !only.includes(v.name))) continue;
+        const b = await lazyBytes(m, v); out.push(treeAt(new DataView(b.buffer, b.byteOffset, b.byteLength), 0, m.le, 0));
+      }
+      return out;
+    }
     const u8 = m.u8, dv0 = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), out = []; let o = 128;
     while (o + 8 <= u8.length) {
       const t = readTag(dv0, o, m.le);
@@ -906,7 +983,8 @@ const MAT = (() => {
     return out;
   }
   globalThis.MATinflate = inflate; globalThis.MATreadNumeric = readNumeric;
-  return {open, load, inflate, readAll};
+  const api = {open, load, inflate, readAll, lazyMin: 1.5e9};
+  return api;
 })();
 
 /* Minimal HDF5 okuyucu — MATLAB v7.3 .mat dosyaları için
@@ -4752,13 +4830,17 @@ const TREE_RH = 22, TREE_VIRT = 250;
 function renderTree() {
   const box = $('#tree'); const scs = {}; box.querySelectorAll('.tbody').forEach(x => scs[x.dataset.f] = x.scrollTop); box.replaceChildren(); S.rowOrder = []; S.treeIdx = new Map();
   const filtering = S.q || S.kinds.size || S.favOnly;
-  const virt = [];
-  for (const f of allFiles()) {
+  const virt = [], files = allFiles(), multi = files.filter(f => !f.derived).length > 1;
+  // yeni açılan dosya açık gelir, diğerleri kapanır (akordeon): çok dosyada her biri ayrı küçük kutuya sıkışmaz
+  for (const f of files) if (!S.seenF.has(f.id)) { S.seenF.add(f.id); S.fopen.clear(); S.fopen.add(f.id); }
+  syncTreeMode(multi);
+  if (multi && S.treeMode === 'param') renderTreeParam(box, filtering, virt);
+  else for (const f of files) {
     const chs = f.channels.filter(chMatches);
-    if (!S.seenF.has(f.id)) { S.seenF.add(f.id); S.fopen.add(f.id); }
-    const fop = filtering || S.fopen.has(f.id), grp = h('div', {class: 'fgrp' + (fop ? ' open' : '')}), body = h('div', {class: 'tbody', 'data-f': f.id});
-    const tog = () => { S.fopen.has(f.id) ? S.fopen.delete(f.id) : S.fopen.add(f.id); renderTree(); };
-    grp.append(h('div', {class: 'tfile', tabindex: 0, role: 'button', 'aria-expanded': fop, title: f.name + ' — aç/kapat (sağ tık: dışa aktar)', oncontextmenu: e => { e.preventDefault(); fileMenu(f, e.clientX, e.clientY); }, onclick: e => { if (!e.target.closest('button')) tog(); }, onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(); } }},
+    const fop = S.fopen.has(f.id) || files.length === 1, grp = h('div', {class: 'fgrp' + (fop ? ' open' : '') + (filtering && !chs.length ? ' nomatch' : '')}), body = h('div', {class: 'tbody', 'data-f': f.id});
+    // tık: yalnız bu dosya açık · Ctrl+tık: diğerlerini kapatmadan aç/kapat
+    const tog = e => { if (S.fopen.has(f.id)) S.fopen.delete(f.id); else { if (!(e && (e.ctrlKey || e.metaKey))) S.fopen.clear(); S.fopen.add(f.id); } renderTree(); };
+    grp.append(h('div', {class: 'tfile', tabindex: 0, role: 'button', 'aria-expanded': fop, title: f.name + ' — aç/kapat (Ctrl+tık: diğerlerini kapatmadan; sağ tık: dışa aktar)', oncontextmenu: e => { e.preventDefault(); fileMenu(f, e.clientX, e.clientY); }, onclick: e => { if (!e.target.closest('button')) tog(e); }, onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(e); } }},
       h('span', {class: 'twisty'}, fop ? '▼' : '▶'), h('span', {class: 'nm'}, f.name), h('span', {class: 'muted'}, chs.length + '/' + f.channels.length),
       f.binary ? h('button', {title: 'Çözülmüş alanları .mat olarak kaydet', onclick: () => matDlg(f, {t: 'all'})}, '.mat') : null,
       f.derived ? null : h('button', {title: 'Dosyayı kapat', onclick: () => closeFile(f)}, '×')));
@@ -4791,6 +4873,53 @@ function renderTree() {
   updateSelInfo();
   uiChanged();
 }
+// Ağaç görünümü: "Dosyaya göre" (her dosya ayrı) ya da "Parametreye göre" (aynı adlı parametre tüm dosyalarda tek satır,
+// altında dosyalar). Seçenek yalnız birden çok dosya açıkken görünür ve hatırlanır.
+function syncTreeMode(multi) {
+  if (S.treeMode == null) { S.treeMode = 'file'; try { S.treeMode = localStorage.getItem('mv.treeMode') || 'file'; } catch (_) {} }
+  const box = $('#tmode'); if (!box) return;
+  box.classList.toggle('hidden', !multi);
+  box.querySelectorAll('button').forEach(b => { b.classList.toggle('on', b.dataset.m === S.treeMode); b.onclick = () => { S.treeMode = b.dataset.m; try { localStorage.setItem('mv.treeMode', S.treeMode); } catch (_) {} renderTree(); }; });
+}
+const fileShort = f => String(f && f.name || '').replace(/\s*·\s*telemetri$/i, '').replace(/\.(mat|unv|uff|csv|tsv|txt|xlsx|tdms|mf4|mdf|wav|bin)$/i, '');
+function renderTreeParam(box, filtering, virt) {
+  const devs = new Map(); let nf = 0;
+  for (const f of allFiles()) {
+    let any = false;
+    for (const c of f.channels) {
+      if (!chMatches(c)) continue; any = true;
+      if (!devs.has(c.dev)) devs.set(c.dev, new Map()); const pm = devs.get(c.dev), k = c.rest || c.name;
+      if (!pm.has(k)) pm.set(k, []); pm.get(k).push(c);
+    }
+    if (any) nf++;
+  }
+  const items = [], body = h('div', {class: 'tbody', 'data-f': 'P'}), grp = h('div', {class: 'fgrp open pmode'});
+  for (const [dev, pm] of devs) {
+    const dk = 'P/' + dev, open = filtering || devs.size === 1 || S.open.has(dk);
+    let tot = 0; for (const l of pm.values()) tot += l.length;
+    items.push({k: 'dev', dev, dk, open, total: tot, meta: pm.size + ' parametre'});
+    if (!open) continue;
+    for (const [nm, list] of pm) {
+      if (list.length === 1) { items.push({k: 'ch', c: list[0], label: nm + '  — ' + fileShort(list[0].file), sub: false}); continue; }
+      const bk = dk + '/' + nm, bo = S.open.has(bk);
+      items.push({k: 'grp', base: nm, bk, bo, list, meta: list.length + ' dosya', tip: 'Çift tık: tüm dosyalardaki ' + nm + ' aynı grafikte (karşılaştırma)'});
+      if (bo) for (const c of list) items.push({k: 'ch', c, label: fileShort(c.file), sub: true});
+    }
+  }
+  items.forEach((it, i) => { if (it.k === 'ch') { S.rowOrder.push(it.c); S.treeIdx.set(it.c.uid, {body, i}); } });
+  body._items = items;
+  grp.append(h('div', {class: 'tfile static'}, h('span', {class: 'nm'}, 'Tüm dosyalar'), h('span', {class: 'muted'}, nf + ' dosya')));
+  if (!items.length) body.append(h('div', {class: 'note', style: 'padding:8px 10px'}, 'Eşleşen parametre yok'));
+  else if (items.length <= TREE_VIRT) { for (const it of items) body.append(treeItemEl(it)); }
+  else { body.classList.add('virt'); body._top = h('div', {class: 'vsp'}); body._bot = h('div', {class: 'vsp'}); body.append(body._top, body._bot); body.addEventListener('scroll', () => { if (!body._raf) body._raf = requestAnimationFrame(() => { body._raf = 0; treeSlice(body); }); }, {passive: true}); virt.push(body); }
+  grp.append(body); box.append(grp);
+}
+// aynı grafikte aynı adlı izler farklı dosyalardansa lejantta dosya adı da görünsün
+function tagDupLabels(ax) {
+  if (!ax) return; const by = new Map();
+  for (const t of ax.traces) if (t.ch && t.ch.file) { const k = t.ch.name; if (!by.has(k)) by.set(k, []); by.get(k).push(t); }
+  for (const [nm, ts] of by) if (new Set(ts.map(t => t.ch.file)).size > 1) for (const t of ts) if (t.label === nm) t.label = nm + ' · ' + fileShort(t.ch.file);
+}
 // sanal gövdede görünen pencereyi (± tampon) çiz
 function treeSlice(body, st) {
   const items = body._items, n = items.length, H = body.clientHeight || 600, top = st != null ? st : body.scrollTop;
@@ -4811,10 +4940,10 @@ function treeFocusUid(uid) {
 }
 function treeItemEl(it) {
   if (it.k === 'ch') return chRow(it.c, it.label, it.sub);
-  if (it.k === 'dev') { const {dev, dk, open, total, f} = it; return h('div', {class: 'tdev', oncontextmenu: e => { e.preventDefault(); devMenu(f, dev, e.clientX, e.clientY); }, onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + total + ')')); }
+  if (it.k === 'dev') { const {dev, dk, open, total, f} = it; return h('div', {class: 'tdev', oncontextmenu: e => { e.preventDefault(); if (f) devMenu(f, dev, e.clientX, e.clientY); }, onclick: () => { S.open.has(dk) ? S.open.delete(dk) : S.open.add(dk); renderTree(); }}, h('span', {class: 'twisty'}, open ? '▼' : '▶'), dev, h('span', {class: 'meta'}, '(' + (it.meta || total) + ')')); }
   const {base, bk, bo, list} = it;
-  return h('div', {class: 'trow', ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
-    h('span', {class: 'twisty'}, bo ? '▼' : '▶'), kic(list[0].kind), h('span', {class: 'nm'}, hl(base)), h('span', {class: 'meta'}, list.length + ' kanal'),
+  return h('div', {class: 'trow', title: it.tip || null, ondblclick: e => e.shiftKey ? addToNewAxes(list, false) : addGroup(list), onclick: e => { if (e.target.closest('button')) return; S.open.has(bk) ? S.open.delete(bk) : S.open.add(bk); renderTree(); }, draggable: 'true', ondragstart: e => dragStart(e, list)},
+    h('span', {class: 'twisty'}, bo ? '▼' : '▶'), kic(list[0].kind), h('span', {class: 'nm'}, hl(base)), h('span', {class: 'meta'}, it.meta || list.length + ' kanal'),
     h('button', {class: 'add', 'data-ic': 'stack', title: 'Her kanalı ayrı alt grafiğe ekle', onclick: e => { e.stopPropagation(); addToNewAxes(list, false); }}), h('button', {class: 'add', 'data-ic': 'layers', title: 'Hepsini tek (yeni) grafiğe aynı eksende ekle', onclick: e => { e.stopPropagation(); addGroup(list); }}), h('button', {class: 'add', 'data-ic': 'swap', title: 'Mevcut grafiği kaldırıp bu kanalları tek grafikte çiz', onclick: e => { e.stopPropagation(); replacePlot(list, true); }}));
 }
 const hl = label => {
@@ -4913,7 +5042,7 @@ async function addToNewAxes(chs, one) {
   if (chs.length && chs.every(c => c.file && c.file.feature)) return featAdd(chs);
   { const sp = chs.filter(c => c.spec); if (sp.length) { await addSpec(sp); chs = chs.filter(c => !c.spec); if (!chs.length) return; } }
   const first = !S.plot.axes.length;
-  if (one) { const ax = S.plot.addAxes(), nt = chs.map(c => makeTrace(c)); ax.traces.push(...nt); assignYAxes(ax, nt); axisLabelFor(ax); S.plot.active = ax; }
+  if (one) { const ax = S.plot.addAxes(), nt = chs.map(c => makeTrace(c)); ax.traces.push(...nt); tagDupLabels(ax); assignYAxes(ax, nt); axisLabelFor(ax); S.plot.active = ax; }
   else for (const c of chs) { const ax = S.plot.addAxes(); ax.traces.push(makeTrace(c)); axisLabelFor(ax); S.plot.active = ax; }
   switchView('time'); refreshAll();
   await loadForPlot(chs, first);
@@ -4922,7 +5051,7 @@ async function addToAxes(ax, chs) {
   if (chs.length && chs.every(c => c.file && c.file.feature)) return featAdd(chs);
   { const sp = chs.filter(c => c.spec); if (sp.length) { await addSpec(sp); chs = chs.filter(c => !c.spec); if (!chs.length) return; } }
   if (!ax) return addToNewAxes(chs, true);
-  const first = !S.plot.axes.length, nt = chs.map(c => makeTrace(c)); ax.traces.push(...nt); assignYAxes(ax, nt); axisLabelFor(ax);
+  const first = !S.plot.axes.length, nt = chs.map(c => makeTrace(c)); ax.traces.push(...nt); tagDupLabels(ax); assignYAxes(ax, nt); axisLabelFor(ax);
   switchView('time'); refreshAll(); await loadForPlot(chs, first);
 }
 function replacePlot(chs, one) { clearPlot(); S.plot.invalidate(); return addToNewAxes(chs, one); }
@@ -7696,7 +7825,7 @@ async function qualAuto(files) {
 }
 
 /* ===== Faz 2: Test sekmesi — faz tablosu (B1), şartname uygunluk + şablonlar (B2), hesap kaydı (A2) ===== */
-const APP_VER = '2.29';
+const APP_VER = '2.30';
 function logOp(op, detail) { (S.methodLog = S.methodLog || []).push(Object.assign({t: Date.now(), op}, detail || {})); }
 
 /* ---------- Faz tablosu (düzenlenebilir) ---------- */
@@ -8128,6 +8257,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.30', d: 'Çok dosyalı sol panel ve büyük .mat açma', items: [
+    'Sol panel: birden çok dosya açıkken yalnız bir dosyanın listesi açık durur ve panelin tamamını kullanır; başlığa tıklamak o dosyayı açıp diğerlerini kapatır (Ctrl+tık: birlikte açık). Aramada eşleşmesi olmayan dosyalar soluk görünür.',
+    'Yeni liste düzeni “Parametreye göre”: aynı adlı parametre tüm dosyalarda tek satırda (kaç dosyada olduğu yazar), altında dosyalar. Çift tık tüm dosyalardakini aynı grafikte karşılaştırır; lejantta dosya adları görünür. Seçim hatırlanır.',
+    'Büyük .mat dosyaları (1,5 GB ve üstü, ör. tek .mat çıktıları) artık açılabiliyor: dosya belleğe tek parça alınmaz, kanal verisi gerektiğinde kendi aralığından okunur.'
+  ]},
   {v: '2.29', d: 'Büyük tek .mat hızlı kaydetme', items: [
     'Tek .mat (tüm kayıt) artık bellekte tek parça hazırlanmadan doğrudan hedef dosyaya yazılır; önce kaydetme penceresi açılır, sonra ilerleme yüzdesi gösterilir.',
     'MATView.exe’de kaydetmeler Windows “Farklı kaydet” penceresi ve uygulamanın kendi yazıcısıyla yapılır: büyük dosyalar geçici dosyaya yazılıp taşınmadan, doğrudan diske yazılır. Son kullanılan klasör hatırlanır.',

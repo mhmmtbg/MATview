@@ -45,6 +45,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.30', d: 'Çok dosyalı sol panel ve büyük .mat açma', items: [
+    'Sol panel: birden çok dosya açıkken yalnız bir dosyanın listesi açık durur ve panelin tamamını kullanır; başlığa tıklamak o dosyayı açıp diğerlerini kapatır (Ctrl+tık: birlikte açık). Aramada eşleşmesi olmayan dosyalar soluk görünür.',
+    'Yeni liste düzeni “Parametreye göre”: aynı adlı parametre tüm dosyalarda tek satırda (kaç dosyada olduğu yazar), altında dosyalar. Çift tık tüm dosyalardakini aynı grafikte karşılaştırır; lejantta dosya adları görünür. Seçim hatırlanır.',
+    'Büyük .mat dosyaları (1,5 GB ve üstü, ör. tek .mat çıktıları) artık açılabiliyor: dosya belleğe tek parça alınmaz, kanal verisi gerektiğinde kendi aralığından okunur.'
+  ]},
   {v: '2.29', d: 'Büyük tek .mat hızlı kaydetme', items: [
     'Tek .mat (tüm kayıt) artık bellekte tek parça hazırlanmadan doğrudan hedef dosyaya yazılır; önce kaydetme penceresi açılır, sonra ilerleme yüzdesi gösterilir.',
     'MATView.exe’de kaydetmeler Windows “Farklı kaydet” penceresi ve uygulamanın kendi yazıcısıyla yapılır: büyük dosyalar geçici dosyaya yazılıp taşınmadan, doğrudan diske yazılır. Son kullanılan klasör hatırlanır.',
