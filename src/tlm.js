@@ -96,7 +96,7 @@ async function tlmSaveSingleMat(f) {
   if (!dest) return;
   const t0 = performance.now();
   await busy('Tek .mat yazılıyor: ' + ss.label, async prog => {
-    const r = await M.save(f.tlm.client, ss.id, dest, prog);
+    const r = await M.save(f.tlm.client, ss.id, dest, x => { if (!S.cancel) prog(x); }, onCancel);
     toast(dest.label + ' kaydedildi (' + (r.bytes / 1048576).toFixed(r.bytes > 1e9 ? 0 : 1) + ' MB, ' + ((performance.now() - t0) / 1000).toFixed(1) + ' sn)', 7000);
     if (dest.wsp && typeof wspLoad === 'function') wspLoad();
   });

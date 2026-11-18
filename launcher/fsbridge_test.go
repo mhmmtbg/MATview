@@ -36,6 +36,29 @@ func TestFsBridgeWrite(t *testing.T) {
 	if len(got) != 3+len(big)+1 || string(got[:3]) != "abc" || got[len(got)-1] != 'z' {
 		t.Fatalf("içerik yanlış: %d", len(got))
 	}
+	rm := func(path string) int {
+		r, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/remove?t=%s&p=%s", b.port, b.token, path), "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	if rm(p) != 204 {
+		t.Fatal("silme başarısız")
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatal("dosya silinmedi")
+	}
+	if rm(dir) != 204 {
+		t.Fatal("klasör isteği")
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatal("klasör silinmemeli")
+	}
+	if rm(filepath.Join(filepath.Dir(dir), "x")) != 403 {
+		t.Fatal("izin dışı silme kabul edildi")
+	}
 	if put(filepath.Join(filepath.Dir(dir), "x.mat"), 0, []byte("x")) != 403 {
 		t.Fatal("izin dışı yol kabul edildi")
 	}

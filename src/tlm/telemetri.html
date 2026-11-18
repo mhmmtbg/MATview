@@ -3357,8 +3357,9 @@ function unitFields(u, T) {
   });
   return out;
 }
-async function writeFieldData(w, f, tick, pf) {
+async function writeFieldData(w, f, tick, pf, cx) {
   var c0 = f.cols[0];
+  if (cx) { if (Date.now() - (writeFieldData.ty || 0) > 100) { writeFieldData.ty = Date.now(); await new Promise(function (r) { setTimeout(r, 0); }); } if (cx()) throw new Error('İşlem iptal edildi'); }
   if (f.bytes) {
     // MATLAB sütun öncelikli (N × genişlik): sütunlar en çok 32 MB'lık gruplar halinde çevrilir, tüm dizi belleğe alınmaz
     var rows = f.rows, cw = c0.width, G = Math.max(1, Math.min(cw, Math.floor((32 << 20) / Math.max(rows, 1))));
@@ -3410,7 +3411,7 @@ async function writeMatAll(units, sink, fname, opt) {
         var f = fields[fi];
         if (f.dataBytes > 0x7FFFFFF0) { log('UYARI', fname + ': ' + u.name + '.' + f.name + ' 2 GB sınırını aştığı için yazılmadı'); continue; }
         var mh = matHead(matName(sname + '_' + f.name, usedTop), f.cls[0], f.rows, f.ncol, f.dataBytes, f.cls[1]);
-        await w.write(mh.head); await writeFieldData(w, f, tick, pf);
+        await w.write(mh.head); await writeFieldData(w, f, tick, pf, opt.cancelled);
       }
       continue;
     }
@@ -3437,7 +3438,7 @@ async function writeMatAll(units, sink, fname, opt) {
       await w.write(eh);
       var dt = new Uint8Array(8), ddv = new DataView(dt.buffer); ddv.setUint32(0, g.cls[1], true); ddv.setUint32(4, g.dataBytes, true);
       await w.write(dt);
-      await writeFieldData(w, g, tick, pf);
+      await writeFieldData(w, g, tick, pf, opt.cancelled);
     }
   }
   await w.close();
@@ -3461,10 +3462,12 @@ StreamSink.prototype.open = async function (name) {
   var self = this, d = this.dest, write, close, noCopy = true;
   this.files.push(name);
   if (d.native) {
-    var o = d.native, first = true, pending = null; noCopy = false;
+    var o = d.native, first = false, pending = null; noCopy = false;
+    await nativeReq(o, 'write', o.path, new Uint8Array(0), false);   // dosya hemen oluşturulur: yazılamıyorsa baştan hata
     // gövde Blob olarak verilir: tarayıcı Blob gövdesini ağ katmanına doğrudan aktarır (dizi gövdesinden kat kat hızlı)
-    write = async function (u8) { var body = new Blob([u8]); if (pending) await pending; pending = nativeReq(o, 'write', o.path, body, !first); first = false; };
-    close = async function () { if (pending) await pending; if (first) await nativeReq(o, 'write', o.path, new Uint8Array(0), false); };
+    write = async function (u8) { var body = new Blob([u8]); if (pending) await pending; pending = nativeReq(o, 'write', o.path, body, true); };
+    close = async function () { if (pending) await pending; };
+    this.abort = async function () { try { if (pending) await pending; } catch (_) {} await nativeReq(o, 'remove', o.path); };
   } else if (d.fh) {
     var ws = await d.fh.createWritable();
     write = function (u8) { return ws.write(u8); };
@@ -3482,7 +3485,9 @@ function matAllSize(units, T) {
   units.forEach(function (u) { unitFields(u, T || 0.01).forEach(function (f) { n += f.elSize + 72; }); n += 256; });
   return n;
 }
+var CANCELS = new Set();   // iptal edilen istekler (rq): uzun yazımlar her alan / parça başında bakar
 async function sessionCmd(msg, prog) {
+  if (msg.cmd === 'cancel') { CANCELS.add(msg.target); return { ok: true }; }
   var ss = SESSIONS.get(msg.sid);
   if (msg.cmd === 'sclose') { if (ss) { SESSIONS.delete(msg.sid); await ss.store.close(); } return { ok: true }; }
   if (!ss) throw new Error('Çözüm oturumu kapanmış (kayıt yeniden çözülmeli)');
@@ -3494,7 +3499,7 @@ async function sessionCmd(msg, prog) {
   }
   if (msg.cmd === 'mat') {
     var sk = new BlobSink(), nm = fileSafe(ss.name) + '_tum.mat';
-    await writeMatAll(ss.units, sk, nm, { T: ss.T });
+    try { await writeMatAll(ss.units, sk, nm, { T: ss.T, cancelled: function () { return CANCELS.has(msg.rq); } }); } finally { CANCELS.delete(msg.rq); }
     var r = await sk.finish();
     return { blob: r.blob, name: nm };
   }
@@ -3502,8 +3507,9 @@ async function sessionCmd(msg, prog) {
     var tot = matAllSize(ss.units, ss.T), lastP = 0, nm2 = msg.name || fileSafe(ss.name) + '_tum.mat';
     var sk2 = new StreamSink(msg.native ? { native: msg.native } : msg.fh ? { fh: msg.fh } : {}, function (b) { var t = Date.now(); if (prog && t - lastP > 200) { lastP = t; prog(Math.min(1, b / tot)); } });
     var t0 = Date.now();
-    try { await writeMatAll(ss.units, sk2, nm2, { T: ss.T }); }
-    catch (e) { if (sk2.abort) await sk2.abort(); throw e; }
+    try { await writeMatAll(ss.units, sk2, nm2, { T: ss.T, cancelled: function () { return CANCELS.has(msg.rq); } }); }
+    catch (e) { if (sk2.abort) { try { await sk2.abort(); } catch (_) {} } throw e; }
+    finally { CANCELS.delete(msg.rq); }
     return { name: nm2, bytes: sk2.bytes, ms: Date.now() - t0, store: ss.store.mode };
   }
   throw new Error('Bilinmeyen komut ' + msg.cmd);
@@ -6128,12 +6134,13 @@ async function matDest(name) {
   return { blob: true, name: name, label: name };
 }
 function cloneErr(e) { return e && (e.name === 'DataCloneError' || /clone|serializ/i.test(e.message || '')); }
-async function streamMat(client, sid, dest, onProg) {
+async function streamMat(client, sid, dest, onProg, onCancelReg) {
+  var reg = function () { var id = client.seq; if (onCancelReg) onCancelReg(function () { client.request('cancel', { target: id }).catch(function () {}); }); };
   if (!dest.blob) {
-    try { return await client.request('matTo', { sid: sid, name: dest.name, native: dest.native || null, fh: dest.fh || null }, onProg); }
+    try { var pr = client.request('matTo', { sid: sid, name: dest.name, native: dest.native || null, fh: dest.fh || null }, onProg); reg(); return await pr; }
     catch (e) { if (!dest.fh || !cloneErr(e)) throw e; }   // tutamaç işçiye geçemedi: Blob üretilip burada yazılır
   }
-  var r = await client.request('mat', { sid: sid });
+  var pm = client.request('mat', { sid: sid }); reg(); var r = await pm;
   if (dest.fh) { var ws = await dest.fh.createWritable(); await ws.write(r.blob); await ws.close(); }
   else { var host = window.parent !== window && window.parent.MATViewTLM; if (host && host.saveFile) await host.saveFile(dest.name, r.blob); else download(dest.name, r.blob); }
   return { name: dest.name, bytes: r.blob.size };

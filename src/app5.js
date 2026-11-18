@@ -233,7 +233,8 @@ function initUX() {
   window.addEventListener('keydown', e => { const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return; if (e.key === '?') { e.preventDefault(); shortcutsDialog(); } });
   window.addEventListener('dragstart', e => { if (e.dataTransfer && [...e.dataTransfer.types].length === 0) return; }, true);
   window.addEventListener('dragend', hideDZ); window.addEventListener('drop', () => setTimeout(hideDZ, 0));
-  $('#busyCancelBtn').onclick = () => { S.cancel = true; $('#busyCancelBtn').disabled = true; };
+  $('#busyCancelBtn').onclick = requestCancel;
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && S.busyDepth && !$('#busy').classList.contains('hidden')) { e.preventDefault(); e.stopImmediatePropagation(); requestCancel(); } }, true);
   updDblBtn(); decorate(document);
   let pend = 0; new MutationObserver(() => { if (!pend) pend = requestAnimationFrame(() => { pend = 0; decorate(document); }); }).observe(document.body, {childList: true, subtree: true});
   syncWelcome();
