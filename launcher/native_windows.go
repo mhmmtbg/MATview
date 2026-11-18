@@ -124,6 +124,14 @@ func runNative(u, dir string) (ok bool) {
 		})
 		w.Bind("mvAllowDir", func(p string) bool { return fsb.allow(p) })
 		w.Bind("mvOpenFolder", func(p string) bool { return fsb.openFolder(p) })
+		// büyük çıktılar (tek .mat vb.): Windows "Farklı kaydet" penceresi; seçilen dosyanın klasörüne yazma izni verilir
+		w.Bind("mvSaveFile", func(name, start string) string {
+			p := saveFile(hwnd, name, start)
+			if p == "" || !fsb.allow(filepath.Dir(p)) {
+				return ""
+			}
+			return p
+		})
 	}
 	// canlı telemetri: UDP ve seri port (tarayıcı UDP soketi açamaz; PowerShell köprüsü gerekmez)
 	if lv, err := live.Start(); err == nil {

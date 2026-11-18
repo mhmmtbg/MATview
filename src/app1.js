@@ -27,8 +27,20 @@ function modal(title, body, buttons) {
   for (const b of buttons || [{t: 'Kapat'}]) f.append(h('button', {class: (b.primary ? 'primary' : '') + (b.noic ? ' noic' : ''), onclick: () => { if (!b.fn || b.fn() !== false) close(); }}, b.t));
   $('#mclose').onclick = close; $('#modal').classList.remove('hidden');
 }
+// MATView.exe: Windows "Farklı kaydet" penceresi + yerel yazıcı (16 MB'lık parçalar). Tarayıcının kaydetme yolu büyük
+// dosyaları önce geçici dosyaya yazıp sonra taşır ve tarar; yerel yazıcı doğrudan hedefe yazar.
+async function nativeSaveBlob(blob, name) {
+  const p = await window.mvSaveFile(name, S.saveDir || ''); if (!p) return false;
+  S.saveDir = p.replace(/[\\/][^\\/]*$/, '');
+  const fi = await window.mvFsInfo(), step = 16 << 20;
+  const put = async (body, a) => { const r = await fetch('http://127.0.0.1:' + fi.port + '/write?t=' + fi.token + '&a=' + a + '&p=' + encodeURIComponent(p), {method: 'PUT', body}); if (!r.ok) throw new Error('Yerel yazma hatası (' + r.status + '): ' + (await r.text())); };
+  if (!blob.size) await put(new Uint8Array(0), 0);
+  for (let o = 0; o < blob.size; o += step) await put(blob.slice(o, o + step), o ? 1 : 0);
+  toast(p + ' kaydedildi', 5000); return true;
+}
 async function saveBlob(blob, name) {
   blob = await blob;   // zip yazıcıları Promise<Blob> döndürür
+  if (typeof window.mvSaveFile === 'function' && typeof window.mvFsInfo === 'function') return nativeSaveBlob(blob, name);
   try {
     if (window.showSaveFilePicker) { const hd = await showSaveFilePicker({suggestedName: name}); const w = await hd.createWritable(); await w.write(blob); await w.close(); return true; }
   } catch (e) { if (e && e.name === 'AbortError') return false; }

@@ -45,6 +45,12 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.29', d: 'Büyük tek .mat hızlı kaydetme', items: [
+    'Tek .mat (tüm kayıt) artık bellekte tek parça hazırlanmadan doğrudan hedef dosyaya yazılır; önce kaydetme penceresi açılır, sonra ilerleme yüzdesi gösterilir.',
+    'MATView.exe’de kaydetmeler Windows “Farklı kaydet” penceresi ve uygulamanın kendi yazıcısıyla yapılır: büyük dosyalar geçici dosyaya yazılıp taşınmadan, doğrudan diske yazılır. Son kullanılan klasör hatırlanır.',
+    'Çözülmüş sütunlar geçici depodan topluca okunur (çok sayıda parametreli kayıtlarda .mat üretimi birkaç kat hızlı); byte dizisi alanları tamamı belleğe alınmadan dönüştürülür.',
+    'Geçici depo (tarayıcı alanı) dolarsa veriler artık sıfır olarak okunmaz; taşan kısım bellekte tutulur.'
+  ]},
   {v: '2.28', d: 'Çerçeve görünümü ve çıktı klasörü', items: [
     'Telemetri › Çerçeve görünümü: fare tekerleğiyle yakınlaştırma, sürükleyerek kaydırma, çift tıkla sığdırma.',
     'Çerçeve görünümü ipucu her hücre için satır öncelikli ve sütun öncelikli byte ofsetini birlikte gösterir.',

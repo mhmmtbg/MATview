@@ -2503,10 +2503,22 @@ SpillStore.prototype.init = async function () {
     }
   } catch (e) { this.mode = 'blob'; this.sync = null; }
 };
+// OPFS'e yazılamayan (kota / disk dolu) kısımlar sessizce sıfır okunmasın: o kesim Blob olarak tutulur (this.over)
+SpillStore.prototype._fileWrite = function (data) {
+  var n = 0;
+  if (!this.full) { try { n = this.sync.write(data, { at: this.fileSize }); } catch (e) { n = -1; } }
+  if (n !== data.length) { this.full = true; (this.over || (this.over = [])).push({ f: this.fileSize, l: data.length, blob: new Blob([data.slice()]) }); }
+  this.fileSize += data.length;
+};
+SpillStore.prototype._overOf = function (r) {
+  var ov = this.over; if (!ov) return null;
+  for (var i = ov.length - 1; i >= 0; i--) if (r.f >= ov[i].f && r.f < ov[i].f + ov[i].l) return ov[i];
+  return null;
+};
 SpillStore.prototype._flushStage = function () {
   if (!this.used) return;
   var data = this.stage.subarray(0, this.used);
-  if (this.mode === 'opfs') { this.sync.write(data, { at: this.fileSize }); this.fileSize += this.used; }
+  if (this.mode === 'opfs') this._fileWrite(data);
   else this.blobs.push(new Blob([data.slice()]));
   this.used = 0;
 };
@@ -2514,7 +2526,7 @@ SpillStore.prototype.put = function (u8) {
   var len = u8.length; this.total += len;
   if (this.used + len > this.cap) this._flushStage();
   if (len > this.cap) {
-    if (this.mode === 'opfs') { var off = this.fileSize; this.sync.write(u8, { at: off }); this.fileSize += len; return { f: off, l: len }; }
+    if (this.mode === 'opfs') { var off = this.fileSize; this._fileWrite(u8); return { f: off, l: len }; }
     this.blobs.push(new Blob([u8.slice()])); return { b: this.blobs.length - 1, o: 0, l: len };
   }
   var o = this.used; this.stage.set(u8, o); this.used += len;
@@ -2523,12 +2535,40 @@ SpillStore.prototype.put = function (u8) {
 SpillStore.prototype.get = async function (r) {
   if (this.mode === 'opfs') {
     if (r.f >= this.fileSize) { var o = r.f - this.fileSize; return this.stage.slice(o, o + r.l); }
+    var ov = this._overOf(r); if (ov) return new Uint8Array(await ov.blob.slice(r.f - ov.f, r.f - ov.f + r.l).arrayBuffer());
     var out = new Uint8Array(r.l); this.sync.read(out, { at: r.f }); return out;
   }
   if (r.b === this.blobs.length) return this.stage.slice(r.o, r.o + r.l);
   return new Uint8Array(await this.blobs[r.b].slice(r.o, r.o + r.l).arrayBuffer());
 };
+// birçok parçayı birlikte oku: dosyada bitişik (ya da arası 64 KB'tan kısa) parçalar tek okumada, en çok 16 MB
+SpillStore.prototype.getMany = async function (refs) {
+  var out = new Array(refs.length), ord = [], i, self = this;
+  for (i = 0; i < refs.length; i++) {
+    var r = refs[i];
+    if (this.mode === 'opfs' ? r.f >= this.fileSize || this._overOf(r) : r.b === this.blobs.length) out[i] = await this.get(r);
+    else ord.push(i);
+  }
+  var key = this.mode === 'opfs' ? function (r) { return r.f; } : function (r) { return r.b * 4294967296 + r.o; };
+  ord.sort(function (a, b) { return key(refs[a]) - key(refs[b]); });
+  var GAP = 65536, MAX = 16 << 20;
+  for (var a = 0; a < ord.length;) {
+    var r0 = refs[ord[a]], s0 = key(r0), e0 = s0 + r0.l, b = a + 1;
+    while (b < ord.length) {
+      var rb = refs[ord[b]], sb = key(rb);
+      if ((this.mode !== 'opfs' && rb.b !== r0.b) || sb - e0 > GAP || Math.max(e0, sb + rb.l) - s0 > MAX) break;
+      e0 = Math.max(e0, sb + rb.l); b++;
+    }
+    var buf;
+    if (this.mode === 'opfs') { buf = new Uint8Array(e0 - s0); this.sync.read(buf, { at: s0 }); }
+    else buf = new Uint8Array(await this.blobs[r0.b].slice(r0.o, r0.o + (e0 - s0)).arrayBuffer());
+    for (var k = a; k < b; k++) { var rk = refs[ord[k]], o = key(rk) - s0; out[ord[k]] = buf.subarray(o, o + rk.l); }
+    a = b;
+  }
+  return out;
+};
 SpillStore.prototype.close = async function () {
+  this.over = null;
   if (this.sync) { try { this.sync.close(); await this.dir.removeEntry(this.fname); } catch (e) {} this.sync = null; }
   this.blobs = []; this.stage = null;
 };
@@ -2561,10 +2601,11 @@ Col.prototype._flush = function () {
   this.ci = 0;
 };
 Col.prototype.finish = function () { this._flush(); this.cur = null; };
-Col.prototype.rawChunk = function (k) { return this.store.get(this.chunks[k]); };
+Col.prototype.rawChunk = function (k) { return this.pre ? Promise.resolve(this.pre[k]) : this.store.get(this.chunks[k]); };
 Col.prototype.chunk = async function (k) {
   if (k === this.cacheK) return this.cacheV;
-  var u8 = await this.store.get(this.chunks[k]), v;
+  var u8 = await this.rawChunk(k), v;
+  if (this.kind !== 'bytes' && (u8.byteOffset & 7)) u8 = u8.slice();
   if (this.kind === 'f64') v = new Float64Array(u8.buffer, u8.byteOffset, u8.byteLength / 8);
   else if (this.kind === 'u64') v = new BigUint64Array(u8.buffer, u8.byteOffset, u8.byteLength / 8);
   else if (this.kind === 'i64') v = new BigInt64Array(u8.buffer, u8.byteOffset, u8.byteLength / 8);
@@ -2572,7 +2613,21 @@ Col.prototype.chunk = async function (k) {
   this.cacheK = k; this.cacheV = v;
   return v;
 };
-Col.prototype.release = function () { this.cacheK = -1; this.cacheV = null; };
+Col.prototype.release = function () { this.cacheK = -1; this.cacheV = null; this.pre = null; };
+/* Sırayla yazılacak sütunlar için önden toplu okuma: parçalar küçük (32 KB) ve dosyada sütunlar arası serpiştirilmiş
+   olduğundan tek tek okumak yavaştır; aynı anda dolup diske yazılan komşu sütunların parçaları bitişiktir. Pencere
+   (en çok ~64 MB) birlikte okunur, sütun yazılıp release() edilince bellekten çıkar. */
+function Prefetch(cols, budget) { this.cols = cols; this.pos = new Map(); this.budget = budget || (64 << 20); var self = this; cols.forEach(function (c, i) { if (!self.pos.has(c)) self.pos.set(c, i); }); }
+Prefetch.prototype.ensure = async function (col) {
+  if (col.pre || !col.chunks.length || !col.store.getMany) return;
+  var i = this.pos.has(col) ? this.pos.get(col) : -1, win = [col], sz = col.n * col.esize;
+  if (i >= 0) for (var j = i + 1; j < this.cols.length && sz < this.budget; j++) { var c = this.cols[j]; if (c.pre || win.indexOf(c) >= 0 || c.store !== col.store) continue; win.push(c); sz += c.n * c.esize; }
+  var refs = [], own = [];
+  win.forEach(function (c) { c.chunks.forEach(function (r) { refs.push(r); own.push(c); }); c.pre = []; });
+  var got = await col.store.getMany(refs);
+  for (var k = 0; k < got.length; k++) own[k].pre.push(got[k]);
+};
+TP.Prefetch = Prefetch; TP.SpillStore = SpillStore; TP.Col = Col;
 function fmtNum(v) {
   if (v !== v) return 'NaN';
   if (v === Infinity) return 'Inf';
@@ -3015,11 +3070,12 @@ TP.videoSummary = videoSummary;
 /* ---------------- Çıktı hedefleri ---------------- */
 function BufWriter(wf, cf, cap) { this.wf = wf; this.cf = cf; this.cap = cap || (4 << 20); this.buf = new Uint8Array(this.cap); this.used = 0; }
 BufWriter.prototype.write = async function (u8) {
-  if (u8.length >= this.cap) { await this.flush(); await this.wf(u8.slice()); return; }
+  if (u8.length >= this.cap) { await this.flush(); await this.wf(this.noCopy ? u8 : u8.slice()); return; }
   if (this.used + u8.length > this.cap) await this.flush();
   this.buf.set(u8, this.used); this.used += u8.length;
 };
-BufWriter.prototype.flush = async function () { if (this.used) { await this.wf(this.buf.slice(0, this.used)); this.used = 0; } };
+// noCopy: hedef veriyi beklenen yazma bitmeden tükettiği için tampon kopyalanmadan verilir
+BufWriter.prototype.flush = async function () { if (this.used) { await this.wf(this.noCopy ? this.buf.subarray(0, this.used) : this.buf.slice(0, this.used)); this.used = 0; } };
 BufWriter.prototype.close = async function () { await this.flush(); await this.cf(); this.buf = null; };
 
 /* Yerel uygulama (WebView2) klasörü: Windows klasör seçicisiyle seçilir, dosyalar 127.0.0.1'deki yerel yazıcıya akıtılır.
@@ -3039,7 +3095,8 @@ NativeDirH.prototype.getFileHandle = async function (name) {
     return {
       write: async function (d) {
         if (d && d.type === 'write' && 'data' in d) d = d.data;
-        var body = typeof d === 'string' ? new TextEncoder().encode(d) : (d instanceof Blob ? d : ArrayBuffer.isView(d) ? new Uint8Array(d.buffer, d.byteOffset, d.byteLength).slice() : d);
+        // Blob gövdesi: dizi gövdesine göre yerel yazıcıya kat kat hızlı aktarılır
+        var body = typeof d === 'string' ? new Blob([d]) : (d instanceof Blob ? d : ArrayBuffer.isView(d) ? new Blob([new Uint8Array(d.buffer, d.byteOffset, d.byteLength)]) : new Blob([d]));
         await nativeReq(o, 'write', p, body, !first); first = false;
       },
       close: async function () { if (first) { await nativeReq(o, 'write', p, new Uint8Array(0), false); first = false; } }
@@ -3124,7 +3181,7 @@ function matName(s, used) {
   used.add(r.toLowerCase());
   return r;
 }
-TP.matName = matName;
+TP.matName = matName; TP.fileSafe = fileSafe;
 
 /* ---------------- CSV / MAT yazıcılar ---------------- */
 function csvCell(s) { s = String(s); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
@@ -3169,6 +3226,8 @@ async function writeMat(u, sink, fname, tick, log) {
     if (same) vars.push({ name: g.name, cols: cs });
     else cs.forEach(function (c) { vars.push({ name: c.name, cols: [c] }); });
   });
+  var pfo = []; vars.forEach(function (v) { if (!v.bytes) Array.prototype.push.apply(pfo, v.cols); });
+  var pf = new Prefetch(pfo);
   for (var vi = 0; vi < vars.length; vi++) {
     var v = vars[vi], c0 = v.cols[0], kind = c0.kind, cls = MAT_CLS[kind];
     var rows = c0.n, ncol = v.bytes ? c0.width : v.cols.length;
@@ -3190,7 +3249,9 @@ async function writeMat(u, sink, fname, tick, log) {
     if (!v.bytes) {
       for (var ci = 0; ci < v.cols.length; ci++) {
         var col = v.cols[ci];
+        await pf.ensure(col);
         for (var k = 0; k < col.chunks.length; k++) await w.write(await col.rawChunk(k));
+        col.pre = null;
         tick(col.n);
       }
     } else {
@@ -3296,18 +3357,25 @@ function unitFields(u, T) {
   });
   return out;
 }
-async function writeFieldData(w, f, tick) {
+async function writeFieldData(w, f, tick, pf) {
   var c0 = f.cols[0];
   if (f.bytes) {
-    var rows = f.rows, cw = c0.width, all = new Uint8Array(rows * cw), q = 0;
-    for (var k = 0; k < c0.chunks.length; k++) { var ch = await c0.rawChunk(k); all.set(ch, q); q += ch.length; }
-    var outb = new Uint8Array(Math.min(Math.max(rows, 1), 1 << 20)), oi = 0;
-    for (var j = 0; j < cw; j++) for (var r = 0; r < rows; r++) { outb[oi++] = all[r * cw + j]; if (oi === outb.length) { await w.write(outb); oi = 0; } }
-    if (oi) await w.write(outb.subarray(0, oi));
-    if (tick) tick(rows);
+    // MATLAB sütun öncelikli (N × genişlik): sütunlar en çok 32 MB'lık gruplar halinde çevrilir, tüm dizi belleğe alınmaz
+    var rows = f.rows, cw = c0.width, G = Math.max(1, Math.min(cw, Math.floor((32 << 20) / Math.max(rows, 1))));
+    for (var j0 = 0; j0 < cw; j0 += G) {
+      var j1 = Math.min(cw, j0 + G), gw = j1 - j0, out = new Uint8Array(rows * gw), r0 = 0;
+      for (var k = 0; k < c0.chunks.length; k++) {
+        var ch = await c0.rawChunk(k), nr = ch.length / cw;
+        for (var j = 0; j < gw; j++) { var ob = j * rows + r0, src = j0 + j; for (var r = 0; r < nr; r++) out[ob + r] = ch[r * cw + src]; }
+        r0 += nr;
+      }
+      await w.write(out);
+      if (tick) tick(rows * gw / cw);
+    }
   } else {
     for (var ci = 0; ci < f.cols.length; ci++) {
       var col = f.cols[ci];
+      if (pf) await pf.ensure(col);
       for (var k2 = 0; k2 < col.chunks.length; k2++) {
         if (f.scale) { var v = await col.chunk(k2), o = new Float64Array(v.length); for (var a = 0; a < v.length; a++) o[a] = v[a] * f.scale; await w.write(new Uint8Array(o.buffer)); }
         else await w.write(await col.rawChunk(k2));
@@ -3326,9 +3394,11 @@ async function writeMatAll(units, sink, fname, opt) {
   for (var i = 0; i < 116; i++) hdr[i] = i < text.length ? (text.charCodeAt(i) & 0x7f) : 32;
   hdr[124] = 0x00; hdr[125] = 0x01; hdr[126] = 0x49; hdr[127] = 0x4D;
   await w.write(hdr);
-  var usedTop = new Set();
+  var usedTop = new Set(), allF = units.map(function (u) { return unitFields(u, opt.T || 0.01); }), order = [];
+  allF.forEach(function (fs) { fs.forEach(function (f) { if (!f.bytes) Array.prototype.push.apply(order, f.cols); }); });
+  var pf = new Prefetch(order);
   for (var ui = 0; ui < units.length; ui++) {
-    var u = units[ui], fields = unitFields(u, opt.T || 0.01), sname = matName(u.name, usedTop);
+    var u = units[ui], fields = allF[ui], sname = matName(u.name, usedTop);
     var FN = 64, nf = fields.length, fnBytes = nf * FN, nb = utf8enc.encode(sname), nl = nb.length, nameEl = nl <= 4 ? 8 : 8 + pad8(nl);
     var body = 16 + 16 + nameEl + 8 + 8 + pad8(fnBytes), big = false;
     fields.forEach(function (f) { body += f.elSize; if (f.dataBytes > 0x7FFFFFF0) big = true; });
@@ -3340,7 +3410,7 @@ async function writeMatAll(units, sink, fname, opt) {
         var f = fields[fi];
         if (f.dataBytes > 0x7FFFFFF0) { log('UYARI', fname + ': ' + u.name + '.' + f.name + ' 2 GB sınırını aştığı için yazılmadı'); continue; }
         var mh = matHead(matName(sname + '_' + f.name, usedTop), f.cls[0], f.rows, f.ncol, f.dataBytes, f.cls[1]);
-        await w.write(mh.head); await writeFieldData(w, f, tick);
+        await w.write(mh.head); await writeFieldData(w, f, tick, pf);
       }
       continue;
     }
@@ -3367,7 +3437,7 @@ async function writeMatAll(units, sink, fname, opt) {
       await w.write(eh);
       var dt = new Uint8Array(8), ddv = new DataView(dt.buffer); ddv.setUint32(0, g.cls[1], true); ddv.setUint32(4, g.dataBytes, true);
       await w.write(dt);
-      await writeFieldData(w, g, tick);
+      await writeFieldData(w, g, tick, pf);
     }
   }
   await w.close();
@@ -3381,7 +3451,38 @@ BlobSink.prototype.open = async function (name) {
 };
 BlobSink.prototype.finish = async function () { return { files: this.files, blob: new Blob(this.parts, { type: 'application/octet-stream' }) }; };
 TP.BlobSink = BlobSink;
-async function sessionCmd(msg) {
+/* Büyük tek .mat: Blob üretmeden doğrudan hedef dosyaya akıtılır.
+   - yerel uygulama (MATView.exe): Windows kaydetme penceresinde seçilen yol, 127.0.0.1 yazıcısına 16 MB'lık parçalarla
+     (bir parça gönderilirken sonraki hazırlanır)
+   - tarayıcı: kaydetme penceresinin (ya da çalışma klasörünün) dosya tutamacı, işçide createWritable ile
+   - null: yalnız ölçüm (testler) */
+function StreamSink(dest, onBytes) { this.dest = dest; this.onBytes = onBytes; this.files = []; this.bytes = 0; }
+StreamSink.prototype.open = async function (name) {
+  var self = this, d = this.dest, write, close, noCopy = true;
+  this.files.push(name);
+  if (d.native) {
+    var o = d.native, first = true, pending = null; noCopy = false;
+    // gövde Blob olarak verilir: tarayıcı Blob gövdesini ağ katmanına doğrudan aktarır (dizi gövdesinden kat kat hızlı)
+    write = async function (u8) { var body = new Blob([u8]); if (pending) await pending; pending = nativeReq(o, 'write', o.path, body, !first); first = false; };
+    close = async function () { if (pending) await pending; if (first) await nativeReq(o, 'write', o.path, new Uint8Array(0), false); };
+  } else if (d.fh) {
+    var ws = await d.fh.createWritable();
+    write = function (u8) { return ws.write(u8); };
+    close = function () { return ws.close(); };
+    this.abort = function () { try { return ws.abort(); } catch (e) {} };
+  } else { write = async function () {}; close = async function () {}; }
+  var bw = new BufWriter(async function (u8) { await write(u8); self.bytes += u8.length; if (self.onBytes) self.onBytes(self.bytes); }, close, 16 << 20);
+  bw.noCopy = noCopy;
+  return bw;
+};
+StreamSink.prototype.finish = async function () { return { files: this.files.slice(), bytes: this.bytes }; };
+TP.StreamSink = StreamSink;
+function matAllSize(units, T) {
+  var n = 128;
+  units.forEach(function (u) { unitFields(u, T || 0.01).forEach(function (f) { n += f.elSize + 72; }); n += 256; });
+  return n;
+}
+async function sessionCmd(msg, prog) {
   var ss = SESSIONS.get(msg.sid);
   if (msg.cmd === 'sclose') { if (ss) { SESSIONS.delete(msg.sid); await ss.store.close(); } return { ok: true }; }
   if (!ss) throw new Error('Çözüm oturumu kapanmış (kayıt yeniden çözülmeli)');
@@ -3396,6 +3497,14 @@ async function sessionCmd(msg) {
     await writeMatAll(ss.units, sk, nm, { T: ss.T });
     var r = await sk.finish();
     return { blob: r.blob, name: nm };
+  }
+  if (msg.cmd === 'matTo') {
+    var tot = matAllSize(ss.units, ss.T), lastP = 0, nm2 = msg.name || fileSafe(ss.name) + '_tum.mat';
+    var sk2 = new StreamSink(msg.native ? { native: msg.native } : msg.fh ? { fh: msg.fh } : {}, function (b) { var t = Date.now(); if (prog && t - lastP > 200) { lastP = t; prog(Math.min(1, b / tot)); } });
+    var t0 = Date.now();
+    try { await writeMatAll(ss.units, sk2, nm2, { T: ss.T }); }
+    catch (e) { if (sk2.abort) await sk2.abort(); throw e; }
+    return { name: nm2, bytes: sk2.bytes, ms: Date.now() - t0, store: ss.store.mode };
   }
   throw new Error('Bilinmeyen komut ' + msg.cmd);
 }
@@ -4456,7 +4565,7 @@ async function runCollect(job, post, files, mode) {
 TP.createHost = function (post) {
   return async function (msg) {
     if (msg && msg.rq) {
-      try { var rr = await sessionCmd(msg), tr = []; if (rr.v && rr.v.buffer) tr.push(rr.v.buffer); if (rr.t && rr.t.buffer) tr.push(rr.t.buffer); post({ t: 'reply', rq: msg.rq, r: rr }, tr); }
+      try { var rr = await sessionCmd(msg, function (f) { post({ t: 'reply', rq: msg.rq, prog: f }); }), tr = []; if (rr.v && rr.v.buffer) tr.push(rr.v.buffer); if (rr.t && rr.t.buffer) tr.push(rr.t.buffer); post({ t: 'reply', rq: msg.rq, r: rr }, tr); }
       catch (e) { post({ t: 'reply', rq: msg.rq, error: (e && e.message) || String(e) }); }
       return;
     }
@@ -5873,16 +5982,18 @@ async function runDecode(toMv) {
 /* MATView oturum istemcisi: çözümü yapan işçi, sonuçların geçici deposunu tutmaya devam eder; MATView kanal
    verisini istedikçe (rowt / col / mat) bu istemci üzerinden ister. Tüm oturumlar kapanınca işçi sonlandırılır. */
 function SessionClient() { this.w = null; this.host = null; this.seq = 0; this.wait = new Map(); this.open = new Set(); }
-SessionClient.prototype.request = function (cmd, o) {
+SessionClient.prototype.request = function (cmd, o, onProg) {
   var self = this;
   return new Promise(function (res, rej) {
     var id = ++self.seq, m = Object.assign({ rq: id, cmd: cmd }, o || {});
-    self.wait.set(id, { res: res, rej: rej });
-    if (self.w) self.w.postMessage(m); else if (self.host) self.host(m); else { self.wait.delete(id); rej(new Error('Çözüm oturumu kapalı')); }
+    self.wait.set(id, { res: res, rej: rej, prog: onProg });
+    try { if (self.w) self.w.postMessage(m); else if (self.host) self.host(m); else { self.wait.delete(id); rej(new Error('Çözüm oturumu kapalı')); } }
+    catch (e) { self.wait.delete(id); rej(e); }
   });
 };
 SessionClient.prototype.onReply = function (m) {
   var p = this.wait.get(m.rq); if (!p) return;
+  if (m.prog != null) { if (p.prog) try { p.prog(m.prog); } catch (e) {} return; }
   this.wait.delete(m.rq);
   if (m.error) p.rej(new Error(m.error)); else p.res(m.r);
 };
@@ -5996,15 +6107,48 @@ function renderCollected(m) {
     else if (b.dataset.cvdl) { var v2 = m.videos[+b.dataset.cvdl]; download(v2.file, v2.blob); }
   };
 }
+/* Tek .mat hedefi: önce yer seçilir, sonra işçi dosyayı doğrudan oraya akıtır (büyük kayıtlarda bellekte Blob üretilmez).
+   MATView.exe: Windows kaydetme penceresi + yerel yazıcı · tarayıcı: kaydetme penceresi (File System Access) · yoksa indirme */
+var lastMatDir = '';
+async function matDest(name) {
+  if (NATIVE_FS && typeof NATIVE_FS.mvSaveFile === 'function') {
+    var p = await NATIVE_FS.mvSaveFile(name, lastMatDir || (outDir && outDir.__native ? outDir.path : ''));
+    if (!p) return null;
+    lastMatDir = p.replace(/[\\/][^\\/]*$/, '');
+    var info = await NATIVE_FS.mvFsInfo();
+    return { native: { port: info.port, token: info.token, path: p }, name: p.replace(/^.*[\\/]/, ''), label: p };
+  }
+  var P = window, picker = null;
+  try { if (window.parent !== window && typeof window.parent.showSaveFilePicker === 'function') P = window.parent; } catch (e) {}
+  if (typeof P.showSaveFilePicker === 'function') picker = P.showSaveFilePicker.bind(P);
+  if (picker) {
+    try { var fh = await picker({ suggestedName: name, id: 'matview-mat', types: [{ description: 'MATLAB verisi (.mat)', accept: { 'application/octet-stream': ['.mat'] } }] }); return { fh: fh, name: fh.name, label: fh.name }; }
+    catch (e) { if (e && e.name === 'AbortError') return null; }
+  }
+  return { blob: true, name: name, label: name };
+}
+function cloneErr(e) { return e && (e.name === 'DataCloneError' || /clone|serializ/i.test(e.message || '')); }
+async function streamMat(client, sid, dest, onProg) {
+  if (!dest.blob) {
+    try { return await client.request('matTo', { sid: sid, name: dest.name, native: dest.native || null, fh: dest.fh || null }, onProg); }
+    catch (e) { if (!dest.fh || !cloneErr(e)) throw e; }   // tutamaç işçiye geçemedi: Blob üretilip burada yazılır
+  }
+  var r = await client.request('mat', { sid: sid });
+  if (dest.fh) { var ws = await dest.fh.createWritable(); await ws.write(r.blob); await ws.close(); }
+  else { var host = window.parent !== window && window.parent.MATViewTLM; if (host && host.saveFile) await host.saveFile(dest.name, r.blob); else download(dest.name, r.blob); }
+  return { name: dest.name, bytes: r.blob.size };
+}
+function matFileName(ss) { return TP.fileSafe(ss.name || ss.label || 'kayit') + '_tum.mat'; }
+window.TPMat = { dest: matDest, save: streamMat, fileName: matFileName };
 async function saveSingleMat(sid, btn) {
   var it = collected.filter(function (x) { return x.ss.id === sid; })[0];
   if (!it || !it.client.open.has(sid)) { showModal('Tek .mat', '<div class="notice err">Bu çözüm kapatılmış (MATView\'de dosya kapatıldı). Kaydı yeniden çözün.</div>'); return; }
+  var dest = await matDest(matFileName(it.ss)); if (!dest) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Yazılıyor…'; }
+  var t0 = Date.now();
   try {
-    var r = await it.client.request('mat', { sid: sid });
-    var host = window.parent !== window && window.parent.MATViewTLM;
-    if (host && host.saveFile) await host.saveFile(r.name, r.blob); else download(r.name, r.blob);
-    uiLog('BİLGİ', r.name + ' kaydedildi (' + fmtBytes(r.blob.size) + ')');
+    var r = await streamMat(it.client, sid, dest, function (f) { if (btn) btn.textContent = 'Yazılıyor… %' + Math.round(f * 100); });
+    uiLog('BİLGİ', dest.label + ' kaydedildi (' + fmtBytes(r.bytes) + ', ' + ((Date.now() - t0) / 1000).toFixed(1) + ' sn)');
   } catch (e) { uiLog('HATA', 'Tek .mat yazılamadı: ' + e.message); showModal('Tek .mat', '<div class="notice err">' + esc(e.message) + '</div>'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = 'Tek .mat kaydet'; } }
 }

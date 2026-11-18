@@ -87,10 +87,18 @@ function tlmSessionMenu(f, items) {   // ağaçta dosya sağ tık menüsüne ek
   if (!f || !f.tlm) return;
   items.push('-', {t: 'Tüm kaydı tek .mat olarak kaydet…', ic: 'download', fn: () => tlmSaveSingleMat(f)}, {t: 'Telemetri görünümünü aç', ic: 'bin', fn: () => tlmShow('file')});
 }
+// Tek .mat: önce hedef seçilir (çalışma klasörü yazılabilirse oraya), sonra telemetri işçisi dosyayı doğrudan hedefe akıtır
 async function tlmSaveSingleMat(f) {
-  await busy('Tek .mat yazılıyor: ' + f.tlm.ss.label, async () => {
-    const r = await f.tlm.client.request('mat', {sid: f.tlm.ss.id});
-    await window.MATViewTLM.saveFile(r.name, r.blob);
+  const M = TLM.win && TLM.win.TPMat, ss = f.tlm.ss; if (!M) return toast('Telemetri modülü hazır değil');
+  const name = M.fileName(ss); let dest = null;
+  if (typeof WSP !== 'undefined' && WSP.writeOk && WSP.mode === 'handle') { try { dest = {fh: await wspCur().h.getFileHandle(name, {create: true}), name, label: wspDir() + '\\' + name, wsp: true}; } catch (_) { dest = null; } }
+  if (!dest) dest = await M.dest(name);
+  if (!dest) return;
+  const t0 = performance.now();
+  await busy('Tek .mat yazılıyor: ' + ss.label, async prog => {
+    const r = await M.save(f.tlm.client, ss.id, dest, prog);
+    toast(dest.label + ' kaydedildi (' + (r.bytes / 1048576).toFixed(r.bytes > 1e9 ? 0 : 1) + ' MB, ' + ((performance.now() - t0) / 1000).toFixed(1) + ' sn)', 7000);
+    if (dest.wsp && typeof wspLoad === 'function') wspLoad();
   });
 }
 // dosya kapatılınca oturumun geçici deposu da bırakılır
