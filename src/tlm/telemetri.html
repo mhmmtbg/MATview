@@ -2952,7 +2952,7 @@ TP.parseSps = parseSps;
 function Mp4Writer(store, opt) {
   opt = opt || {};
   this.rs = new RawStream(store); this.sps = null; this.pps = null; this.info = null;
-  this.sizes = []; this.ts = []; this.keys = []; this.skipped = 0; this.fps = opt.fps || 30; this.useTs = opt.useTs !== false;
+  this.sizes = []; this.ts = []; this.keys = []; this.tf = []; this.skipped = 0; this.fps = opt.fps || 30; this.useTs = opt.useTs !== false;
   this.repair = opt.repair !== false; this.recover = false; this.held = []; this.dropped = 0; this.lossEvents = 0;
 }
 // Bozuk kare (kayıp paket / eksik parça) hiç yazılmaz; kayıptan sonra kareler bir sonraki kendi başına çözülebilir
@@ -2983,7 +2983,13 @@ Mp4Writer.prototype._add = function (au) {
   var out = new Uint8Array(n), o = 0;
   nals.forEach(function (x) { out[o] = x.length >>> 24; out[o + 1] = (x.length >> 16) & 255; out[o + 2] = (x.length >> 8) & 255; out[o + 3] = x.length & 255; out.set(x, o + 4); o += 4 + x.length; });
   this.rs.put(out);
-  this.sizes.push(n); this.ts.push(au.ts); this.keys.push(!!(au.key || au.intra));
+  this.sizes.push(n); this.ts.push(au.ts); this.keys.push(!!(au.key || au.intra)); this.tf.push(au.tf != null ? au.tf : NaN);
+};
+// kare başına (video zamanı, telemetri çerçevesi) eşlemesi: MATView kamera penceresi videoyu kanal zamanıyla eşler
+Mp4Writer.prototype.syncMap = function (Tper) {
+  var d = this.durations(), n = d.length, vid = [], tel = [], acc = 0;
+  for (var i = 0; i < n; i++) { var f = this.tf[i]; if (isFinite(f) && (!tel.length || f * Tper >= tel[tel.length - 1])) { vid.push(acc / 90000); tel.push(f * Tper); } acc += d[i]; }
+  return vid.length >= 2 ? { vid: new Float64Array(vid), tel: new Float64Array(tel) } : null;
 };
 Mp4Writer.prototype.durations = function () {
   var n = this.sizes.length, def = Math.round(90000 / this.fps), d = new Array(n);
@@ -4052,7 +4058,7 @@ async function runJob(job, post) {
     var key = d.label + '\u0000' + d.name, t = videoMap.get(key);
     if (!t) {
       t = { name: d.label + '.' + d.name, file: d.label + '_' + d.name, rs: collect ? null : new RawStream(store), mw: new Mp4Writer(store) };
-      t.dp = new VideoDepack({ onAU: function (au) { t.mw.add(au); } });
+      t.dp = new VideoDepack({ onAU: function (au) { au.tf = tF; t.mw.add(au); } });   // tF: karenin tamamlandığı telemetri çerçevesi
       videoMap.set(key, t); videoOuts.push(t);
     }
     // her örnek video akışının bir parçasıdır: .bin'e olduğu gibi, MP4 için çözücüye ayrı ayrı verilir
@@ -4305,7 +4311,7 @@ async function runJob(job, post) {
     for (var vq = 0; vq < videoOuts.length; vq++) {
       var vt = videoOuts[vq];
       vt.dp.flush(); vt.mw.useTs = vt.dp.mode !== 'annexb';
-      if (vt.mw.sizes.length) { vids.push({ name: vt.name, file: fileSafe(vt.file) + '.mp4', blob: await vt.mw.toBlob(), summary: videoSummary(vt.dp, vt.mw) }); log('BİLGİ', vt.name + ': ' + videoSummary(vt.dp, vt.mw)); }
+      if (vt.mw.sizes.length) { vids.push({ name: vt.name, file: fileSafe(vt.file) + '.mp4', blob: await vt.mw.toBlob(), summary: videoSummary(vt.dp, vt.mw), sync: vt.mw.syncMap(Tper), dur: vt.mw.duration() }); log('BİLGİ', vt.name + ': ' + videoSummary(vt.dp, vt.mw)); }
       else log('UYARI', vt.name + ': oynatılabilir video karesi bulunamadı (' + videoSummary(vt.dp, null) + ')');
     }
     var sid = ++SESSION_SEQ;

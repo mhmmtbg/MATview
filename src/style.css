@@ -404,3 +404,10 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .tmode{margin:0 10px 6px}.tmode button{flex:1;padding:2px 6px;font-size:12px}
 .fgrp.nomatch>.tfile{opacity:.55}
 .tfile.static{cursor:default}.tfile.static:hover{background:var(--bg)}
+
+/* kamera penceresi */
+.cv-win{width:480px;resize:both;overflow:hidden;min-width:280px;min-height:200px}
+.cv-win .la-b{flex:1;min-height:0}
+.cv-v{width:100%;flex:1;min-height:120px;background:#000;border-radius:3px;object-fit:contain}
+.cv-o{align-items:center}.cv-o .cv-go{margin-left:auto}
+.vidrow svg{color:var(--muted);flex:none}

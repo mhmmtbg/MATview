@@ -81,7 +81,7 @@ function tlmAddSession(ss, client) {
   });
   f.Tpkt = T / maxSpp; f.baseFs = maxSpp / T; f.baseN = ss.frames * maxSpp;
   S.files.push(f); S.fopen.add(f.id); renderChips(); renderTree();
-  return {nCh, skipped};
+  return {nCh, skipped, f};
 }
 function tlmSessionMenu(f, items) {   // ağaçta dosya sağ tık menüsüne ek
   if (!f || !f.tlm) return;
@@ -113,8 +113,14 @@ window.MATViewTLM = {
   },
   addSessions(sessions, client, videos) {
     let n = 0, sk = 0;
-    for (const ss of sessions) { const r = tlmAddSession(ss, client); n += r.nCh; sk += r.skipped; }
-    const vid = videos && videos.length ? ` · ${videos.length} kamera videosu (Telemetri › Video)` : '';
+    for (const ss of sessions) {
+      const r = tlmAddSession(ss, client); n += r.nCh; sk += r.skipped;
+      // kayda ait kamera videoları sol panelde dosyanın "Kamera" grubunda (kanal zamanıyla eşli)
+      const vs = (videos || []).filter(v => v.rec === ss.label || sessions.length === 1);
+      if (vs.length) { r.f.videos = vs.map(v => ({name: v.name, file: v.file, blob: v.blob, summary: v.summary, sync: v.sync || null, dur: v.dur, rec: ss.label})); }
+    }
+    if (videos && videos.length) renderTree();
+    const vid = videos && videos.length ? ` · ${videos.length} kamera videosu (sol panelde Kamera)` : '';
     toast(`${sessions.map(s => s.label).join(', ')}: ${fmtCnt(n)} kanal MATView’e eklendi` + (sk ? ` (${sk} byte array kanal yalnız tek .mat’te)` : '') + vid, 9000, {t: 'Kanalları göster', fn: () => { if (typeof wspShowPane === 'function') wspShowPane('data'); switchView('time'); }});
     if (typeof wspShowPane === 'function') wspShowPane('data');
   },

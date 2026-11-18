@@ -52,6 +52,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.32', d: 'Sol panelde kamera', items: [
+    'Telemetri çözümünün kamera videoları sol panelde dosyanın “Kamera” grubunda listelenir; tıklayınca taşınabilir, boyutlanabilir kamera penceresinde oynar.',
+    'Video, kanal zamanıyla eşlenir (her karenin geldiği telemetri çerçevesinden): oynarken Zaman grafiğinde konum çizgisi ilerler, “Grafik izlesin” ile grafik kayar; video dururken grafiğe imleç konulursa video o ana gider; “İmlece git”.',
+    'Açılan .mp4 dosyaları da sol panelde video dosyası olarak görünür ve aynı pencerede oynar (.h264 ham akışlar Telemetri › Video’da dönüştürülür).'
+  ]},
   {v: '2.31', d: 'Uzun işlerde iptal; akustikte temizleme sonucunun yeniden kullanılması', items: [
     'Yarım saniyeden uzun süren her işte ilerleme penceresinde “İptal” düğmesi görünür (Esc de iptal eder): .mat kaydetme, akustik temizleme ve analizler, dosya çözme, spektrum vb. İptal edilen kaydetmenin yarım kalan dosyası silinir.',
     'Akustik: otomatik temizlemeden sonra “▶ Temizlenmiş” artık yeniden temizlemez, önceki sonucu çalar (ayar ya da aralık değişmediyse). …_temiz kanalı seçiliyken de yeniden temizlenmez.',

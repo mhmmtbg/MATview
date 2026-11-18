@@ -242,7 +242,8 @@ async function wspOpenItem(item, how) {
   if (t.k === 'fig') { codeBuildView(); switchView('code'); return figFileOpen(f); }
   if (t.k === 'mat' && (how === 'ws' || (!how && S.view === 'code'))) return codeLoadMatFiles([f]);
   if (how === 'tlm' || how === 'play') return tlmOpenBins([f], how === 'play' ? 'play' : 'decode');
-  if (/\.(h264|264|mp4)$/i.test(item.name)) return tlmPlayVideo(f);
+  if (/\.mp4$/i.test(item.name)) return camAddFile(f);
+  if (/\.(h264|264)$/i.test(item.name)) return tlmPlayVideo(f);
   if (t.k === 'bin' && how !== 'bin' && tlmPrefers()) return tlmOpenBins([f], 'decode');
   if (t.k === 'other' && /\.json$/i.test(item.name) && tlmIsSettingsJson(await f.text())) return tlmImportSettings(f);
   if (t.k === 'bin' || how === 'bin' || t.k === 'other') { if (FS.def) frmDropBin([f]); else { FS.bin = f; frmDialog(); } return; }
