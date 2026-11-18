@@ -10,15 +10,9 @@ package main
 // klasörlerin altına yazılabilir.
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"io"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -99,120 +93,6 @@ func pickFolder(owner uintptr, start, title string) string {
 	return syscall.UTF16ToString(unsafe.Slice(ps, n))
 }
 
-// ---- yerel dosya yazıcı ----
-type fsBridge struct {
-	mu    sync.Mutex
-	roots []string
-	token string
-	port  int
-}
-
-func (b *fsBridge) allow(dir string) bool {
-	p, err := filepath.Abs(dir)
-	if err != nil {
-		return false
-	}
-	if st, err := os.Stat(p); err != nil || !st.IsDir() {
-		return false
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for _, r := range b.roots {
-		if strings.EqualFold(r, p) {
-			return true
-		}
-	}
-	b.roots = append(b.roots, filepath.Clean(p))
-	return true
-}
-
-// inside: yol mutlak, temiz ve izin verilen bir kökün altında mı (.. ile dışarı çıkılamaz)
-func (b *fsBridge) inside(p string) (string, bool) {
-	if p == "" || !filepath.IsAbs(p) {
-		return "", false
-	}
-	c := filepath.Clean(p)
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for _, r := range b.roots {
-		rel, err := filepath.Rel(r, c)
-		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
-			return c, true
-		}
-	}
-	return "", false
-}
-
-func (b *fsBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h := w.Header()
-	h.Set("Access-Control-Allow-Origin", "*")
-	h.Set("Access-Control-Allow-Methods", "PUT, POST, OPTIONS")
-	h.Set("Access-Control-Allow-Headers", "*")
-	h.Set("Access-Control-Allow-Private-Network", "true")
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	q := r.URL.Query()
-	if q.Get("t") != b.token {
-		http.Error(w, "yetkisiz", http.StatusForbidden)
-		return
-	}
-	p, ok := b.inside(q.Get("p"))
-	if !ok {
-		http.Error(w, "izin verilmeyen yol", http.StatusForbidden)
-		return
-	}
-	switch r.URL.Path {
-	case "/mkdir":
-		if err := os.MkdirAll(p, 0o755); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	case "/write":
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		flag := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
-		if q.Get("a") == "1" {
-			flag = os.O_CREATE | os.O_WRONLY | os.O_APPEND
-		}
-		f, err := os.OpenFile(p, flag, 0o644)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		_, err = io.Copy(f, r.Body)
-		if cerr := f.Close(); err == nil {
-			err = cerr
-		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	default:
-		http.NotFound(w, r)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func startFsBridge() *fsBridge {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil
-	}
-	k := make([]byte, 24)
-	if _, err := rand.Read(k); err != nil {
-		ln.Close()
-		return nil
-	}
-	b := &fsBridge{token: hex.EncodeToString(k), port: ln.Addr().(*net.TCPAddr).Port}
-	go http.Serve(ln, b)
-	return b
-}
-
 // openFolder: izin verilen bir klasörü (ya da altını) Windows Gezgini'nde açar
 func (b *fsBridge) openFolder(p string) bool {
 	c, ok := b.inside(p)
@@ -226,4 +106,67 @@ func (b *fsBridge) openFolder(p string) bool {
 	path, _ := syscall.UTF16PtrFromString(c)
 	r, _, _ := pShellExecuteW.Call(0, uintptr(unsafe.Pointer(verb)), uintptr(unsafe.Pointer(path)), 0, 0, 1 /*SW_SHOWNORMAL*/)
 	return r > 32
+}
+
+var (
+	clsidFileSaveDialog = guid{0xC0B4E2F3, 0xBA21, 0x4773, [8]byte{0x8D, 0xBA, 0x33, 0x5E, 0xC9, 0x46, 0xEB, 0x8B}}
+	iidIFileSaveDialog  = guid{0x84BCCD23, 0x5FDE, 0x4CDB, [8]byte{0xAE, 0xA4, 0xAF, 0x64, 0xB8, 0x3D, 0x78, 0xAB}}
+)
+
+type filterSpec struct{ name, spec *uint16 }
+
+// saveFile: Windows "Farklı kaydet" penceresi (IFileSaveDialog). Önerilen ad ve başlangıç klasörü verilir; varolan
+// dosyanın üzerine yazmadan önce Windows sorar. İptalde "".
+func saveFile(owner uintptr, name, start string) string {
+	pCoInitializeEx.Call(0, 2)
+	var dlg uintptr
+	if r, _, _ := pCoCreateInstance.Call(uintptr(unsafe.Pointer(&clsidFileSaveDialog)), 0, 1, uintptr(unsafe.Pointer(&iidIFileSaveDialog)), uintptr(unsafe.Pointer(&dlg))); r != 0 || dlg == 0 {
+		return ""
+	}
+	defer comCall(dlg, 2) // Release
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
+	u := func(s string) *uint16 { p, _ := syscall.UTF16PtrFromString(s); return p }
+	var specs []filterSpec
+	if ext != "" {
+		label := strings.ToUpper(ext) + " dosyası (*." + ext + ")"
+		if ext == "mat" {
+			label = "MATLAB verisi (*.mat)"
+		}
+		specs = append(specs, filterSpec{u(label), u("*." + ext)})
+		comCall(dlg, 22, uintptr(unsafe.Pointer(u(ext)))) // SetDefaultExtension
+	}
+	specs = append(specs, filterSpec{u("Tüm dosyalar (*.*)"), u("*.*")})
+	comCall(dlg, 4, uintptr(len(specs)), uintptr(unsafe.Pointer(&specs[0]))) // SetFileTypes
+	var opts uint32
+	comCall(dlg, 10, uintptr(unsafe.Pointer(&opts)))                  // GetOptions
+	comCall(dlg, 9, uintptr(opts|0x2|0x40|0x800|0x8000))              // OVERWRITEPROMPT | FORCEFILESYSTEM | PATHMUSTEXIST | NOREADONLYRETURN
+	comCall(dlg, 17, uintptr(unsafe.Pointer(u("Kaydet"))))            // SetTitle
+	comCall(dlg, 15, uintptr(unsafe.Pointer(u(filepath.Base(name))))) // SetFileName
+	if start != "" {
+		if st, err := os.Stat(start); err == nil && st.IsDir() {
+			var item uintptr
+			if r, _, _ := pSHCreateItemFromPN.Call(uintptr(unsafe.Pointer(u(start))), 0, uintptr(unsafe.Pointer(&iidIShellItem)), uintptr(unsafe.Pointer(&item))); r == 0 && item != 0 {
+				comCall(dlg, 12, item) // SetFolder
+				comCall(item, 2)
+			}
+		}
+	}
+	if comCall(dlg, 3, owner) != 0 { // Show
+		return ""
+	}
+	var item uintptr
+	if comCall(dlg, 20, uintptr(unsafe.Pointer(&item))) != 0 || item == 0 { // GetResult
+		return ""
+	}
+	defer comCall(item, 2)
+	var ps *uint16
+	if comCall(item, 5, 0x80058000, uintptr(unsafe.Pointer(&ps))) != 0 || ps == nil {
+		return ""
+	}
+	defer pCoTaskMemFree.Call(uintptr(unsafe.Pointer(ps)))
+	n := 0
+	for p := uintptr(unsafe.Pointer(ps)); *(*uint16)(unsafe.Pointer(p)) != 0; p += 2 {
+		n++
+	}
+	return syscall.UTF16ToString(unsafe.Slice(ps, n))
 }
