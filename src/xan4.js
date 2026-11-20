@@ -52,6 +52,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.33', d: 'Kamera penceresinde sarma', items: [
+    'Kamera: Zaman grafiğindeki konum çizgisi tutulup sürüklenerek video sarılır; bırakınca video bırakılan yerden oynamaya devam eder (ses oynatmadaki gibi).',
+    'Kamera: grafiğe imleç konulunca video, oynarken de o ana gider ve oradan sürer (önceden yalnız duraklatılmışken).',
+    'Kamera: Shift+← / Shift+→ 5 sn geri / ileri, Shift+Boşluk oynat / duraklat. Sarılırken durum satırında “konuma gidiliyor…” görünür; video özetinde anahtar kare sayısı ve sıklığı yazar.'
+  ]},
   {v: '2.32', d: 'Sol panelde kamera', items: [
     'Telemetri çözümünün kamera videoları sol panelde dosyanın “Kamera” grubunda listelenir; tıklayınca taşınabilir, boyutlanabilir kamera penceresinde oynar.',
     'Video, kanal zamanıyla eşlenir (her karenin geldiği telemetri çerçevesinden): oynarken Zaman grafiğinde konum çizgisi ilerler, “Grafik izlesin” ile grafik kayar; video dururken grafiğe imleç konulursa video o ana gider; “İmlece git”.',

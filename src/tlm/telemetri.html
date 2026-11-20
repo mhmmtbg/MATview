@@ -3064,7 +3064,7 @@ TP.Mp4Writer = Mp4Writer;
 function videoSummary(dp, mw) {
   var s = dp.st, a = [];
   if (mw && mw.info) a.push(mw.info.width + '×' + mw.info.height);
-  if (mw) a.push(mw.sizes.length + ' kare, ' + mw.duration().toFixed(1) + ' sn');
+  if (mw) { var du = mw.duration(), nk = mw.keys.filter(Boolean).length; a.push(mw.sizes.length + ' kare, ' + du.toFixed(1) + ' sn'); if (mw.sizes.length) a.push(nk + ' anahtar kare' + (nk > 1 ? ' (~' + (du / nk).toFixed(du / nk < 10 ? 1 : 0) + ' sn arayla)' : '')); }
   a.push((dp.mode === 'annexb' ? 'düz H.264' : 'RTP') + (dp.chunked ? ', footer ' + dp.footer + ' byte' : ''));
   if (dp.mode !== 'annexb') a.push(s.packets + ' RTP paketi, ' + s.lostPackets + ' kayıp' + (s.badRec ? ', ' + s.badRec + ' bozuk kayıt' : ''));
   if (s.droppedNal) a.push(s.droppedNal + ' eksik NAL atıldı');
