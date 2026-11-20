@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.35', d: '.mat zaman ekseni düzeltmesi', items: [
+    'Telemetri tek .mat açılırken zaman ekseni yanlış çıkıyordu (birim yapılarındaki “t” zaman alanı tanınmıyor, varsayılan örnekleme kullanılıyordu; dosyadaki çok uzun bir değişken — ör. akustik — bu varsayılanı da bozuyordu). Artık her kanal kendi zamanını alır: “<alan>_t”, yoksa yapının “t” alanı (çerçeve başına birden çok örnekli alanlar dahil), yoksa dosya düzeyindeki zaman değişkeni.',
+    'Kayıp çerçeveler ve düzensiz örnekleme .mat’teki zamanla birebir korunur; zaman alanları kanal listesinde görünmez.'
+  ]},
   {v: '2.34', d: 'İmleç paneli ve dışa aktarma adları', items: [
     'İmleç paneli artık grafiğin üstünü kapatmaz: grafiğin altında şerit olarak açılır (grafik alanı kısalır). ⧉ ile taşınabilir ayrı pencere yapılır (konumu hatırlanır), ⬓ ile yeniden alta alınır, ▾ ile yalnız başlığa küçülür.',
     'PNG / SVG olarak kaydederken dosya adı grafikteki parametrenin adı olur (2–3 parametrede adları birleşik, daha çoğunda ilk ikisi + kaç parametre olduğu; spektrum / spektrogramda görünüm adı eklenir). Gizlenen izler ada girmez.'
