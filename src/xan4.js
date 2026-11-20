@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.34', d: 'İmleç paneli ve dışa aktarma adları', items: [
+    'İmleç paneli artık grafiğin üstünü kapatmaz: grafiğin altında şerit olarak açılır (grafik alanı kısalır). ⧉ ile taşınabilir ayrı pencere yapılır (konumu hatırlanır), ⬓ ile yeniden alta alınır, ▾ ile yalnız başlığa küçülür.',
+    'PNG / SVG olarak kaydederken dosya adı grafikteki parametrenin adı olur (2–3 parametrede adları birleşik, daha çoğunda ilk ikisi + kaç parametre olduğu; spektrum / spektrogramda görünüm adı eklenir). Gizlenen izler ada girmez.'
+  ]},
   {v: '2.33', d: 'Kamera penceresinde sarma', items: [
     'Kamera: Zaman grafiğindeki konum çizgisi tutulup sürüklenerek video sarılır; bırakınca video bırakılan yerden oynamaya devam eder (ses oynatmadaki gibi).',
     'Kamera: grafiğe imleç konulunca video, oynarken de o ana gider ve oradan sürer (önceden yalnız duraklatılmışken).',

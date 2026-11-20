@@ -15,23 +15,54 @@ function toggleCrosshair(on) {
 }
 const SNAP_MODES = [['off', 'Yakalama yok'], ['peak', 'Tepe'], ['valley', 'Çukur'], ['auto', 'Tepe/çukur (otomatik)']];
 function setSnap(m) { for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) P.cursorOpt.snap = m; try { localStorage.setItem('mv.snap', m); } catch (_) {} }
+/* İmleç paneli grafiğin üstünü kapatmaz: varsayılan olarak grafiğin altında şerit (grafik kısalır); ⧉ ile taşınabilir
+   ayrı pencere olur (konumu hatırlanır), ▾ ile yalnız başlığa küçülür. Yalnız açık görünümün paneli görünür. */
+const CPAN = {mode: 'dock', min: false, pos: null,
+  load() { try { const o = JSON.parse(localStorage.getItem('mv.cpan') || '{}'); this.mode = o.mode === 'float' ? 'float' : 'dock'; this.min = !!o.min; this.pos = o.pos || null; } catch (_) {} },
+  save() { try { localStorage.setItem('mv.cpan', JSON.stringify({mode: this.mode, min: this.min, pos: this.pos})); } catch (_) {} }};
+CPAN.load();
+function cpanAll() { for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P && P._cpanel) { try { renderCursorPanel(P); } catch (_) {} } }
+function cpanPlace(P, pn) {
+  const fl = CPAN.mode === 'float';
+  pn.classList.toggle('float', fl); pn.classList.toggle('dock', !fl); pn.classList.toggle('min', CPAN.min);
+  if (fl) {
+    if (pn.parentElement !== document.body) document.body.append(pn);
+    const p = CPAN.pos, st = $('#stage').getBoundingClientRect();
+    const x = p ? p.x : st.right - 320, y = p ? p.y : st.top + 40;
+    pn.style.left = Math.max(0, Math.min(innerWidth - 120, x)) + 'px'; pn.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
+  } else {
+    pn.style.left = pn.style.top = '';
+    const c = $('#center'), sb = $('#statsbar'); if (pn.parentElement !== c || pn.nextElementSibling !== sb) c.insertBefore(pn, sb);
+  }
+}
+function cpanDrag(pn, hd) {
+  let dr = null;
+  hd.addEventListener('pointerdown', e => { if (CPAN.mode !== 'float' || e.target.closest('button,select')) return; const r = pn.getBoundingClientRect(); dr = {x: e.clientX - r.left, y: e.clientY - r.top}; hd.setPointerCapture(e.pointerId); });
+  hd.addEventListener('pointermove', e => { if (!dr) return; const x = Math.max(0, Math.min(innerWidth - 120, e.clientX - dr.x)), y = Math.max(0, Math.min(innerHeight - 40, e.clientY - dr.y)); pn.style.left = x + 'px'; pn.style.top = y + 'px'; CPAN.pos = {x, y}; });
+  hd.addEventListener('pointerup', () => { if (dr) { dr = null; CPAN.save(); } });
+}
 function renderCursorPanel(P) {
-  P = P || S.plot; const host = (P.cv.parentElement.closest && P.cv.parentElement.closest('#stage')) || P.cv.parentElement; let pn = P._cpanel;
-  const show = P.cursors.length > 0 || (P.mode === 'cursor' && P.axes.length);
+  P = P || S.plot; let pn = P._cpanel;
+  const show = (P.cursors.length > 0 || (P.mode === 'cursor' && P.axes.length)) && P === curPlot() && S.view !== 'sgram';
   if (!show) { if (pn) pn.classList.add('hidden'); return; }
   if (!pn) {
-    pn = P._cpanel = h('div', {class: 'curpanel', role: 'region', 'aria-label': 'İmleç ölçümleri'}); host.append(pn);
+    pn = P._cpanel = h('div', {class: 'curpanel', role: 'region', 'aria-label': 'İmleç ölçümleri'});
     pn.addEventListener('pointerdown', e => e.stopPropagation());
   }
+  cpanPlace(P, pn);
   pn.classList.remove('hidden');
   const st = P.cursorStats(), xn = P.opts.xName || 't', xu = xn === 't' ? ' s' : xn === 'f' ? ' Hz' : '';
   const sel = h('select', {title: 'İmleç yakalama: tıklanan noktanın ±14 px çevresindeki tepe / çukur', onchange: e => setSnap(e.target.value)}, ...SNAP_MODES.map(([v, t]) => h('option', {value: v, selected: P.cursorOpt.snap === v ? '' : null}, t)));
-  const head = h('div', {class: 'cph'}, h('b', {}, 'İmleçler' + (P.cursors.length ? ' (' + P.cursors.length + ')' : '')), sel,
-    h('button', {class: 'ib', title: 'Tüm imleçleri temizle (Esc)', onclick: () => { P.cursors = []; P.invalidate(); P.onChange('cursor'); renderCursorPanel(P); }}, '✕'));
+  const fl = CPAN.mode === 'float';
+  const head = h('div', {class: 'cph', title: fl ? 'Başlıktan tutup taşıyın' : ''}, h('b', {}, 'İmleçler' + (P.cursors.length ? ' (' + P.cursors.length + ')' : '')), sel,
+    h('button', {class: 'ib noic', title: CPAN.min ? 'Ölçümleri göster' : 'Yalnız başlık (küçült)', onclick: () => { CPAN.min = !CPAN.min; CPAN.save(); cpanAll(); }}, CPAN.min ? '▸' : '▾'),
+    h('button', {class: 'ib noic', title: fl ? 'Grafiğin altına yerleştir' : 'Ayrı pencere yap (taşınabilir)', onclick: () => { CPAN.mode = fl ? 'dock' : 'float'; CPAN.save(); cpanAll(); }}, fl ? '⬓' : '⧉'),
+    h('button', {class: 'ib noic', title: 'Tüm imleçleri temizle (Esc)', onclick: () => { P.cursors = []; P.invalidate(); P.onChange('cursor'); renderCursorPanel(P); }}, '✕'));
+  cpanDrag(pn, head);
   const body = h('div', {class: 'cpb'});
   if (!st.rows.length) body.append(h('div', {class: 'note'}, 'Tıkla: imleç · Shift+tıkla: imleç ekle · imlece yakın tık: taşı'));
   else {
-    const t = h('table', {class: 'cpt'}), tr = (...c) => h('tr', {}, ...c.map(x => h('td', {}, x)));
+    const t = h('table', {class: 'cpt nofilter'}), tr = (...c) => h('tr', {}, ...c.map(x => h('td', {}, x)));
     t.append(h('tr', {}, ...['#', xn, 'y', st.rows.length > 1 ? xn + '/' + xn + '₁' : ''].map(x => h('th', {}, x))));
     for (const r of st.rows) t.append(tr('C' + (r.k + 1) + (r.snap ? (r.snap === 'peak' ? '▲' : '▼') : ''), fmtNum(r.x, 7), fmtNum(r.y, 6), r.ratio != null ? fmtNum(r.ratio, 4) : ''));
     body.append(t);
@@ -50,6 +81,7 @@ function renderCursorPanel(P) {
   if (prevSet) setMode = function (m) { prevSet(m); try { renderCursorPanel(S.plot); } catch (_) {} };
   window.addEventListener('DOMContentLoaded', () => setTimeout(() => {
     try { const sn = localStorage.getItem('mv.snap'); if (sn) setSnap(sn); if (localStorage.getItem('mv.xhair') === '1') toggleCrosshair(true); } catch (_) {}
+    if (typeof switchView === 'function') { const sw = switchView; switchView = function (v) { const r = sw.apply(this, arguments); try { cpanAll(); } catch (_) {} return r; }; }
     for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) { const oc = P.onChange; P.onChange = k => { oc(k); if (k === 'view') updHistBtns(); if (k === 'cursor' && P !== S.plot) renderCursorPanel(P); }; }
     updHistBtns();
   }, 0));

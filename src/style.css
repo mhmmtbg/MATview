@@ -295,7 +295,13 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 .guifig .gtb td.gsel{background:#cfe3f7;outline:1px solid #6aa3d8;outline-offset:-1px}
 
 .lrow .yr{font-size:9px;font-weight:700;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:0 2px;margin-left:3px}
-.curpanel{position:absolute;right:14px;bottom:46px;z-index:6;min-width:210px;max-width:300px;max-height:60%;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:6px;font-size:11px}
+.curpanel{background:var(--panel);font-size:11px}
+.curpanel.float{position:fixed;z-index:60;min-width:210px;max-width:320px;max-height:60vh;overflow:auto;border:1px solid var(--border);border-radius:6px}
+.curpanel.float .cph{cursor:move;user-select:none}
+.curpanel.dock{flex:none;border-top:1px solid var(--border);max-height:170px;overflow:auto}.curpanel.dock .cph select{max-width:180px}
+.curpanel.dock .cpb{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:flex-start}.curpanel.dock .cpt{width:auto}.curpanel.dock .cpp{margin-top:0;border-top:none;border-left:1px dashed var(--border);padding:0 0 0 10px;min-width:150px}
+.curpanel.min .cpb{display:none}.curpanel.min{overflow:hidden}
+.curpanel .ib{border:none;background:none;padding:0 4px;font-size:12px;line-height:1}
 .curpanel.hidden{display:none}.curpanel .cph{display:flex;gap:6px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel)}
 .curpanel .cph b{flex:1}.curpanel select{font-size:11px;padding:1px 2px}.curpanel .cpb{padding:4px 6px}
 .curpanel .cpt{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.curpanel .cpt th{text-align:left;color:var(--muted);font-weight:500}.curpanel .cpt td{padding:1px 4px 1px 0}
