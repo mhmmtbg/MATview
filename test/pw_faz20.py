@@ -1,4 +1,4 @@
-# v2.32 (sentetik veri): sol panelde kamera videoları ve kamera penceresi
+# v2.32–2.33 (sentetik veri): sol panelde kamera videoları ve kamera penceresi; grafikten sarma
 # - telemetri çözümünün videoları dosyanın "Kamera" grubunda; tık → taşınabilir kamera penceresi
 # - video zamanı ↔ kanal zamanı eşlemesi (karelerin geldiği telemetri çerçevesi): konum çizgisi, imleçle video konumu,
 #   "İmlece git", "Grafik izlesin"
@@ -51,6 +51,26 @@ async def main():
         await pg.check('#cvWin .cv-follow'); await pg.evaluate("S.plot.axes[0].xlim = [0, 1]; CAMV.video.currentTime = 6; CAMV.video.play(); 0"); await pg.wait_for_timeout(1200)
         r = await pg.evaluate("(() => { CAMV.video.pause(); const ax = S.plot.axes[0]; return [ax.xlim[0], ax.xlim[1], S.plot.playhead]; })()")
         ok(r[0] <= r[2] <= r[1], 'grafik izlemeli: ' + str(r))
+        # v2.33: oynarken imleç → video oradan sürer
+        await pg.uncheck('#cvWin .cv-follow'); await pg.evaluate("(() => { const ax = S.plot.axes[0]; ax.xlim = [0, 12]; S.plot.invalidate(); CAMV.video.currentTime = 1; CAMV.video.play(); })()"); await pg.wait_for_timeout(400)
+        await pg.evaluate("(() => { const ax = S.plot.axes[0]; S.plot.cursors = [{axes: ax, tr: ax.traces[0], x: 9.0, y: 0}]; S.plot.invalidate(); })()"); await pg.wait_for_timeout(900)
+        r = await pg.evaluate("[CAMV.video.paused, CAMV.vToT(CAMV.current.v, CAMV.video.currentTime)]")
+        ok(not r[0] and 9.0 <= r[1] < 10.5, 'oynarken imleç: ' + str(r))
+        await pg.evaluate("S.plot.cursors = []; S.plot.invalidate(); 0")
+        # v2.33: konum çizgisini sürükleyerek sarma (oynarken): bırakınca bırakılan yerden sürer
+        await pg.evaluate("CAMV.video.currentTime = 2; 0"); await pg.wait_for_timeout(400)
+        g = await pg.evaluate("(() => { const P = S.plot, ax = P.axes[0], r = P.cv.getBoundingClientRect(); return {x: r.left + P.xPx(ax, P.playhead), y: r.top + ax.rect.y + ax.rect.h / 2, x2: r.left + P.xPx(ax, 7.0)}; })()")
+        await pg.mouse.move(g['x'], g['y']); await pg.mouse.down(); await pg.mouse.move((g['x'] + g['x2']) / 2, g['y'], steps=4); await pg.mouse.move(g['x2'], g['y'], steps=4)
+        mid = await pg.evaluate("[CAMV.video.paused, S.plot.playhead]"); await pg.mouse.up(); await pg.wait_for_timeout(1000)
+        r = await pg.evaluate("[CAMV.video.paused, CAMV.vToT(CAMV.current.v, CAMV.video.currentTime), S.plot.cursors.length]")
+        print('sürükleme', mid, r)
+        ok(mid[0] and abs(mid[1] - 7.0) < 0.15, 'sürüklerken duraklamalı, çizgi fareyi izlemeli: ' + str(mid))
+        ok(not r[0] and 7.0 <= r[1] < 8.6 and r[2] == 0, 'bırakınca oradan sürmeli: ' + str(r))
+        # Shift+→ / Shift+←: 5 sn
+        await pg.evaluate("CAMV.video.pause(); CAMV.video.currentTime = 3; document.activeElement && document.activeElement.blur(); 0"); await pg.wait_for_timeout(300)
+        await pg.keyboard.press('Shift+ArrowRight'); await pg.wait_for_timeout(300); r1 = await pg.evaluate("CAMV.video.currentTime")
+        await pg.keyboard.press('Shift+ArrowLeft'); await pg.keyboard.press('Shift+ArrowLeft'); await pg.wait_for_timeout(300); r2 = await pg.evaluate("CAMV.video.currentTime")
+        ok(abs(r1 - 8) < 0.05 and abs(r2 - 0) < 0.05, 'Shift+ok tuşları: %s %s' % (r1, r2))
         # Grafikte göster kapatılınca çizgi kalkar
         await pg.uncheck('#cvWin .cv-sync'); ok(await pg.evaluate("S.plot.playhead") is None, 'çizgi kalkmalı')
         b64 = await pg.evaluate("(async () => { const v = S.files.find(f => f.tlm).videos[1]; const u = new Uint8Array(await v.blob.arrayBuffer()); let s = ''; for (let i = 0; i < u.length; i += 32768) s += String.fromCharCode.apply(null, u.subarray(i, i + 32768)); return btoa(s); })()")
