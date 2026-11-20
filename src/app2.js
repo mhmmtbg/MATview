@@ -243,7 +243,7 @@ async function computeSpectrogram() {
     if (b - a < +sv('sgN') * 2) throw new Error('Aralık NFFT için çok kısa');
     const seg = DSP.segment(ch.data, ch.del, a, b);
     const sp = await DSPW.run('spectrogram', [seg, ch.fs, {nfft: +sv('sgN'), win: sv('sgWin'), overlap: +sv('sgOv'), maxFrames: 1500}], [seg]);
-    S.specView.cmap = sv('sgMap'); S.specView.slices = ck('sgSl'); S.specView.logF = ck('sgLog'); S.specView.setSpec(sp, ch.fs, ch.t(a)); sgCursorInfo(null);
+    S.specView.cmap = sv('sgMap'); S.specView.slices = ck('sgSl'); S.specView.logF = ck('sgLog'); S.specView.setSpec(sp, ch.fs, ch.t(a)); S.specView.chName = ch.name; sgCursorInfo(null);
     $('#sgLo').value = Math.round(S.specView.clim[0]); $('#sgHi').value = Math.round(S.specView.clim[1]);
     switchView('sgram'); toast(`${sp.nf} kare · Δf=${fmtNum(sp.df, 4)} Hz · Δt=${fmtNum(sp.dt * 1000, 4)} ms`);
   });
@@ -736,12 +736,24 @@ const VIEWNAME = {time: 'zaman', spec: 'spektrum', sgram: 'spektrogram', xy: 'da
 function exportTarget() { return S.view === 'sgram' ? S.specView : S.view === 'spec' ? S.specPlot : S.view === 'xy' ? S.xyPlot : S.plot; }
 function exportReady() { const T = exportTarget(); if (T === S.specView ? !T.spec : !T.axes.length) { toast('Bu görünümde kaydedilecek grafik yok'); return null; } return T; }
 const expOpt = () => ({scale: $('#pngScale') ? +sv('pngScale') : 2, light: $('#pngLight') ? ck('pngLight') : true});
+// Dosya adı: grafikte görünen parametrelerin adı (1–3 parametre adları; daha çoksa ilk ikisi + kaç tane daha);
+// zaman dışı görünümlerde görünüm adı eklenir. Ör. OBC.temp.png · OBC.temp_spektrum.png · A_B_ve_3_parametre.png
+function exportName(T) {
+  T = T || exportTarget(); const names = [];
+  if (T === S.specView) { if (T.chName) names.push(T.chName); }
+  else for (const ax of T.axes || []) for (const t of ax.traces) { if (t.visible === false) continue; const n = (t.ch && t.ch.name) || t.label || ''; if (n && !names.includes(n)) names.push(n); }
+  const safe = x => String(x).replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^[._]+|[._]+$/g, '');
+  const parts = names.map(safe).filter(Boolean);
+  let base = !parts.length ? 'MATView' : parts.length <= 3 ? parts.join('_') : parts.slice(0, 2).join('_') + '_ve_' + (parts.length - 2) + '_parametre';
+  if (base.length > 120) base = base.slice(0, 120).replace(/[._]+$/, '');
+  return S.view === 'time' || !parts.length ? (parts.length ? base : 'MATView_' + VIEWNAME[S.view]) : base + '_' + VIEWNAME[S.view];
+}
 async function savePng() {
-  const T = exportReady(); if (!T) return; const o = expOpt(), nm = 'MATView_' + VIEWNAME[S.view];
+  const T = exportReady(); if (!T) return; const o = expOpt(), nm = exportName(T);
   if (T === S.plot) pngAsk(o.scale, o.light, c => c.toBlob(b => saveBlob(b, nm + '.png'))); else T.toPNG(o.scale, o.light).toBlob(b => saveBlob(b, nm + '.png'));
 }
 async function saveSvg() {
-  const T = exportReady(); if (!T) return; const o = expOpt(), nm = 'MATView_' + VIEWNAME[S.view], out = x => saveBlob(new Blob([x], {type: 'image/svg+xml'}), nm + '.svg');
+  const T = exportReady(); if (!T) return; const o = expOpt(), nm = exportName(T), out = x => saveBlob(new Blob([x], {type: 'image/svg+xml'}), nm + '.svg');
   if (T === S.plot) pngAsk(1, o.light, out, true); else out(T.toSVG(o.light));
 }
 async function copyPng() {
