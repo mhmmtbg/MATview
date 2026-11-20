@@ -88,24 +88,29 @@ function renderCursorPanel(P) {
 })();
 
 /* ---------- Faz 3: yeniden boyutlanabilir yan paneller, gizle/göster kısayolları ---------- */
+const RAIL_W = 52;
 const PANES = {
-  lw: null, rw: null, hideL: false, hideR: false,
-  load() { try { const o = JSON.parse(localStorage.getItem('mv.panes') || '{}'); Object.assign(this, {lw: o.lw || null, rw: o.rw || null, hideL: !!o.hideL, hideR: !!o.hideR}); } catch (_) {} },
-  save() { try { localStorage.setItem('mv.panes', JSON.stringify({lw: this.lw, rw: this.rw, hideL: this.hideL, hideR: this.hideR})); } catch (_) {} },
+  lw: null, rw: null, hideL: false, hideR: false, railR: true,
+  load() { try { const o = JSON.parse(localStorage.getItem('mv.panes') || '{}'); Object.assign(this, {lw: o.lw || null, rw: o.rw || null, hideL: !!o.hideL, hideR: false, railR: o.railR != null ? !!o.railR : (o.hideR ? true : this.railR)}); } catch (_) {} },
+  save() { try { localStorage.setItem('mv.panes', JSON.stringify({lw: this.lw, rw: this.rw, hideL: this.hideL, hideR: this.hideR, railR: this.railR})); } catch (_) {} },
   apply() {
     const app = $('#app'); if (!app) return;
-    app.classList.toggle('hideL', this.hideL); app.classList.toggle('hideR', this.hideR);
+    app.classList.toggle('hideL', this.hideL); app.classList.toggle('hideR', this.hideR); app.classList.toggle('railR', this.railR && !this.hideR);
     const set = (k, v, hid) => { if (hid) app.style.setProperty(k, '0px'); else if (v) app.style.setProperty(k, v + 'px'); else app.style.removeProperty(k); };
-    set('--lw', this.lw, this.hideL); set('--rw', this.rw, this.hideR);
+    set('--lw', this.lw, this.hideL); set('--rw', this.railR ? RAIL_W : this.rw, this.hideR);
+    const mb = $('#rmin'); if (mb) mb.hidden = this.railR;
     if (S.plot) requestAnimationFrame(() => { for (const P of [S.plot, S.specPlot, S.xyPlot, S.specView]) if (P && P.resize) P.resize(); });
   }
 };
 function togglePane(which, on) {
-  const k = which === 'l' ? 'hideL' : 'hideR'; PANES[k] = on == null ? !PANES[k] : !on; PANES.apply(); PANES.save();
+  if (which === 'r') return railR(on == null ? !PANES.railR : !on);   // sağ panel: simge çubuğu ↔ açık
+  PANES.hideL = on == null ? !PANES.hideL : !on; PANES.apply(); PANES.save();
 }
+function railR(on) { PANES.hideR = false; PANES.railR = !!on; PANES.apply(); PANES.save(); }
 (function () {
   window.addEventListener('DOMContentLoaded', () => {
     PANES.load(); PANES.apply();
+    { const mb = $('#rmin'); if (mb) mb.onclick = () => railR(true); const rt = $('#rtitle'), tt = TABS.find(x => x[0] === S.tab); if (rt && tt) rt.textContent = tt[1]; }
     const app = $('#app'), center = $('#center');
     for (const [id, side] of [['left', 'l'], ['right', 'r']]) {
       const pane = $('#' + id); if (!pane) continue;
@@ -115,7 +120,7 @@ function togglePane(which, on) {
         const ar = app.getBoundingClientRect();
         sp.onpointermove = ev => {
           if (side === 'l') PANES.lw = Math.round(Math.max(170, Math.min(Math.min(720, ar.width * .5), ev.clientX - ar.left)));
-          else PANES.rw = Math.round(Math.max(240, Math.min(Math.min(820, ar.width * .55), ar.right - ev.clientX)));
+          else PANES.rw = Math.round(Math.max(240 + RAIL_W, Math.min(Math.min(880, ar.width * .6), ar.right - ev.clientX)));
           PANES.apply();
         };
         sp.onpointerup = () => { sp.onpointermove = sp.onpointerup = null; sp.classList.remove('drag'); document.body.classList.remove('dragging'); PANES.save(); };
@@ -127,7 +132,7 @@ function togglePane(which, on) {
     window.addEventListener('keydown', e => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'b') return;
       const t = e.target; if (t && t.closest && t.closest('.cm, .codeed')) return;
-      e.preventDefault(); togglePane(e.shiftKey ? 'r' : 'l');
+      e.preventDefault(); e.stopImmediatePropagation(); togglePane(e.shiftKey ? 'r' : 'l');   // B (kutu seçimi) kısayoluna düşmesin
     }, true);
   });
 })();

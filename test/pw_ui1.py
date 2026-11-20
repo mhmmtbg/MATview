@@ -12,6 +12,7 @@ async def main():
         pg = await b.new_page(viewport={'width': 1500, 'height': 900}); errs = []
         pg.on('pageerror', lambda e: errs.append(str(e)))
         await pg.goto('file://' + os.path.abspath(ROOT + 'dist/matview.html')); await pg.wait_for_timeout(400)
+        await pg.evaluate("railR(false); 0"); await pg.wait_for_timeout(200)   # v2.36: sağ panel açık (dar orta alan senaryosu)
         # yakınlaştırma kısayolları ve Ctrl+tekerlek engellenir
         z = await pg.evaluate("""()=>{const k=new KeyboardEvent('keydown',{key:'+',ctrlKey:true,bubbles:true,cancelable:true});document.body.dispatchEvent(k);
           const w=new WheelEvent('wheel',{deltaY:-100,ctrlKey:true,bubbles:true,cancelable:true});document.body.dispatchEvent(w);
@@ -34,7 +35,7 @@ async def main():
         await pg.click('#rtabs [data-t=acoustic]'); await pg.evaluate("()=>{document.querySelectorAll('#right .card.collapsed').forEach(c=>c.classList.remove('collapsed'));0}"); await pg.select_option('#acScope', 'all')
         await pg.click('button:has-text("▶ Orijinal")'); await pg.wait_for_timeout(700)
         await pg.evaluate("window.__sz=new Set(); window.__iv=setInterval(()=>__sz.add(S.plot.W+'x'+S.plot.H+(S.plot.cv.parentElement.classList.contains('scrolly')?'s':'')),16); 0")
-        for i in range(4): await pg.click('.acbar .acb-seek', position={'x': 40 + 60 * i, 'y': 8}); await pg.wait_for_timeout(150)
+        for i in range(4): await pg.click('.acbar .acb-seek', position={'x': 30 + 45 * i, 'y': 8}); await pg.wait_for_timeout(150)
         await pg.click('.acbar .acb-pp'); await pg.click('.acbar .acb-pp'); await pg.mouse.move(700, 400); await pg.mouse.move(800, 420); await pg.wait_for_timeout(300)
         sz = await pg.evaluate("clearInterval(__iv), [...__sz]"); print('boyutlar', sz); ok(len(sz) == 1 and not sz[0].endswith('s'), 'grafik boyutu değişti / kaydırma çubuğu açıldı')
         # oynatma çizgisini sürükle

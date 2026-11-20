@@ -52,6 +52,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.36', d: 'Sağ panel: dikey simge çubuğu', items: [
+    'Sağ panelin sekmeleri sağ kenarda dikey bir simge çubuğunda durur; kullanılmadığında panel yalnız bu çubuk kadar yer kaplar ve grafik genişler.',
+    'Simgeye tıklamak paneli o sekmeyle açar; açık sekmenin simgesine, panel başlığındaki » düğmesine tıklamak ya da Ctrl+Shift+B yeniden simge durumuna küçültür. Bir işlem sekme açtığında (ör. grafikten Spektrum) panel kendiliğinden açılır. Son durum hatırlanır.',
+    'Ctrl+B / Ctrl+Shift+B artık grafikte kutu seçim kipine de geçmiyor.'
+  ]},
   {v: '2.35', d: '.mat zaman ekseni düzeltmesi', items: [
     'Telemetri tek .mat açılırken zaman ekseni yanlış çıkıyordu (birim yapılarındaki “t” zaman alanı tanınmıyor, varsayılan örnekleme kullanılıyordu; dosyadaki çok uzun bir değişken — ör. akustik — bu varsayılanı da bozuyordu). Artık her kanal kendi zamanını alır: “<alan>_t”, yoksa yapının “t” alanı (çerçeve başına birden çok örnekli alanlar dahil), yoksa dosya düzeyindeki zaman değişkeni.',
     'Kayıp çerçeveler ve düzensiz örnekleme .mat’teki zamanla birebir korunur; zaman alanları kanal listesinde görünmez.'
