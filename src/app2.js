@@ -12,12 +12,19 @@ function buildRight() {
   const tabs = $('#rtabs'), body = $('#rbody'); tabs.replaceChildren(); body.replaceChildren(); S.panels = {};
   const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, qual: buildQual, test: buildTest, tools: buildTools, output: buildOutput};
   for (const [k, t] of TABS) {
-    tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => setTab(k)}, h('span', {class: 'tl'}, t)));
+    tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, role: 'tab', title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => rtabClick(k)}, h('span', {class: 'tl'}, t)));
     const p = builders[k](); p.id = 'p-' + k; if (k !== S.tab) p.classList.add('hidden'); body.append(p); S.panels[k] = p;
   }
 }
 function buildTools() { const r = h('div'); for (const c of toolsCards()) r.append(c); if (typeof extraToolCards === 'function') for (const c of extraToolCards()) r.append(c); return r; }
-function setTab(k) { S.tab = k; for (const b of $('#rtabs').children) b.classList.toggle('on', b.dataset.t === k); for (const t in S.panels) S.panels[t].classList.toggle('hidden', t !== k); }
+// Sağ panel: dikey simge çubuğu. Simgeye tık: paneli o sekmeyle açar; açık sekmenin simgesine (ya da ») tık: simge
+// durumuna küçültür. Bir işlem sekme açtığında (setTab) panel de açılır.
+function setTab(k, keep) {
+  S.tab = k; for (const b of $('#rtabs').children) b.classList.toggle('on', b.dataset.t === k); for (const t in S.panels) S.panels[t].classList.toggle('hidden', t !== k);
+  const tt = TABS.find(x => x[0] === k), rt = $('#rtitle'); if (rt && tt) rt.textContent = tt[1];
+  if (!keep && typeof PANES !== 'undefined' && PANES.railR) railR(false);
+}
+function rtabClick(k) { if (typeof PANES !== 'undefined' && !PANES.railR && !PANES.hideR && k === S.tab) return railR(true); setTab(k); }
 
 /* ---------- İzler ---------- */
 function buildTraces() {

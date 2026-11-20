@@ -424,6 +424,20 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .cv-v{width:100%;flex:1;min-height:120px;background:#000;border-radius:3px;object-fit:contain}
 .cv-o{align-items:center}.cv-o .cv-go{margin-left:auto}
 .vidrow svg{color:var(--muted);flex:none}
+
+/* sağ panel: sağ kenarda dikey simge çubuğu; panel gövdesi solunda (küçültülünce yalnız çubuk) */
+#app{grid-template-columns:var(--lw,290px) 1fr var(--rw,412px)}
+#right{flex-direction:row-reverse}
+.rtabs{flex-direction:column;flex:none;width:52px;border-bottom:none;border-left:1px solid var(--border);overflow-y:auto;overflow-x:hidden;padding:2px 0}
+.rtabs button,.rtabs button.on{flex:none;width:100%;padding:7px 2px 5px;border-bottom:none;border-left:2px solid transparent;gap:2px;flex-direction:column}
+.rtabs button.on{border-left-color:var(--accent);background:var(--bg)}
+.rtabs button .tl,.rtabs button:not(.on) .tl{display:block;font-size:9.5px;line-height:1.1;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#app.railR .rtabs button.on{border-left-color:transparent;background:none;color:var(--muted)}
+.rmain{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.rhead{display:flex;align-items:center;gap:6px;padding:5px 6px 5px 10px;border-bottom:1px solid var(--border)}
+.rhead b{flex:1;font-size:13px}.rhead button{border:none;background:none;padding:0 6px;font-size:15px;color:var(--muted)}
+#app.railR .rmain,#app.railR #right>.split{display:none}
+@media (max-width:1100px){#app{grid-template-columns:var(--lw,250px) 1fr var(--rw,392px)}}
 </style>
 </head>
 <body>
@@ -497,8 +511,9 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
     <div id="status"><span id="st1"></span><span id="st2"></span><span id="st3"></span></div>
   </main>
   <aside id="right">
-    <div id="rtabs" class="rtabs"></div>
-    <div id="rbody" class="rbody"></div>
+    <div id="rtabs" class="rtabs" role="tablist" aria-orientation="vertical"></div>
+    <div class="rmain"><div class="rhead"><b id="rtitle"></b><button id="rmin" class="noic" type="button" title="Simge durumuna küçült (Ctrl+Shift+B)">»</button></div>
+    <div id="rbody" class="rbody"></div></div>
   </aside>
 </div>
 <div id="busy" class="hidden"><div class="busybox"><div id="busytxt">Çalışıyor…</div><div class="bar"><div id="busybar"></div></div><div class="btns" id="busycancel" style="display:none"><button id="busyCancelBtn">İptal</button></div></div></div>
@@ -5274,12 +5289,19 @@ function buildRight() {
   const tabs = $('#rtabs'), body = $('#rbody'); tabs.replaceChildren(); body.replaceChildren(); S.panels = {};
   const builders = {traces: buildTraces, clean: buildClean, analyze: buildAnalyze, expr: buildExpr, acoustic: buildAcoustic, unv: buildUnv, feat: buildFeat, qual: buildQual, test: buildTest, tools: buildTools, output: buildOutput};
   for (const [k, t] of TABS) {
-    tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => setTab(k)}, h('span', {class: 'tl'}, t)));
+    tabs.append(h('button', {class: k === S.tab ? 'on' : '', 'data-t': k, 'data-ic': k, role: 'tab', title: k === 'unv' ? 'UNV içe aktarma ve profil karşılaştırma' : t, onclick: () => rtabClick(k)}, h('span', {class: 'tl'}, t)));
     const p = builders[k](); p.id = 'p-' + k; if (k !== S.tab) p.classList.add('hidden'); body.append(p); S.panels[k] = p;
   }
 }
 function buildTools() { const r = h('div'); for (const c of toolsCards()) r.append(c); if (typeof extraToolCards === 'function') for (const c of extraToolCards()) r.append(c); return r; }
-function setTab(k) { S.tab = k; for (const b of $('#rtabs').children) b.classList.toggle('on', b.dataset.t === k); for (const t in S.panels) S.panels[t].classList.toggle('hidden', t !== k); }
+// Sağ panel: dikey simge çubuğu. Simgeye tık: paneli o sekmeyle açar; açık sekmenin simgesine (ya da ») tık: simge
+// durumuna küçültür. Bir işlem sekme açtığında (setTab) panel de açılır.
+function setTab(k, keep) {
+  S.tab = k; for (const b of $('#rtabs').children) b.classList.toggle('on', b.dataset.t === k); for (const t in S.panels) S.panels[t].classList.toggle('hidden', t !== k);
+  const tt = TABS.find(x => x[0] === k), rt = $('#rtitle'); if (rt && tt) rt.textContent = tt[1];
+  if (!keep && typeof PANES !== 'undefined' && PANES.railR) railR(false);
+}
+function rtabClick(k) { if (typeof PANES !== 'undefined' && !PANES.railR && !PANES.hideR && k === S.tab) return railR(true); setTab(k); }
 
 /* ---------- İzler ---------- */
 function buildTraces() {
@@ -7978,7 +8000,7 @@ async function qualAuto(files) {
 }
 
 /* ===== Faz 2: Test sekmesi — faz tablosu (B1), şartname uygunluk + şablonlar (B2), hesap kaydı (A2) ===== */
-const APP_VER = '2.35';
+const APP_VER = '2.36';
 function logOp(op, detail) { (S.methodLog = S.methodLog || []).push(Object.assign({t: Date.now(), op}, detail || {})); }
 
 /* ---------- Faz tablosu (düzenlenebilir) ---------- */
@@ -8417,6 +8439,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.36', d: 'Sağ panel: dikey simge çubuğu', items: [
+    'Sağ panelin sekmeleri sağ kenarda dikey bir simge çubuğunda durur; kullanılmadığında panel yalnız bu çubuk kadar yer kaplar ve grafik genişler.',
+    'Simgeye tıklamak paneli o sekmeyle açar; açık sekmenin simgesine, panel başlığındaki » düğmesine tıklamak ya da Ctrl+Shift+B yeniden simge durumuna küçültür. Bir işlem sekme açtığında (ör. grafikten Spektrum) panel kendiliğinden açılır. Son durum hatırlanır.',
+    'Ctrl+B / Ctrl+Shift+B artık grafikte kutu seçim kipine de geçmiyor.'
+  ]},
   {v: '2.35', d: '.mat zaman ekseni düzeltmesi', items: [
     'Telemetri tek .mat açılırken zaman ekseni yanlış çıkıyordu (birim yapılarındaki “t” zaman alanı tanınmıyor, varsayılan örnekleme kullanılıyordu; dosyadaki çok uzun bir değişken — ör. akustik — bu varsayılanı da bozuyordu). Artık her kanal kendi zamanını alır: “<alan>_t”, yoksa yapının “t” alanı (çerçeve başına birden çok örnekli alanlar dahil), yoksa dosya düzeyindeki zaman değişkeni.',
     'Kayıp çerçeveler ve düzensiz örnekleme .mat’teki zamanla birebir korunur; zaman alanları kanal listesinde görünmez.'
@@ -14691,24 +14718,29 @@ function renderCursorPanel(P) {
 })();
 
 /* ---------- Faz 3: yeniden boyutlanabilir yan paneller, gizle/göster kısayolları ---------- */
+const RAIL_W = 52;
 const PANES = {
-  lw: null, rw: null, hideL: false, hideR: false,
-  load() { try { const o = JSON.parse(localStorage.getItem('mv.panes') || '{}'); Object.assign(this, {lw: o.lw || null, rw: o.rw || null, hideL: !!o.hideL, hideR: !!o.hideR}); } catch (_) {} },
-  save() { try { localStorage.setItem('mv.panes', JSON.stringify({lw: this.lw, rw: this.rw, hideL: this.hideL, hideR: this.hideR})); } catch (_) {} },
+  lw: null, rw: null, hideL: false, hideR: false, railR: true,
+  load() { try { const o = JSON.parse(localStorage.getItem('mv.panes') || '{}'); Object.assign(this, {lw: o.lw || null, rw: o.rw || null, hideL: !!o.hideL, hideR: false, railR: o.railR != null ? !!o.railR : (o.hideR ? true : this.railR)}); } catch (_) {} },
+  save() { try { localStorage.setItem('mv.panes', JSON.stringify({lw: this.lw, rw: this.rw, hideL: this.hideL, hideR: this.hideR, railR: this.railR})); } catch (_) {} },
   apply() {
     const app = $('#app'); if (!app) return;
-    app.classList.toggle('hideL', this.hideL); app.classList.toggle('hideR', this.hideR);
+    app.classList.toggle('hideL', this.hideL); app.classList.toggle('hideR', this.hideR); app.classList.toggle('railR', this.railR && !this.hideR);
     const set = (k, v, hid) => { if (hid) app.style.setProperty(k, '0px'); else if (v) app.style.setProperty(k, v + 'px'); else app.style.removeProperty(k); };
-    set('--lw', this.lw, this.hideL); set('--rw', this.rw, this.hideR);
+    set('--lw', this.lw, this.hideL); set('--rw', this.railR ? RAIL_W : this.rw, this.hideR);
+    const mb = $('#rmin'); if (mb) mb.hidden = this.railR;
     if (S.plot) requestAnimationFrame(() => { for (const P of [S.plot, S.specPlot, S.xyPlot, S.specView]) if (P && P.resize) P.resize(); });
   }
 };
 function togglePane(which, on) {
-  const k = which === 'l' ? 'hideL' : 'hideR'; PANES[k] = on == null ? !PANES[k] : !on; PANES.apply(); PANES.save();
+  if (which === 'r') return railR(on == null ? !PANES.railR : !on);   // sağ panel: simge çubuğu ↔ açık
+  PANES.hideL = on == null ? !PANES.hideL : !on; PANES.apply(); PANES.save();
 }
+function railR(on) { PANES.hideR = false; PANES.railR = !!on; PANES.apply(); PANES.save(); }
 (function () {
   window.addEventListener('DOMContentLoaded', () => {
     PANES.load(); PANES.apply();
+    { const mb = $('#rmin'); if (mb) mb.onclick = () => railR(true); const rt = $('#rtitle'), tt = TABS.find(x => x[0] === S.tab); if (rt && tt) rt.textContent = tt[1]; }
     const app = $('#app'), center = $('#center');
     for (const [id, side] of [['left', 'l'], ['right', 'r']]) {
       const pane = $('#' + id); if (!pane) continue;
@@ -14718,7 +14750,7 @@ function togglePane(which, on) {
         const ar = app.getBoundingClientRect();
         sp.onpointermove = ev => {
           if (side === 'l') PANES.lw = Math.round(Math.max(170, Math.min(Math.min(720, ar.width * .5), ev.clientX - ar.left)));
-          else PANES.rw = Math.round(Math.max(240, Math.min(Math.min(820, ar.width * .55), ar.right - ev.clientX)));
+          else PANES.rw = Math.round(Math.max(240 + RAIL_W, Math.min(Math.min(880, ar.width * .6), ar.right - ev.clientX)));
           PANES.apply();
         };
         sp.onpointerup = () => { sp.onpointermove = sp.onpointerup = null; sp.classList.remove('drag'); document.body.classList.remove('dragging'); PANES.save(); };
@@ -14730,7 +14762,7 @@ function togglePane(which, on) {
     window.addEventListener('keydown', e => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'b') return;
       const t = e.target; if (t && t.closest && t.closest('.cm, .codeed')) return;
-      e.preventDefault(); togglePane(e.shiftKey ? 'r' : 'l');
+      e.preventDefault(); e.stopImmediatePropagation(); togglePane(e.shiftKey ? 'r' : 'l');   // B (kutu seçimi) kısayoluna düşmesin
     }, true);
   });
 })();

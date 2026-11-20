@@ -43,9 +43,13 @@ async def main():
         await pg.mouse.move(*sp); await pg.mouse.down(); await pg.mouse.move(sp[0] + 120, sp[1], steps=4); await pg.mouse.up()
         lw = await pg.evaluate("document.querySelector('#left').getBoundingClientRect().width"); print('lw', lw); assert 390 < lw < 430
         await pg.keyboard.press('Control+b'); hl = await pg.evaluate("getComputedStyle(document.querySelector('#left')).display"); assert hl == 'none'
-        await pg.keyboard.press('Control+Shift+b'); hr = await pg.evaluate("getComputedStyle(document.querySelector('#right')).display"); assert hr == 'none'
+        # v2.36: sağ panel Ctrl+Shift+B ile dikey simge çubuğuna küçülür (gizlenmez)
+        rw0 = await pg.evaluate("$('#app').classList.contains('railR')")
+        await pg.keyboard.press('Control+Shift+b'); rr = await pg.evaluate("[$('#app').classList.contains('railR'), Math.round(document.querySelector('#right').getBoundingClientRect().width)]"); print('simge çubuğu', rw0, rr)
+        if not rw0: assert rr[0] and 50 <= rr[1] <= 54, rr
+        else: assert not rr[0] and rr[1] > 300, rr
         await pg.wait_for_timeout(200); await pg.screenshot(path='/tmp/claude-0/faz3_hidden.png')
-        await pg.click('.reveal.l'); await pg.click('.reveal.r'); assert await pg.evaluate("!$('#app').classList.contains('hideL') && !$('#app').classList.contains('hideR')")
+        await pg.click('.reveal.l'); assert await pg.evaluate("!$('#app').classList.contains('hideL') && !$('#app').classList.contains('hideR')")
         await pg.reload(); await pg.wait_for_timeout(300); lw2 = await pg.evaluate("document.querySelector('#left').getBoundingClientRect().width"); print('lw kalıcı', lw2); assert abs(lw2 - lw) < 2
         await pg.evaluate("localStorage.removeItem('mv.panes'); localStorage.removeItem('mv.fav')")
         print('ERR', errs); assert not errs; await b.close(); print('OK faz3')

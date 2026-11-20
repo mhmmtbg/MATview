@@ -417,3 +417,17 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .cv-v{width:100%;flex:1;min-height:120px;background:#000;border-radius:3px;object-fit:contain}
 .cv-o{align-items:center}.cv-o .cv-go{margin-left:auto}
 .vidrow svg{color:var(--muted);flex:none}
+
+/* sağ panel: sağ kenarda dikey simge çubuğu; panel gövdesi solunda (küçültülünce yalnız çubuk) */
+#app{grid-template-columns:var(--lw,290px) 1fr var(--rw,412px)}
+#right{flex-direction:row-reverse}
+.rtabs{flex-direction:column;flex:none;width:52px;border-bottom:none;border-left:1px solid var(--border);overflow-y:auto;overflow-x:hidden;padding:2px 0}
+.rtabs button,.rtabs button.on{flex:none;width:100%;padding:7px 2px 5px;border-bottom:none;border-left:2px solid transparent;gap:2px;flex-direction:column}
+.rtabs button.on{border-left-color:var(--accent);background:var(--bg)}
+.rtabs button .tl,.rtabs button:not(.on) .tl{display:block;font-size:9.5px;line-height:1.1;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#app.railR .rtabs button.on{border-left-color:transparent;background:none;color:var(--muted)}
+.rmain{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.rhead{display:flex;align-items:center;gap:6px;padding:5px 6px 5px 10px;border-bottom:1px solid var(--border)}
+.rhead b{flex:1;font-size:13px}.rhead button{border:none;background:none;padding:0 6px;font-size:15px;color:var(--muted)}
+#app.railR .rmain,#app.railR #right>.split{display:none}
+@media (max-width:1100px){#app{grid-template-columns:var(--lw,250px) 1fr var(--rw,392px)}}
