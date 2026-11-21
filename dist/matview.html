@@ -148,8 +148,8 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
 .dz.over{background:color-mix(in srgb,var(--accent) 22%,var(--panel))}
 #welcome{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--panel);z-index:3;text-align:center}
 .wbox{max-width:640px;padding:20px}.wbox h2{margin:0 0 4px;font-size:26px}
-.wcards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
-.wcard{display:flex!important;flex-direction:column;gap:6px;padding:18px 10px!important;border-radius:6px}.wcard b{font-size:14px}.wcard span:not(.ico){color:var(--muted);font-size:12px}.wcard .ic{width:28px;height:28px}
+.wcards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px auto;max-width:640px}
+.wcard{display:flex!important;flex-direction:column;justify-content:flex-start!important;gap:6px;padding:18px 10px!important;border-radius:6px}.wcard b{font-size:14px}.wcard span:not(.ico){color:var(--muted);font-size:12px}.wcard .ic{width:28px;height:28px}
 .wcard:hover{border-color:var(--accent)}
 #busycancel{margin-top:10px}
 
@@ -2600,9 +2600,19 @@ const DSP = (() => {
   }
 
   // ---- Hampel / medyan ----
-  function hampelFlags(x, k, nsig, del, gmin) {
+  // robust (Temizle › Hampel): (1) pencerede MAD = 0 olsa da (basamaklı / kuantalı veri) ölçek en az veri adımı (q) alınır;
+  // (2) gerçek seviye değişimlerinin kenarı silinmesin: noktanın bir yanındaki yarım pencerenin medyanına yakınsa sıçrama sayılmaz
+  function hampelFlags(x, k, nsig, del, gmin, robust) {
     const n = x.length, w = 2 * k + 1, buf = new Float64Array(w), dev = new Float64Array(w);
     const flags = [];
+    let q = 0;
+    if (robust) {
+      let mx = 0; for (let i = 0; i < n; i++) if (isFinite(x[i]) && Math.abs(x[i]) > mx) mx = Math.abs(x[i]);
+      const tiny = mx * 1e-9; q = Infinity;
+      for (let i = 1; i < n; i++) { const d = Math.abs(x[i] - x[i - 1]); if (d > tiny && d < q && !(del && (del[i] || del[i - 1]))) q = d; }
+      if (!isFinite(q)) return new Uint32Array(0);
+    }
+    const sideMed = (a, b) => { let m = 0; for (let j = a; j <= b; j++) if (!(del && del[j]) && isFinite(x[j])) buf[m++] = x[j]; if (!m) return NaN; const s2 = buf.subarray(0, m).sort(); return s2[m >> 1]; };
     for (let i = 0; i < n; i++) {
       if (del && del[i]) continue;
       if (!isFinite(x[i])) continue;
@@ -2616,7 +2626,11 @@ const DSP = (() => {
       const dsub = dev.subarray(0, m); if (m <= 64) { for (let u = 1; u < m; u++) { const t = dsub[u]; let w2 = u - 1; while (w2 >= 0 && dsub[w2] > t) { dsub[w2 + 1] = dsub[w2]; w2--; } dsub[w2 + 1] = t; } } else dsub.sort();
       const mad = 1.4826 * dsub[m >> 1];
       const d = Math.abs(x[i] - med);
-      if (mad > 0 && d > nsig * mad && d > (gmin || 0)) flags.push(i);
+      if (!robust) { if (mad > 0 && d > nsig * mad && d > (gmin || 0)) flags.push(i); continue; }
+      const thr = Math.max(nsig * Math.max(mad, q), gmin || 0);
+      if (!(d > thr)) continue;
+      if (Math.abs(x[i] - sideMed(a, i - 1)) <= thr || Math.abs(x[i] - sideMed(i + 1, b)) <= thr) continue;   // seviye değişiminin kenarı
+      flags.push(i);
     }
     return Uint32Array.from(flags);
   }
@@ -5432,10 +5446,11 @@ function buildClean() {
     fr('Kapsam', selIn('thScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
     h('div', {class: 'btns'}, btn('Bul ve seç', () => findOutliers('th')))));
   r.append(card('Sıçrama (spike) bul – Hampel',
-    fr('Yarı pencere (örnek)', numIn('hmK', 5, {min: 1, step: 1})), fr('Eşik (σ)', numIn('hmS', 6, {min: 1})),
+    fr('Yarı pencere (örnek)', numIn('hmK', 10, {min: 1, step: 1})), fr('Eşik (σ)', numIn('hmS', 5, {min: 1})),
+    fr('En az sapma', numIn('hmG', '', {min: 0, placeholder: 'oto', title: 'İsteğe bağlı, kanalın biriminde: yerel medyandan bundan az sapan nokta seçilmez (küçük gürültü dalgalanmaları korunur). Boş: yalnız σ eşiği'})),
     fr('Kapsam', selIn('hmScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
     h('div', {class: 'btns'}, btn('Bul ve seç', () => findOutliers('hampel'))),
-    h('div', {class: 'note'}, 'Yerel medyandan σ·MAD kadar uzak noktalar seçilir. Uygulamadan önce sonucu kırmızı olarak görürsünüz.')));
+    h('div', {class: 'note'}, 'Yerel medyandan σ·MAD kadar uzak noktalar seçilir (basamaklı / kuantalı veride MAD yerine en az veri adımı). Gerçek seviye değişimlerinin kenarı seçilmez. Yarı pencere, ardışık bozuk nokta sayısının en az iki katı olmalı. Uygulamadan önce sonucu kırmızı olarak görürsünüz.')));
   r.append(card('Diğer', h('div', {class: 'btns', style: 'margin-top:0'}, btn('NaN/Inf noktaları bul', () => findOutliers('nan')), btn('Aktif izdeki tüm silmeleri geri al', () => { const t = activeTrace(); if (t) restoreChannel(t.ch); }))));
   r.append(card('Silinen noktalar', h('div', {id: 'delInfo', class: 'note'}, '—')));
   return r;
@@ -5462,7 +5477,8 @@ async function findOutliers(kind) {
       const m = sv('thMode'), A = num('thA'), B = num('thB'); const lo = Math.min(A, B), hi = Math.max(A, B);
       for (let i = a; i < b; i++) { if (del && del[i]) continue; const v = d[i]; if (!isFinite(v)) continue; if (m === 'abs' ? Math.abs(v) > A : m === 'gt' ? v > A : m === 'lt' ? v < A : (v < lo || v > hi)) idx.push(i); }
     } else {
-      const f = await DSPW.run('hampelFlags', [d.subarray(a, b), Math.max(1, num('hmK') | 0), num('hmS'), del ? del.subarray(a, b) : null]);
+      const g = parseFloat($('#hmG') && $('#hmG').value);
+      const f = await DSPW.run('hampelFlags', [d.subarray(a, b), Math.max(1, num('hmK') | 0), num('hmS'), del ? del.subarray(a, b) : null, g > 0 ? g : 0, true]);
       for (const k of f) idx.push(k + a);
     }
     S.plot.sel = {axes: ax, type: 'idx', hits: idx.length ? [{tr, idx: Uint32Array.from(idx)}] : []}; S.plot.onSelect(S.plot.sel); S.plot.invalidate();
@@ -8016,7 +8032,7 @@ async function qualAuto(files) {
 }
 
 /* ===== Faz 2: Test sekmesi — faz tablosu (B1), şartname uygunluk + şablonlar (B2), hesap kaydı (A2) ===== */
-const APP_VER = '2.37';
+const APP_VER = '2.38';
 function logOp(op, detail) { (S.methodLog = S.methodLog || []).push(Object.assign({t: Date.now(), op}, detail || {})); }
 
 /* ---------- Faz tablosu (düzenlenebilir) ---------- */
@@ -8455,6 +8471,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.38', d: 'Hampel düzeltmesi, giriş ekranı', items: [
+    'Temizle › Hampel: basamaklı / kuantalı veride (uzun süre aynı değer) pencere MAD’ı sıfır çıktığında hiçbir nokta seçilmiyordu; artık ölçek en az veri adımından alınır. Gerçek seviye değişimlerinin kenarı seçilmez. Yeni “En az sapma” alanı: bundan küçük dalgalanmalar korunur. Varsayılanlar: yarı pencere 10, eşik 5σ.',
+    'Giriş ekranındaki seçenekler 3 × 2 düzende, simetrik.'
+  ]},
   {v: '2.37', d: 'Sabit izleme çizgisi', items: [
     'İzleme (X) açıkken grafiğe tıklamak o konuma izleme çizgisi sabitler (en yakın örneğe oturur); çizgi tüm alt grafiklerde değer kutularıyla kalır ve PNG / SVG / rapor çıktısında görünür. En çok 8 çizgi; çizginin üstüne yeniden tıklamak kaldırır, İzleme kapanınca hepsi kalkar. Sürükleyerek kaydırma çizgi eklemez.'
   ]},

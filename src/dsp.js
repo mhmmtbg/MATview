@@ -191,9 +191,19 @@ const DSP = (() => {
   }
 
   // ---- Hampel / medyan ----
-  function hampelFlags(x, k, nsig, del, gmin) {
+  // robust (Temizle › Hampel): (1) pencerede MAD = 0 olsa da (basamaklı / kuantalı veri) ölçek en az veri adımı (q) alınır;
+  // (2) gerçek seviye değişimlerinin kenarı silinmesin: noktanın bir yanındaki yarım pencerenin medyanına yakınsa sıçrama sayılmaz
+  function hampelFlags(x, k, nsig, del, gmin, robust) {
     const n = x.length, w = 2 * k + 1, buf = new Float64Array(w), dev = new Float64Array(w);
     const flags = [];
+    let q = 0;
+    if (robust) {
+      let mx = 0; for (let i = 0; i < n; i++) if (isFinite(x[i]) && Math.abs(x[i]) > mx) mx = Math.abs(x[i]);
+      const tiny = mx * 1e-9; q = Infinity;
+      for (let i = 1; i < n; i++) { const d = Math.abs(x[i] - x[i - 1]); if (d > tiny && d < q && !(del && (del[i] || del[i - 1]))) q = d; }
+      if (!isFinite(q)) return new Uint32Array(0);
+    }
+    const sideMed = (a, b) => { let m = 0; for (let j = a; j <= b; j++) if (!(del && del[j]) && isFinite(x[j])) buf[m++] = x[j]; if (!m) return NaN; const s2 = buf.subarray(0, m).sort(); return s2[m >> 1]; };
     for (let i = 0; i < n; i++) {
       if (del && del[i]) continue;
       if (!isFinite(x[i])) continue;
@@ -207,7 +217,11 @@ const DSP = (() => {
       const dsub = dev.subarray(0, m); if (m <= 64) { for (let u = 1; u < m; u++) { const t = dsub[u]; let w2 = u - 1; while (w2 >= 0 && dsub[w2] > t) { dsub[w2 + 1] = dsub[w2]; w2--; } dsub[w2 + 1] = t; } } else dsub.sort();
       const mad = 1.4826 * dsub[m >> 1];
       const d = Math.abs(x[i] - med);
-      if (mad > 0 && d > nsig * mad && d > (gmin || 0)) flags.push(i);
+      if (!robust) { if (mad > 0 && d > nsig * mad && d > (gmin || 0)) flags.push(i); continue; }
+      const thr = Math.max(nsig * Math.max(mad, q), gmin || 0);
+      if (!(d > thr)) continue;
+      if (Math.abs(x[i] - sideMed(a, i - 1)) <= thr || Math.abs(x[i] - sideMed(i + 1, b)) <= thr) continue;   // seviye değişiminin kenarı
+      flags.push(i);
     }
     return Uint32Array.from(flags);
   }

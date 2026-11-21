@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.38', d: 'Hampel düzeltmesi, giriş ekranı', items: [
+    'Temizle › Hampel: basamaklı / kuantalı veride (uzun süre aynı değer) pencere MAD’ı sıfır çıktığında hiçbir nokta seçilmiyordu; artık ölçek en az veri adımından alınır. Gerçek seviye değişimlerinin kenarı seçilmez. Yeni “En az sapma” alanı: bundan küçük dalgalanmalar korunur. Varsayılanlar: yarı pencere 10, eşik 5σ.',
+    'Giriş ekranındaki seçenekler 3 × 2 düzende, simetrik.'
+  ]},
   {v: '2.37', d: 'Sabit izleme çizgisi', items: [
     'İzleme (X) açıkken grafiğe tıklamak o konuma izleme çizgisi sabitler (en yakın örneğe oturur); çizgi tüm alt grafiklerde değer kutularıyla kalır ve PNG / SVG / rapor çıktısında görünür. En çok 8 çizgi; çizginin üstüne yeniden tıklamak kaldırır, İzleme kapanınca hepsi kalkar. Sürükleyerek kaydırma çizgi eklemez.'
   ]},
