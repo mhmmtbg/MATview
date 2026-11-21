@@ -451,7 +451,7 @@ function buildToolbar() {
     ib('tb-back', 'back', 'Geri', 'Önceki görünüm (Alt+←)', () => viewHist(-1)), ib('tb-fwd', 'fwd', 'İleri', 'Sonraki görünüm (Alt+→)', () => viewHist(1)),
     ib('tb-legend', 'legend', 'Lejant ▾', 'Lejant seçenekleri: göster / katla, boyut, konum', e => legendMenu(e.currentTarget)),
     ib('tb-size', 'gridl', 'Düzen ▾', 'Alt grafik düzeni: sütun sayısı (ızgara), tüm alt grafiklerin genişlik / yüksekliği, eşzamanlı boyutlandırma', e => sizeMenu(e.currentTarget)),
-    ib('tb-xhair', 'xhair', 'İzleme', 'Senkron dikey izleme: tüm alt grafiklerde imleç altındaki değerler (X)', () => toggleCrosshair()),
+    ib('tb-xhair', 'xhair', 'İzleme', 'Senkron dikey izleme: tüm alt grafiklerde imleç altındaki değerler (X). Açıkken grafiğe tık: o konuma çizgi sabitlenir, dışa aktarmada görünür (çizgiye yeniden tık: kalkar)', () => toggleCrosshair()),
     h('span', {class: 'sep'}), ib('tb-undo', 'undo', 'Geri al', 'Ctrl+Z', undo), ib('tb-redo', 'redo', 'Yinele', 'Ctrl+Y', redo),
     h('span', {class: 'sep'}), ib('tb-del', 'del', 'Sil', 'Seçili noktaları sil (Delete)', deleteSelection));
   $('#tb-del').disabled = true;

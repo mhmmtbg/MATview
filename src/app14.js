@@ -8,10 +8,10 @@ function viewHist(dir) {
 function updHistBtns() { const P = curPlot(); const b = $('#tb-back'), f = $('#tb-fwd'); if (b) b.disabled = !P || !P.hist.back.length; if (f) f.disabled = !P || !P.hist.fwd.length; }
 function toggleCrosshair(on) {
   const v = on == null ? !S.plot.crosshair : !!on;
-  for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) { P.crosshair = v; if (!v) P.hoverX = null; P.invalidate(); }
+  for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) { P.crosshair = v; if (!v) { P.hoverX = null; P.xpins = []; } P.invalidate(); }
   try { localStorage.setItem('mv.xhair', v ? '1' : '0'); } catch (_) {}
   const b = $('#tb-xhair'); if (b) b.classList.toggle('on', v);
-  if (on == null) toast('Senkron dikey izleme ' + (v ? 'açık' : 'kapalı') + ' (X)', 1500);
+  if (on == null) toast(v ? 'Senkron dikey izleme açık (X) — grafiğe tıklayınca o konuma çizgi sabitlenir; sabit çizgiler dışa aktarmada görünür' : 'Senkron dikey izleme kapalı (X)', v ? 3500 : 1500);
 }
 const SNAP_MODES = [['off', 'Yakalama yok'], ['peak', 'Tepe'], ['valley', 'Çukur'], ['auto', 'Tepe/çukur (otomatik)']];
 function setSnap(m) { for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) P.cursorOpt.snap = m; try { localStorage.setItem('mv.snap', m); } catch (_) {} }
@@ -82,7 +82,7 @@ function renderCursorPanel(P) {
   window.addEventListener('DOMContentLoaded', () => setTimeout(() => {
     try { const sn = localStorage.getItem('mv.snap'); if (sn) setSnap(sn); if (localStorage.getItem('mv.xhair') === '1') toggleCrosshair(true); } catch (_) {}
     if (typeof switchView === 'function') { const sw = switchView; switchView = function (v) { const r = sw.apply(this, arguments); try { cpanAll(); } catch (_) {} return r; }; }
-    for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) { const oc = P.onChange; P.onChange = k => { oc(k); if (k === 'view') updHistBtns(); if (k === 'cursor' && P !== S.plot) renderCursorPanel(P); }; }
+    for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P) { const oc = P.onChange; P.onChange = k => { oc(k); if (k === 'view') updHistBtns(); if (k === 'pin') toast(P.xpins.length ? `İzleme çizgisi: ${P.xpins.length} sabit (dışa aktarmada görünür · çizgiye tıklayınca kalkar · İzleme kapanınca hepsi kalkar)` : 'Sabit izleme çizgisi kaldırıldı', 2500); if (k === 'cursor' && P !== S.plot) renderCursorPanel(P); }; }
     updHistBtns();
   }, 0));
 })();
