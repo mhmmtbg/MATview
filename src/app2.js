@@ -139,10 +139,11 @@ function buildClean() {
     fr('Kapsam', selIn('thScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'all')),
     h('div', {class: 'btns'}, btn('Bul ve seç', () => findOutliers('th')))));
   r.append(card('Sıçrama (spike) bul – Hampel',
-    fr('Yarı pencere (örnek)', numIn('hmK', 5, {min: 1, step: 1})), fr('Eşik (σ)', numIn('hmS', 6, {min: 1})),
+    fr('Yarı pencere (örnek)', numIn('hmK', 10, {min: 1, step: 1})), fr('Eşik (σ)', numIn('hmS', 5, {min: 1})),
+    fr('En az sapma', numIn('hmG', '', {min: 0, placeholder: 'oto', title: 'İsteğe bağlı, kanalın biriminde: yerel medyandan bundan az sapan nokta seçilmez (küçük gürültü dalgalanmaları korunur). Boş: yalnız σ eşiği'})),
     fr('Kapsam', selIn('hmScope', [['vis', 'Görünen aralık'], ['all', 'Tüm kanal']], 'vis')),
     h('div', {class: 'btns'}, btn('Bul ve seç', () => findOutliers('hampel'))),
-    h('div', {class: 'note'}, 'Yerel medyandan σ·MAD kadar uzak noktalar seçilir. Uygulamadan önce sonucu kırmızı olarak görürsünüz.')));
+    h('div', {class: 'note'}, 'Yerel medyandan σ·MAD kadar uzak noktalar seçilir (basamaklı / kuantalı veride MAD yerine en az veri adımı). Gerçek seviye değişimlerinin kenarı seçilmez. Yarı pencere, ardışık bozuk nokta sayısının en az iki katı olmalı. Uygulamadan önce sonucu kırmızı olarak görürsünüz.')));
   r.append(card('Diğer', h('div', {class: 'btns', style: 'margin-top:0'}, btn('NaN/Inf noktaları bul', () => findOutliers('nan')), btn('Aktif izdeki tüm silmeleri geri al', () => { const t = activeTrace(); if (t) restoreChannel(t.ch); }))));
   r.append(card('Silinen noktalar', h('div', {id: 'delInfo', class: 'note'}, '—')));
   return r;
@@ -169,7 +170,8 @@ async function findOutliers(kind) {
       const m = sv('thMode'), A = num('thA'), B = num('thB'); const lo = Math.min(A, B), hi = Math.max(A, B);
       for (let i = a; i < b; i++) { if (del && del[i]) continue; const v = d[i]; if (!isFinite(v)) continue; if (m === 'abs' ? Math.abs(v) > A : m === 'gt' ? v > A : m === 'lt' ? v < A : (v < lo || v > hi)) idx.push(i); }
     } else {
-      const f = await DSPW.run('hampelFlags', [d.subarray(a, b), Math.max(1, num('hmK') | 0), num('hmS'), del ? del.subarray(a, b) : null]);
+      const g = parseFloat($('#hmG') && $('#hmG').value);
+      const f = await DSPW.run('hampelFlags', [d.subarray(a, b), Math.max(1, num('hmK') | 0), num('hmS'), del ? del.subarray(a, b) : null, g > 0 ? g : 0, true]);
       for (const k of f) idx.push(k + a);
     }
     S.plot.sel = {axes: ax, type: 'idx', hits: idx.length ? [{tr, idx: Uint32Array.from(idx)}] : []}; S.plot.onSelect(S.plot.sel); S.plot.invalidate();

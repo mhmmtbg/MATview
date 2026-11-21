@@ -141,8 +141,8 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
 .dz.over{background:color-mix(in srgb,var(--accent) 22%,var(--panel))}
 #welcome{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--panel);z-index:3;text-align:center}
 .wbox{max-width:640px;padding:20px}.wbox h2{margin:0 0 4px;font-size:26px}
-.wcards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
-.wcard{display:flex!important;flex-direction:column;gap:6px;padding:18px 10px!important;border-radius:6px}.wcard b{font-size:14px}.wcard span:not(.ico){color:var(--muted);font-size:12px}.wcard .ic{width:28px;height:28px}
+.wcards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px auto;max-width:640px}
+.wcard{display:flex!important;flex-direction:column;justify-content:flex-start!important;gap:6px;padding:18px 10px!important;border-radius:6px}.wcard b{font-size:14px}.wcard span:not(.ico){color:var(--muted);font-size:12px}.wcard .ic{width:28px;height:28px}
 .wcard:hover{border-color:var(--accent)}
 #busycancel{margin-top:10px}
 
