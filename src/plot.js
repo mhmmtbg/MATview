@@ -98,7 +98,7 @@ class Plot {
     this.cv = canvas; this.opts = opts; this.mode = 'pan';
     this.axes = []; this.linkX = true; this.grid = true; this.legend = true; this.grms = {mode: 'off', dc: true};
     this.cursors = []; this.sel = null; this.playhead = null; this.hover = null;
-    this.cursorOpt = {snap: 'off', max: 12}; this.crosshair = false; this.hist = {back: [], fwd: []}; this._lastWheel = 0;
+    this.cursorOpt = {snap: 'off', max: 12}; this.crosshair = false; this.xpins = []; this.hist = {back: [], fwd: []}; this._lastWheel = 0;
     this.xBounds = null; this.dirty = true; this.dpr = window.devicePixelRatio || 1;
     this.onChange = opts.onChange || (() => {}); this.onSelect = opts.onSelect || (() => {}); this.onHover = opts.onHover || (() => {});
     this.onNeedData = opts.onNeedData || (() => {}); this.onDraw = opts.onDraw || (() => {});
@@ -251,7 +251,9 @@ class Plot {
     if (!this.axes.length) { ctx.fillStyle = T.muted; ctx.font = '14px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.fillText(this.opts.emptyText || 'Soldaki listeden bir kanalı çift tıklayın veya buraya sürükleyin', W / 2, H / 2); return; }
     this.layout(W, H);
     for (const ax of this.axes) { this.autoY(ax); this.drawAxes(ctx, ax, T, forExport); }
-    if (!forExport && this.crosshair && this.hoverX != null) this.drawCrosshair(ctx, T);
+    // sabitlenen izleme çizgileri: dışa aktarmada da çizilir
+    for (const xp of this.xpins) this.drawCrosshair(ctx, T, xp, true);
+    if (!forExport && this.crosshair && this.hoverX != null && !this.xpins.some(xp => this.axes.some(ax => Math.abs(this.xPx(ax, xp) - this.xPx(ax, this.hoverX)) < 2))) this.drawCrosshair(ctx, T);
     else if (!forExport && this.hoverX != null && this.axes.length > 1 && this.linkX) { ctx.save(); ctx.strokeStyle = T.muted; ctx.setLineDash([2, 3]); for (const ax of this.axes) { const x = this.xPx(ax, this.hoverX), r = ax.rect; if (x >= r.x && x <= r.x + r.w) { ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, r.y); ctx.lineTo(Math.round(x) + .5, r.y + r.h); ctx.stroke(); } } ctx.restore(); }
     this.drawOverlay(ctx, T, forExport);
   }
@@ -343,12 +345,12 @@ class Plot {
     let i = lowerBound(tr.x, x); if (i >= tr.x.length) i = tr.x.length - 1; if (i > 0 && Math.abs(tr.x[i - 1] - x) < Math.abs(tr.x[i] - x)) i--;
     return isFinite(tr.y[i]) ? {x: tr.x[i], y: tr.y[i]} : null;
   }
-  drawCrosshair(ctx, T) {
-    const x0 = this.hoverX;
+  drawCrosshair(ctx, T, xAt, pinned) {
+    const x0 = xAt != null ? xAt : this.hoverX;
     for (const ax of this.axes) {
       const r = ax.rect, X = this.xPx(ax, x0); if (!(X >= r.x && X <= r.x + r.w)) continue;
       ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
-      ctx.strokeStyle = T.muted; ctx.setLineDash([2, 3]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(Math.round(X) + .5, r.y); ctx.lineTo(Math.round(X) + .5, r.y + r.h); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = pinned ? T.fg : T.muted; ctx.setLineDash(pinned ? [5, 3] : [2, 3]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(Math.round(X) + .5, r.y); ctx.lineTo(Math.round(X) + .5, r.y + r.h); ctx.stroke(); ctx.setLineDash([]);
       const rows = [];
       for (const tr of ax.traces) {
         if (!tr.visible || tr.noLegend) continue; const v = this.valueAt(tr, ax, x0); if (!v) continue;
@@ -544,8 +546,22 @@ class Plot {
     } else if (d.kind === 'lasso') {
       if (d.pts.length < 4) { this.sel = null; this.onSelect(null); this.invalidate(); return; }
       this.makeSelection({axes: ax, type: 'lasso', poly: d.pts.map(p => [this.pxX(ax, p[0]), this.pxY(ax, p[1])])});
-    } else if (d.kind === 'pan') { this.onChange('view'); }
+    } else if (d.kind === 'pan') {
+      // İzleme açıkken sürüklemeden tık: o konuma izleme çizgisi sabitlenir (çizginin üstüne tık: kaldırılır)
+      if (this.crosshair && !d.moved && d.btn === 0 && d.zone === 'plot') this.togglePin(ax, d.x0); else this.onChange('view');
+    }
     this.invalidate();
+  }
+  togglePin(ax, px) {
+    const k = this.xpins.findIndex(x => Math.abs(this.xPx(ax, x) - px) <= 5);
+    if (k >= 0) this.xpins.splice(k, 1);
+    else {   // en yakın örneğin zamanına oturtulur (değer kutusundaki konum yuvarlak çıkar)
+      let x = this.pxX(ax, px); const tr = ax.traces.find(t => t.visible && !t.noLegend); const v = tr && this.valueAt(tr, ax, x);
+      if (v && Math.abs(this.xPx(ax, v.x) - px) <= 4) x = v.x;
+      this.xpins.push(x); if (this.xpins.length > 8) this.xpins.shift();
+    }
+    this.invalidate(); this.onChange('pin');
+    return k < 0;
   }
   // en yakın örneği bul ve imleç yerleştir
   // ci: değiştirilecek imleç sırası (-1 → tek imleç; cursors.length → yeni imleç)

@@ -52,6 +52,9 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.37', d: 'Sabit izleme çizgisi', items: [
+    'İzleme (X) açıkken grafiğe tıklamak o konuma izleme çizgisi sabitler (en yakın örneğe oturur); çizgi tüm alt grafiklerde değer kutularıyla kalır ve PNG / SVG / rapor çıktısında görünür. En çok 8 çizgi; çizginin üstüne yeniden tıklamak kaldırır, İzleme kapanınca hepsi kalkar. Sürükleyerek kaydırma çizgi eklemez.'
+  ]},
   {v: '2.36', d: 'Sağ panel: dikey simge çubuğu', items: [
     'Sağ panelin sekmeleri sağ kenarda dikey bir simge çubuğunda durur; kullanılmadığında panel yalnız bu çubuk kadar yer kaplar ve grafik genişler.',
     'Simgeye tıklamak paneli o sekmeyle açar; açık sekmenin simgesine, panel başlığındaki » düğmesine tıklamak ya da Ctrl+Shift+B yeniden simge durumuna küçültür. Bir işlem sekme açtığında (ör. grafikten Spektrum) panel kendiliğinden açılır. Son durum hatırlanır.',
