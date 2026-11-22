@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.39', d: 'İmleç yakalama düzeltmesi', items: [
+    'İmleç “Yakala” (tepe / çukur) açıkken düz ya da basamaklı çizgilerde imleç, gözle görülmeyen tek basamaklık kıpırtılara 14 piksele kadar kayıyordu. Artık yalnız en az 3 piksel belirgin tepe / çukura yakalar; değilse tıklanan yerde kalır. Eşit değerli düz tepelerde tıklanan yere en yakın örnek seçilir.',
+    'Alt+tık: yakalama açıkken de imleci tam tıklanan yere koyar.'
+  ]},
   {v: '2.38', d: 'Hampel düzeltmesi, giriş ekranı', items: [
     'Temizle › Hampel: basamaklı / kuantalı veride (uzun süre aynı değer) pencere MAD’ı sıfır çıktığında hiçbir nokta seçilmiyordu; artık ölçek en az veri adımından alınır. Gerçek seviye değişimlerinin kenarı seçilmez. Yeni “En az sapma” alanı: bundan küçük dalgalanmalar korunur. Varsayılanlar: yarı pencere 10, eşik 5σ.',
     'Giriş ekranındaki seçenekler 3 × 2 düzende, simetrik.'

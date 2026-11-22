@@ -495,7 +495,7 @@ class Plot {
       let ci = -1, bd = 9;
       this.cursors.forEach((c, k) => { if (c.axes !== ax) return; const d = Math.abs(this.xPx(ax, c.x) - px); if (d < bd) { bd = d; ci = k; } });
       if (ci < 0) ci = e.shiftKey && this.cursors.length ? Math.min(this.cursors.length, (this.cursorOpt.max || 12) - 1) : -1;
-      this.drag.ci = ci; this.placeCursor(ax, px, py, ci);
+      this.drag.ci = ci; this._noSnap = e.altKey; this.placeCursor(ax, px, py, ci);
     }
   }
   _move(e) {
@@ -526,7 +526,7 @@ class Plot {
       this.invalidate(); this.onChange('view');
     } else if (d.kind === 'rubber') { d.x1 = Math.min(Math.max(px, r.x), r.x + r.w); d.y1 = Math.min(Math.max(py, r.y), r.y + r.h); this.invalidate(); }
     else if (d.kind === 'lasso') { d.pts.push([Math.min(Math.max(px, r.x), r.x + r.w), Math.min(Math.max(py, r.y), r.y + r.h)]); this.invalidate(); }
-    else if (d.kind === 'cursor') { this.placeCursor(ax, px, py, d.ci); }
+    else if (d.kind === 'cursor') { this._noSnap = e.altKey; this.placeCursor(ax, px, py, d.ci); }
   }
   _up(e) {
     const d = this.drag; if (!d) return; this.drag = null; this.cv.style.cursor = '';
@@ -574,7 +574,7 @@ class Plot {
     }
     if (!best) return;
     const cur = {axes: ax, tr: best.tr, x: best.x, y: best.y, i: best.i};
-    const snap = this.cursorOpt.snap; if (snap && snap !== 'off') this.snapCursor(cur, px, py, snap);
+    const snap = this.cursorOpt.snap; if (snap && snap !== 'off' && !this._noSnap) this.snapCursor(cur, px, py, snap);   // Alt+tık: yakalamasız
     if (ci < 0) this.cursors = [cur]; else this.cursors[ci] = cur;
     this.cursors = this.cursors.filter(Boolean);
     this.invalidate(); this.onChange('cursor');
@@ -586,11 +586,17 @@ class Plot {
     if (tr.kind === 'ts') { const ch = tr.ch; if (!ch.data) return; a = Math.max(0, Math.floor(ch.timeIdx(xa))); b = Math.min(ch.n - 1, Math.ceil(ch.timeIdx(xb))); get = i => (ch.del && ch.del[i]) ? NaN : ch.data[i]; tx = i => ch.t(i); }
     else if (tr.x && !tr.bars) { a = Math.max(0, lowerBound(tr.x, xa) - 1); b = Math.min(tr.x.length - 1, lowerBound(tr.x, xb)); get = i => tr.y[i]; tx = i => tr.x[i]; }
     else return;
+    // eşit uçlardan tıklanan noktaya en yakını (düz tepe / taban kenara kaymasın)
+    const xc = this.pxX(ax, px), closer = (i, j) => Math.abs(tx(i) - xc) < Math.abs(tx(j) - xc);
     let imx = -1, imn = -1;
-    for (let i = a; i <= b; i++) { const v = get(i); if (!isFinite(v)) continue; if (imx < 0 || v > get(imx)) imx = i; if (imn < 0 || v < get(imn)) imn = i; }
+    for (let i = a; i <= b; i++) { const v = get(i); if (!isFinite(v)) continue;
+      if (imx < 0 || v > get(imx) || (v === get(imx) && closer(i, imx))) imx = i; if (imn < 0 || v < get(imn) || (v === get(imn) && closer(i, imn))) imn = i; }
     if (imx < 0) return;
     let i = mode === 'peak' ? imx : mode === 'valley' ? imn : null;
     if (i == null) { const yv = tr.yr ? this._r(ax, () => this.pxY(ax, py)) : this.pxY(ax, py); i = Math.abs(get(imx) - yv) <= Math.abs(get(imn) - yv) ? imx : imn; }
+    // yalnız görünür tepe / çukura yakala: tıklanan örnekten en az 3 px yüksek / alçak değilse imleç tıklanan yerde kalır
+    const ypx = v => tr.yr ? this._r(ax, () => this.yPx(ax, v)) : this.yPx(ax, v);
+    if (Math.abs(ypx(get(i)) - ypx(c.y)) < 3) return;
     c.i = i; c.x = tx(i); c.y = get(i); c.snap = i === imx ? 'peak' : 'valley';
   }
   // imleç ölçümleri: ardışık çiftler için Δ, eğim, alan (yamuk), RMS, ortalama, min/maks; x / x₁ (harmonik oranı)

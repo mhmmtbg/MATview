@@ -52,7 +52,7 @@ function renderCursorPanel(P) {
   cpanPlace(P, pn);
   pn.classList.remove('hidden');
   const st = P.cursorStats(), xn = P.opts.xName || 't', xu = xn === 't' ? ' s' : xn === 'f' ? ' Hz' : '';
-  const sel = h('select', {title: 'İmleç yakalama: tıklanan noktanın ±14 px çevresindeki tepe / çukur', onchange: e => setSnap(e.target.value)}, ...SNAP_MODES.map(([v, t]) => h('option', {value: v, selected: P.cursorOpt.snap === v ? '' : null}, t)));
+  const sel = h('select', {title: 'İmleç yakalama: tıklanan noktanın ±14 px çevresindeki görünür tepe / çukur (en az 3 px). Alt+tık: yakalamadan tam tıklanan yere', onchange: e => setSnap(e.target.value)}, ...SNAP_MODES.map(([v, t]) => h('option', {value: v, selected: P.cursorOpt.snap === v ? '' : null}, t)));
   const fl = CPAN.mode === 'float';
   const head = h('div', {class: 'cph', title: fl ? 'Başlıktan tutup taşıyın' : ''}, h('b', {}, 'İmleçler' + (P.cursors.length ? ' (' + P.cursors.length + ')' : '')), sel,
     h('button', {class: 'ib noic', title: CPAN.min ? 'Ölçümleri göster' : 'Yalnız başlık (küçült)', onclick: () => { CPAN.min = !CPAN.min; CPAN.save(); cpanAll(); }}, CPAN.min ? '▸' : '▾'),
