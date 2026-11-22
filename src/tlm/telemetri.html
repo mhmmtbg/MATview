@@ -3216,22 +3216,16 @@ async function writeCsv(u, sink, fname, tick) {
 
 var MAT_CLS = { f64: [6, 9, 8], u64: [15, 13, 8], i64: [14, 12, 8], bytes: [9, 2, 1] };
 function pad8(n) { return Math.ceil(n / 8) * 8; }
-async function writeMat(u, sink, fname, tick, log) {
+async function writeMat(u, sink, fname, tick, log, Tper) {
   var w = await sink.open(fname);
   var hdr = new Uint8Array(128);
   var text = 'MATLAB 5.0 MAT-file, Platform: JS, Created on: ' + new Date().toUTCString() + ' by Cerceve Cozucu';
   for (var i = 0; i < 116; i++) hdr[i] = i < text.length ? (text.charCodeAt(i) & 0x7f) : 32;
   hdr[124] = 0x00; hdr[125] = 0x01; hdr[126] = 0x49; hdr[127] = 0x4D;
   await w.write(hdr);
-  var used = new Set(), vars = [];
-  if (u.counterCol && u.counterCol.n) vars.push({ name: 'frame_counter', cols: [u.counterCol] });
-  u.groups.forEach(function (g) {
-    var cs = g.cols, c0 = cs[0];
-    if (c0.kind === 'bytes') { vars.push({ name: g.name, cols: [c0], bytes: true }); return; }
-    var same = cs.every(function (c) { return c.kind === c0.kind && c.n === c0.n; });
-    if (same) vars.push({ name: g.name, cols: cs });
-    else cs.forEach(function (c) { vars.push({ name: c.name, cols: [c] }); });
-  });
+  // değişkenler tek .mat'teki birim yapısıyla aynı: t (s, kayıp çerçeveler dahil), frame_counter, parametreler,
+  // kendi zamanı olan (koşullu / akış) parametreler için <ad>_t — MATView ve MATLAB'da zaman çözümdekiyle aynı olur
+  var used = new Set(), vars = unitFields(u, Tper || 0.01).map(function (f) { return { name: f.name, cols: f.cols, bytes: !!f.bytes, scale: f.scale }; });
   var pfo = []; vars.forEach(function (v) { if (!v.bytes) Array.prototype.push.apply(pfo, v.cols); });
   var pf = new Prefetch(pfo);
   for (var vi = 0; vi < vars.length; vi++) {
@@ -3256,8 +3250,9 @@ async function writeMat(u, sink, fname, tick, log) {
       for (var ci = 0; ci < v.cols.length; ci++) {
         var col = v.cols[ci];
         await pf.ensure(col);
-        for (var k = 0; k < col.chunks.length; k++) await w.write(await col.rawChunk(k));
-        col.pre = null;
+        if (v.scale) for (var k = 0; k < col.chunks.length; k++) { var vv = await col.chunk(k), o = new Float64Array(vv.length); for (var a = 0; a < vv.length; a++) o[a] = vv[a] * v.scale; await w.write(new Uint8Array(o.buffer)); }
+        else for (k = 0; k < col.chunks.length; k++) await w.write(await col.rawChunk(k));
+        col.pre = null; col.release();
         tick(col.n);
       }
     } else {
@@ -3351,10 +3346,12 @@ function unitFields(u, T) {
   u.groups.forEach(function (g) {
     var cs = g.cols.filter(function (c) { return c.n > 0; }), c0 = cs[0];
     if (!c0) return;
-    if (c0.kind === 'bytes') { add(g.name, [c0], { bytes: true }); if (c0.tc) add(g.name + '_t', [c0.tc], { scale: T }); return; }
+    if (c0.kind === 'bytes') { add(g.name, [c0], { bytes: true }); if (c0.tc && c0.tc.n === c0.n) add(g.name + '_t', [c0.tc], { scale: T }); return; }
     var same = cs.length === g.cols.length && cs.every(function (c) { return c.kind === c0.kind && c.n === c0.n; });
-    if (same) { add(g.name, cs); if (c0.tc) add(g.name + '_t', [c0.tc], { scale: T }); }
-    else cs.forEach(function (c) { add(c.name, [c]); if (c.tc) add(c.name + '_t', [c.tc], { scale: T }); });
+    // <ad>_t yalnız sütunla aynı uzunluktaysa (dosya kipinde koşullu sütunlar çerçeve sayısına doldurulur: zamanı birimin t'si)
+    var ownT = function (c) { return c.tc && c.tc.n === c.n; };
+    if (same) { add(g.name, cs); if (ownT(c0)) add(g.name + '_t', [c0.tc], { scale: T }); }
+    else cs.forEach(function (c) { add(c.name, [c]); if (ownT(c)) add(c.name + '_t', [c.tc], { scale: T }); });
   });
   out.forEach(function (f) {
     var c0 = f.cols[0], cls = f.bytes ? MAT_CLS.bytes : MAT_CLS[c0.kind];
@@ -3956,7 +3953,7 @@ async function runJob(job, post) {
   var cntMaxGap = Math.max(100, Math.round((+S.counterMaxGapSec > 0 ? +S.counterMaxGapSec : 10) / Math.max(1e-6, framePeriodSec(S))));
   /* MATView: collect = sonuçları dosyaya yazmadan geçici depoda tut (oturum), MATView kanalları istedikçe okur.
      wantT: satır zamanları (çerçeve sırası, kayıp çerçeveler dahil) ve koşullu / undersample sütunların kendi zamanları tutulur. */
-  var collect = !!job.collect, wantT = collect || !!S.singleMat, Tper = framePeriodSec(S), tF = 0, firstFrame = true; var tcUpgraded = 0, cntSuspect = null;
+  var collect = !!job.collect, wantT = collect || !!S.singleMat || !!S.matEnabled, Tper = framePeriodSec(S), tF = 0, firstFrame = true; var tcUpgraded = 0, cntSuspect = null;
   if (cntEnabled) {
     var ctp = parseType(S.counterType);
     if (!ctp || ctp.kind !== 'int' || ctp.bits % 8) throw new Error('Çerçeve sayacı veri tipi geçersiz');
@@ -4342,7 +4339,7 @@ async function runJob(job, post) {
     curFile = b2 + '.csv'; tick(0);
     await writeCsv(u, sink, b2 + '.csv', tick);
     written.push(b2 + '.csv');
-    if (mat) { curFile = b2 + '.mat'; await writeMat(u, sink, b2 + '.mat', tick, log); written.push(b2 + '.mat'); }
+    if (mat) { curFile = b2 + '.mat'; await writeMat(u, sink, b2 + '.mat', tick, log, Tper); written.push(b2 + '.mat'); }
     log('BİLGİ', b2 + ': ' + maxN + ' satır (en uzun sütun), ' + u.cols.length + ' sütun yazıldı');
   }
   if (S.singleMat && outUnits.length) {

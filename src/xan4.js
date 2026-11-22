@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.41', d: 'Telemetri .mat çıktısında zaman', items: [
+    'Telemetri “Çöz” ile yazılan birim başına .mat dosyalarında zaman vektörü yoktu (yalnız frame_counter); MATView ya da MATLAB’da açınca zaman varsayılan örneklemeden hesaplanıp çözümden farklı çıkıyordu. Artık her .mat’e “t” (s, kayıp çerçeveler dahil) ve kendi zamanı olan parametreler için “<ad>_t” yazılır; MATView’de açınca zaman çözümdekiyle birebir aynıdır.',
+    'Çerçeve sayısına doldurulan koşullu sütunlar için uzunluğu uymayan “<ad>_t” yazılmaz (zamanları birimin t’sidir).'
+  ]},
   {v: '2.40', d: 'Yüzen pencereler', items: [
     'İmleç paneli “ayrı pencere” (⧉) yapılınca kamera / canlı dinleme penceresinin arkasında açılıp kayboluyordu. Artık açık yüzen pencerenin soluna yerleşir ve önde açılır; üst üste binen yüzen pencerelerden tıklanan öne gelir.',
     'Kamera ve canlı dinleme pencereleri sağdaki simge çubuğunun üstüne binmez; açılır menüler ve iletişim kutuları yüzen pencerelerin önünde kalır.'
