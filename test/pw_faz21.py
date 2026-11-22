@@ -24,8 +24,13 @@ async def main():
         ok(r[0] and r[1] == 'center' and r[2] and r[3] < h0, 'panel grafiğin altında, grafik kısalmalı: ' + str(r))
         await pg.evaluate("(() => { const ax = S.plot.axes[0], tr = ax.traces[0]; S.plot.cursors = [{axes: ax, tr, x: 0.5, y: 0, i: 500}, {axes: ax, tr, x: 1.5, y: 0, i: 1500}]; S.plot.invalidate(); renderCursorPanel(S.plot); })()")
         ok('C1 → C2' in await pg.inner_text('.curpanel'), 'ölçümler')
-        # ayrı pencere
+        # ayrı pencere — v2.40: açık bir yüzen pencerenin (kamera, canlı dinleme) altında kalmaz
+        await pg.evaluate("(() => { const w = h('div', {class: 'la-win', id: 'sahteWin'}); w.style.cssText = 'right:68px;top:96px;width:420px;height:400px'; document.body.append(w); })()")
         await pg.click('.curpanel button[title^="Ayrı pencere"]'); await pg.wait_for_timeout(200)
+        vis = await pg.evaluate("(() => { const r = document.querySelector('.curpanel').getBoundingClientRect(), o = document.querySelector('#sahteWin').getBoundingClientRect(), t = document.elementFromPoint(r.left + 20, r.top + 8); return [!!(t && t.closest('.curpanel')), r.right <= o.left + 1]; })()")
+        ok(vis == [True, True], 'ayrı pencere yüzen pencerenin altında kalmamalı: ' + str(vis))
+        await pg.click('#sahteWin', position={'x': 10, 'y': 10}); ok(await pg.evaluate("document.querySelector('#sahteWin').classList.contains('float-front')"), 'tıklanan yüzen pencere öne gelmeli')
+        await pg.evaluate("document.querySelector('#sahteWin').remove(); 0")
         r = await pg.evaluate("(() => { const p = document.querySelector('.curpanel'); return [p.classList.contains('float'), p.parentElement === document.body, getComputedStyle(p).position]; })()")
         ok(r == [True, True, 'fixed'], 'ayrı pencere: ' + str(r))
         hd = await pg.locator('.curpanel .cph').bounding_box()

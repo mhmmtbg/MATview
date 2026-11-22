@@ -93,11 +93,11 @@ input[type=color]{width:24px;height:20px;padding:0;border:1px solid var(--border
 #busy{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:50}
 .busybox{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:16px 22px;min-width:300px}
 .bar{height:6px;background:var(--hover);border-radius:3px;margin-top:10px;overflow:hidden}.bar div{height:100%;width:0;background:var(--accent)}
-#modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:60}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:75}
 .mbox{background:var(--panel);border:1px solid var(--border);border-radius:6px;width:min(860px,94vw);max-height:88vh;display:flex;flex-direction:column}
 .mh{display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)}.mh b{flex:1}.mh button{border:none;background:none;font-size:18px;line-height:1}
 #mbody{padding:12px 14px;overflow:auto}#mfoot{padding:10px 14px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
-#toast{position:fixed;left:300px;bottom:2px;background:var(--fg);color:var(--bg);padding:4px 12px;border-radius:4px;z-index:70;max-width:min(60vw,720px);font-size:13px;display:flex;align-items:center;gap:8px}
+#toast{position:fixed;left:300px;bottom:2px;background:var(--fg);color:var(--bg);padding:4px 12px;border-radius:4px;z-index:90;max-width:min(60vw,720px);font-size:13px;display:flex;align-items:center;gap:8px}
 .tact{background:none;border:1px solid currentColor;color:inherit;padding:0 8px;border-radius:3px}.tact:hover{background:none;text-decoration:underline}
 table.kv{border-collapse:collapse;width:100%}table.kv td,table.kv th{border-bottom:1px solid var(--border);padding:4px 6px;text-align:left}
 kbd{border:1px solid var(--border);border-radius:3px;padding:0 4px;font-size:12px;background:var(--bg)}
@@ -116,7 +116,7 @@ button:has(.ico){display:inline-flex;align-items:center;gap:6px;justify-content:
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;border-radius:2px}
 .dd{position:relative}
-.ddm{position:absolute;top:calc(100% + 4px);left:0;z-index:40;background:var(--panel);border:1px solid var(--border);border-radius:5px;min-width:260px;padding:4px;display:flex;flex-direction:column;gap:2px}
+.ddm{position:absolute;top:calc(100% + 4px);left:0;z-index:68;background:var(--panel);border:1px solid var(--border);border-radius:5px;min-width:260px;padding:4px;display:flex;flex-direction:column;gap:2px}
 .ddm.right{left:auto;right:0}
 .ddm button{border:none;background:none;text-align:left;justify-content:flex-start;padding:6px 10px}
 .ddm button:hover{background:var(--hover)}
@@ -303,7 +303,7 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 
 .lrow .yr{font-size:9px;font-weight:700;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:0 2px;margin-left:3px}
 .curpanel{background:var(--panel);font-size:11px}
-.curpanel.float{position:fixed;z-index:60;min-width:210px;max-width:320px;max-height:60vh;overflow:auto;border:1px solid var(--border);border-radius:6px}
+.curpanel.float{position:fixed;z-index:64;min-width:210px;max-width:320px;max-height:60vh;overflow:auto;border:1px solid var(--border);border-radius:6px}
 .curpanel.float .cph{cursor:move;user-select:none}
 .curpanel.dock{flex:none;border-top:1px solid var(--border);max-height:170px;overflow:auto}.curpanel.dock .cph select{max-width:180px}
 .curpanel.dock .cpb{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:flex-start}.curpanel.dock .cpt{width:auto}.curpanel.dock .cpp{margin-top:0;border-top:none;border-left:1px dashed var(--border);padding:0 0 0 10px;min-width:150px}
@@ -367,7 +367,7 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 #toolbar button{white-space:nowrap;flex:none}#toolbar.compact .lbl{display:none}#toolbar.compact{gap:2px;overflow-x:auto;scrollbar-width:none}#toolbar.compact::-webkit-scrollbar{display:none}#toolbar.compact button{padding:4px 4px}#toolbar.compact .sep{margin:0 2px}
 #viewbar.compact>button{font-size:0;padding-left:7px;padding-right:7px}#viewbar.compact>button svg{margin:0}
 /* açılır menü (Lejant / Düzen) — düz görünüm */
-.popm{position:fixed;z-index:60;min-width:260px;max-width:min(380px,96vw);background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;display:flex;flex-direction:column;gap:7px}
+.popm{position:fixed;z-index:68;min-width:260px;max-width:min(380px,96vw);background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;display:flex;flex-direction:column;gap:7px}
 .popm .pmh{font-weight:600;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .popm .pmrow{display:flex;align-items:center;gap:8px;justify-content:space-between}.popm .pml{color:var(--muted);white-space:nowrap}
 .popm .pmseg{display:flex;flex-wrap:wrap;gap:0}.popm .pmseg button{padding:2px 8px;font-size:12px;border-radius:0;margin-left:-1px}.popm .pmseg button:first-child{border-radius:4px 0 0 4px;margin-left:0}.popm .pmseg button:last-child{border-radius:0 4px 4px 0}
@@ -394,7 +394,7 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .codeprobs .lpd{width:8px;height:8px;border-radius:50%;flex:none;background:#e5484d}.codeprobs .lpi.w .lpd{background:#d29a00}.codeprobs .lpi.i .lpd{background:var(--accent)}
 .codeprobs .lpn{color:var(--muted);flex:none;min-width:5.5em;font-variant-numeric:tabular-nums}
 /* canlı dinle penceresi (sade: kenarlık, gölge yok) */
-.la-win{position:fixed;right:16px;top:96px;z-index:70;width:404px;background:var(--panel);border:1px solid var(--border);border-radius:6px;display:flex;flex-direction:column;max-height:calc(100vh - 110px)}
+.la-win{position:fixed;right:68px;top:96px;z-index:64;width:404px;background:var(--panel);border:1px solid var(--border);border-radius:6px;display:flex;flex-direction:column;max-height:calc(100vh - 110px)}
 .la-h{display:flex;align-items:baseline;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);cursor:move;user-select:none}
 .la-sub{font-size:11px;color:var(--muted)}.la-flex{flex:1}
 .la-x{border:none;background:none;font-size:16px;line-height:1;padding:0 4px}
@@ -438,6 +438,9 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
 .rhead b{flex:1;font-size:13px}.rhead button{border:none;background:none;padding:0 6px;font-size:15px;color:var(--muted)}
 #app.railR .rmain,#app.railR #right>.split{display:none}
 @media (max-width:1100px){#app{grid-template-columns:var(--lw,250px) 1fr var(--rw,392px)}}
+
+/* yüzen pencereler (kamera, canlı dinleme, imleç paneli): tıklanan öne gelir */
+.float-front{z-index:66!important}
 </style>
 </head>
 <body>
@@ -8038,7 +8041,7 @@ async function qualAuto(files) {
 }
 
 /* ===== Faz 2: Test sekmesi — faz tablosu (B1), şartname uygunluk + şablonlar (B2), hesap kaydı (A2) ===== */
-const APP_VER = '2.39';
+const APP_VER = '2.40';
 function logOp(op, detail) { (S.methodLog = S.methodLog || []).push(Object.assign({t: Date.now(), op}, detail || {})); }
 
 /* ---------- Faz tablosu (düzenlenebilir) ---------- */
@@ -8477,6 +8480,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.40', d: 'Yüzen pencereler', items: [
+    'İmleç paneli “ayrı pencere” (⧉) yapılınca kamera / canlı dinleme penceresinin arkasında açılıp kayboluyordu. Artık açık yüzen pencerenin soluna yerleşir ve önde açılır; üst üste binen yüzen pencerelerden tıklanan öne gelir.',
+    'Kamera ve canlı dinleme pencereleri sağdaki simge çubuğunun üstüne binmez; açılır menüler ve iletişim kutuları yüzen pencerelerin önünde kalır.'
+  ]},
   {v: '2.39', d: 'İmleç yakalama düzeltmesi', items: [
     'İmleç “Yakala” (tepe / çukur) açıkken düz ya da basamaklı çizgilerde imleç, gözle görülmeyen tek basamaklık kıpırtılara 14 piksele kadar kayıyordu. Artık yalnız en az 3 piksel belirgin tepe / çukura yakalar; değilse tıklanan yerde kalır. Eşit değerli düz tepelerde tıklanan yere en yakın örnek seçilir.',
     'Alt+tık: yakalama açıkken de imleci tam tıklanan yere koyar.'
@@ -14539,7 +14546,7 @@ const LAUD = (() => {
     if (!win) build();
     tlmEnsure();
     tlmCall(() => { signals(); ui(); });
-    win.classList.remove('hidden'); signals(); ui();
+    win.classList.remove('hidden'); if (typeof floatFront === 'function') floatFront(win); signals(); ui();
     if (!timer) { const iv = setInterval(() => { if (!win || win.classList.contains('hidden') || A) { clearInterval(iv); return; } status(); }, 1000); }
   }
   return {open, stop, start, D, get state() { return A; }, get cfg() { return cfg; }};
@@ -14660,7 +14667,7 @@ const CAMV = (() => {
     cur = {f, v}; q('.cv-t').textContent = v.name || 'Kamera'; q('.cv-sub').textContent = [v.rec || (f && f.name) || '', v.summary || ''].filter(Boolean).join(' · ');
     q('.cv-st').textContent = '';
     if (vid.src !== v.url) vid.src = v.url;
-    win.classList.remove('hidden'); watchCursor(); hookPlot();
+    win.classList.remove('hidden'); watchCursor(); hookPlot(); if (typeof floatFront === 'function') floatFront(win);
     if (v.sync && S.view !== 'time' && S.plot.axes.length) switchView('time');   // konum çizgisi Zaman grafiğinde
     const p = vid.play(); if (p && p.catch) p.catch(() => {});
   }
@@ -14700,14 +14707,29 @@ const CPAN = {mode: 'dock', min: false, pos: null,
   load() { try { const o = JSON.parse(localStorage.getItem('mv.cpan') || '{}'); this.mode = o.mode === 'float' ? 'float' : 'dock'; this.min = !!o.min; this.pos = o.pos || null; } catch (_) {} },
   save() { try { localStorage.setItem('mv.cpan', JSON.stringify({mode: this.mode, min: this.min, pos: this.pos})); } catch (_) {} }};
 CPAN.load();
+// yüzen pencereler üst üste binince tıklanan / yeni açılan öne gelir
+function floatFront(w) { for (const e of document.querySelectorAll('.float-front')) if (e !== w) e.classList.remove('float-front'); if (w) w.classList.add('float-front'); }
+document.addEventListener('pointerdown', e => { const w = e.target.closest && e.target.closest('.la-win, .curpanel.float'); if (w) floatFront(w); }, true);
+// imleç paneli ilk kez ayrı pencere olunca açık bir yüzen pencerenin (kamera, canlı dinleme) altına düşmesin: onun soluna yerleşir
+function cpanFreeSpot(w, h, x, y) {
+  const r0 = {l: x, t: y, r: x + w, b: y + h};
+  for (const o of document.querySelectorAll('.la-win:not(.hidden)')) {
+    const r = o.getBoundingClientRect(); if (!r.width) continue;
+    if (r0.l < r.right && r0.r > r.left && r0.t < r.bottom && r0.b > r.top) { const nx = r.left - w - 10; if (nx >= 0) return {x: nx, y}; return {x, y: Math.min(innerHeight - 60, r.bottom + 10)}; }
+  }
+  return {x, y};
+}
 function cpanAll() { for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P && P._cpanel) { try { renderCursorPanel(P); } catch (_) {} } }
 function cpanPlace(P, pn) {
   const fl = CPAN.mode === 'float';
   pn.classList.toggle('float', fl); pn.classList.toggle('dock', !fl); pn.classList.toggle('min', CPAN.min);
   if (fl) {
-    if (pn.parentElement !== document.body) document.body.append(pn);
+    const fresh = pn.parentElement !== document.body;
+    if (fresh) document.body.append(pn);
     const p = CPAN.pos, st = $('#stage').getBoundingClientRect();
-    const x = p ? p.x : st.right - 320, y = p ? p.y : st.top + 40;
+    let x = p ? p.x : st.right - 320, y = p ? p.y : st.top + 40;
+    if (!p) ({x, y} = cpanFreeSpot(320, 260, x, y));
+    if (fresh) floatFront(pn);
     pn.style.left = Math.max(0, Math.min(innerWidth - 120, x)) + 'px'; pn.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
   } else {
     pn.style.left = pn.style.top = '';

@@ -205,7 +205,7 @@ const LAUD = (() => {
     if (!win) build();
     tlmEnsure();
     tlmCall(() => { signals(); ui(); });
-    win.classList.remove('hidden'); signals(); ui();
+    win.classList.remove('hidden'); if (typeof floatFront === 'function') floatFront(win); signals(); ui();
     if (!timer) { const iv = setInterval(() => { if (!win || win.classList.contains('hidden') || A) { clearInterval(iv); return; } status(); }, 1000); }
   }
   return {open, stop, start, D, get state() { return A; }, get cfg() { return cfg; }};

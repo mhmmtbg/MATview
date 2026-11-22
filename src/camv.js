@@ -113,7 +113,7 @@ const CAMV = (() => {
     cur = {f, v}; q('.cv-t').textContent = v.name || 'Kamera'; q('.cv-sub').textContent = [v.rec || (f && f.name) || '', v.summary || ''].filter(Boolean).join(' · ');
     q('.cv-st').textContent = '';
     if (vid.src !== v.url) vid.src = v.url;
-    win.classList.remove('hidden'); watchCursor(); hookPlot();
+    win.classList.remove('hidden'); watchCursor(); hookPlot(); if (typeof floatFront === 'function') floatFront(win);
     if (v.sync && S.view !== 'time' && S.plot.axes.length) switchView('time');   // konum çizgisi Zaman grafiğinde
     const p = vid.play(); if (p && p.catch) p.catch(() => {});
   }

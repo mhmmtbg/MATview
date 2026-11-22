@@ -21,14 +21,29 @@ const CPAN = {mode: 'dock', min: false, pos: null,
   load() { try { const o = JSON.parse(localStorage.getItem('mv.cpan') || '{}'); this.mode = o.mode === 'float' ? 'float' : 'dock'; this.min = !!o.min; this.pos = o.pos || null; } catch (_) {} },
   save() { try { localStorage.setItem('mv.cpan', JSON.stringify({mode: this.mode, min: this.min, pos: this.pos})); } catch (_) {} }};
 CPAN.load();
+// yüzen pencereler üst üste binince tıklanan / yeni açılan öne gelir
+function floatFront(w) { for (const e of document.querySelectorAll('.float-front')) if (e !== w) e.classList.remove('float-front'); if (w) w.classList.add('float-front'); }
+document.addEventListener('pointerdown', e => { const w = e.target.closest && e.target.closest('.la-win, .curpanel.float'); if (w) floatFront(w); }, true);
+// imleç paneli ilk kez ayrı pencere olunca açık bir yüzen pencerenin (kamera, canlı dinleme) altına düşmesin: onun soluna yerleşir
+function cpanFreeSpot(w, h, x, y) {
+  const r0 = {l: x, t: y, r: x + w, b: y + h};
+  for (const o of document.querySelectorAll('.la-win:not(.hidden)')) {
+    const r = o.getBoundingClientRect(); if (!r.width) continue;
+    if (r0.l < r.right && r0.r > r.left && r0.t < r.bottom && r0.b > r.top) { const nx = r.left - w - 10; if (nx >= 0) return {x: nx, y}; return {x, y: Math.min(innerHeight - 60, r.bottom + 10)}; }
+  }
+  return {x, y};
+}
 function cpanAll() { for (const P of [S.plot, S.specPlot, S.xyPlot]) if (P && P._cpanel) { try { renderCursorPanel(P); } catch (_) {} } }
 function cpanPlace(P, pn) {
   const fl = CPAN.mode === 'float';
   pn.classList.toggle('float', fl); pn.classList.toggle('dock', !fl); pn.classList.toggle('min', CPAN.min);
   if (fl) {
-    if (pn.parentElement !== document.body) document.body.append(pn);
+    const fresh = pn.parentElement !== document.body;
+    if (fresh) document.body.append(pn);
     const p = CPAN.pos, st = $('#stage').getBoundingClientRect();
-    const x = p ? p.x : st.right - 320, y = p ? p.y : st.top + 40;
+    let x = p ? p.x : st.right - 320, y = p ? p.y : st.top + 40;
+    if (!p) ({x, y} = cpanFreeSpot(320, 260, x, y));
+    if (fresh) floatFront(pn);
     pn.style.left = Math.max(0, Math.min(innerWidth - 120, x)) + 'px'; pn.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
   } else {
     pn.style.left = pn.style.top = '';

@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.40', d: 'Yüzen pencereler', items: [
+    'İmleç paneli “ayrı pencere” (⧉) yapılınca kamera / canlı dinleme penceresinin arkasında açılıp kayboluyordu. Artık açık yüzen pencerenin soluna yerleşir ve önde açılır; üst üste binen yüzen pencerelerden tıklanan öne gelir.',
+    'Kamera ve canlı dinleme pencereleri sağdaki simge çubuğunun üstüne binmez; açılır menüler ve iletişim kutuları yüzen pencerelerin önünde kalır.'
+  ]},
   {v: '2.39', d: 'İmleç yakalama düzeltmesi', items: [
     'İmleç “Yakala” (tepe / çukur) açıkken düz ya da basamaklı çizgilerde imleç, gözle görülmeyen tek basamaklık kıpırtılara 14 piksele kadar kayıyordu. Artık yalnız en az 3 piksel belirgin tepe / çukura yakalar; değilse tıklanan yerde kalır. Eşit değerli düz tepelerde tıklanan yere en yakın örnek seçilir.',
     'Alt+tık: yakalama açıkken de imleci tam tıklanan yere koyar.'
