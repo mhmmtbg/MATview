@@ -33,7 +33,7 @@ Dosyaların gelişi:
 **Dosya Çözümleme**: birden çok dosya (aynı kaydın parçaları / farklı kayıtlar / aynı kaydın kopyaları — sayaçla birleştirme), dosya başına çerçeve aralığı, ilerleme ve istatistik (çerçeve, atlanan bayt, kayıp çerçeve, tanımsız belirteç, undersample paket), işlem kaydı. Uzun işler İptal düğmesiyle (ya da Esc) durdurulur.
 - **Çöz ve MATView'de aç**: tüm parametreler MATView kanalı olur (sol panelde etiket/birim grupları). Veri dosyaya yazılmaz; kanal seçildikçe çözümü yapan arka plan işçisinin geçici deposundan okunur, böylece binlerce parametreli kayıtta bellekte yalnız çizilen kanallar tutulur. Dosya kapatılınca geçici depo da bırakılır.
 - **Çöz ve dosyalara yaz**: etiket başına CSV + MAT, ham veri `.bin`, video alanları için `.bin` + `.mp4`; Chrome/Edge'de seçilen klasöre, değilse ZIP. Her .mat dosyasında `t` (s, kayıp çerçeveler dahil), varsa `frame_counter` ve kendi zamanı olan parametreler için `ad_t` bulunur.
-- **Zaman ekseni**: `t = çerçeve sırası × çerçeve periyodu`. Çerçeve sırası sayaçtan bulunur, kayıp çerçeveler boşluk olarak kalır; oversample (`B2`, `60`) örnekler çerçeve içine eşit aralıkla yerleşir. Koşullu (multiplex, `if(...)`) ve undersample (stream) değişkenlerin her örneği geldiği çerçevenin zamanını taşır. MATView .mat açarken her kanalın zamanını `ad_t`, yapının `t` alanı ya da dosya düzeyindeki zaman değişkeninden alır; çözüm ile kaydedilen .mat aynı zamanı verir.
+- **Zaman ekseni**: `t = çerçeve sırası × çerçeve periyodu`. Çerçeve sırası sayaçtan bulunur, kayıp çerçeveler boşluk olarak kalır; oversample (`B2`, `32`) örnekler çerçeve içine eşit aralıkla yerleşir. Koşullu (multiplex, `if(...)`) ve undersample (stream) değişkenlerin her örneği geldiği çerçevenin zamanını taşır. MATView .mat açarken her kanalın zamanını `ad_t`, yapının `t` alanı ya da dosya düzeyindeki zaman değişkeninden alır; çözüm ile kaydedilen .mat aynı zamanı verir.
 
 **Tek .mat (tüm kayıt)**: *Çıktı ▸ Tek .mat dosyası* açıkken *Çöz ve dosyalara yaz* `kayit_tum.mat` da yazar; *Çöz ve MATView'de aç* sonrasında sonuç kartındaki **Tek .mat kaydet** ya da sol panelde dosyaya sağ tık **Tüm kaydı tek .mat olarak kaydet** ile alınır. Önce kaydedilecek yer seçilir, dosya bellekte tek parça hazırlanmadan doğrudan hedefe yazılır (ilerleme yüzdesi, İptal; iptalde yarım dosya silinir). `MATView.exe`'de Windows *Farklı kaydet* penceresi ve uygulamanın kendi yazıcısı kullanılır. Her etiket bir MATLAB yapısıdır: `OBC.temp`, `PSU.voltage` …; her yapıda `t` (s) ve varsa `frame_counter`, koşullu / undersample alanlar için `ad_t` bulunur. Çok elemanlı değişkenler N×eleman, byte array'ler uint8 matristir. Video alanları .mat'e girmez. Bir yapı MAT v5 sınırını (4 GB) aşarsa alanları `Etiket_ad` adıyla ayrı değişken yazılır. 1,5 GB ve üstü .mat dosyaları MATView'de parça parça okunur (yalnız değişken başlıkları; veri kanal çizilince).
 
@@ -43,7 +43,7 @@ Dosyaların gelişi:
 
 **Canlı dinle (akustik sensör)**: *Aç ▸ Canlı dinle* ayrı bir pencere açar; canlı ya da dosyadan oynatılan akıştaki bir akustik sensör (ya da herhangi bir parametre) gerçek zamanlı ses olarak dinlenir: süzgeçler, şebeke gürültüsü temizleme, spektrum.
 
-**Video / Kamera**: template'te `video` tipindeki alanlar (her çerçevede bir parça: `RTP0` + uzunluk + RTP paketi, H.264 RFC 6184 tek NAL / STAP-A / FU-A; parça sonundaki footer ve `0xAA` dolgu kendiliğinden bulunur; RTP yoksa düz H.264) MP4'e çözülür; kayıp paketli kareler atlanıp sonraki anahtar / I kareden devam edilir. *Çöz ve MATView'de aç* sonrasında kamera videoları sol panelde dosyanın **Kamera** grubunda listelenir; tıklanınca taşınabilir, boyutlanabilir **kamera penceresinde** oynar. Video kanal zamanıyla eşlenir (her karenin geldiği telemetri çerçevesinden): oynarken Zaman grafiğinde konum çizgisi ilerler (*Grafik izlesin* ile grafik kayar), çizgi sürüklenerek ya da grafiğe imleç konularak video sarılır, *İmlece git*, Shift+← / → (5 sn), Shift+Boşluk. Video özetinde kare sayısı, süre ve anahtar kare sıklığı yazar.
+**Video / Kamera**: template'te `video` tipindeki alanlar (her çerçevede bir parça: uzunluk önekli RTP paketleri, H.264 RFC 6184 tek NAL / STAP-A / FU-A; parça sonundaki dolgu ve ek baytlar kendiliğinden bulunur; RTP yoksa düz H.264) MP4'e çözülür; kayıp paketli kareler atlanıp sonraki anahtar / I kareden devam edilir. *Çöz ve MATView'de aç* sonrasında kamera videoları sol panelde dosyanın **Kamera** grubunda listelenir; tıklanınca taşınabilir, boyutlanabilir **kamera penceresinde** oynar. Video kanal zamanıyla eşlenir (her karenin geldiği telemetri çerçevesinden): oynarken Zaman grafiğinde konum çizgisi ilerler (*Grafik izlesin* ile grafik kayar), çizgi sürüklenerek ya da grafiğe imleç konularak video sarılır, *İmlece git*, Shift+← / → (5 sn), Shift+Boşluk. Video özetinde kare sayısı, süre ve anahtar kare sıklığı yazar.
 
 Kod: `src/tlm/telemetri.html` (modül: çekirdek `tp-core`, arayüz, canlı oynatma, video; `TPHost` köprüsü), `src/tlm.js` (MATView tarafı: görünüm, yönlendirmeler, kanal/zaman eşlemesi), `src/camv.js` (kamera penceresi), `src/aclive.js` (canlı dinleme), `launcher/live/` (seri port / UDP köprüsü). Testler: `test/make_tlm.js` (sentetik kayıt + ffmpeg varsa H.264 kamera), `test/t_tlm.js`, `test/val_tlm.py` (scipy), `test/pw_tlm.py`, `test/pw_faz*.py`.
 
@@ -66,14 +66,14 @@ Akış başlığı (Undersample Header) olmayan çerçevelerde "Düzeni otomatik
 
 | Ayar | Örnek | Anlamı |
 |---|---|---|
-| Sütun sayısı | 125 | Bir alt çerçevenin (satırın) bayt sayısı |
-| Satır sayısı | 100 | Ana çerçevedeki alt çerçeve sayısı |
+| Sütun sayısı | 160 | Bir alt çerçevenin (satırın) bayt sayısı |
+| Satır sayısı | 80 | Ana çerçevedeki alt çerçeve sayısı |
 | Sütun öncelikli | 1 | Index = sütun × satır sayısı + satır (MATLAB `X(:)` sırası) |
 | Senkron (hex) | C3 5A 69 96 | Ana çerçeve senkron kelimesi |
 | Senkron konumu | son / baş | Senkron çerçevenin sonunda mı başında mı |
 | Kayma | 0 | Senkron yoksa dosya başında atlanacak bayt |
 | Index tabanı | 0 | 0 ya da 1 |
-| Kare periyodu (ms) | 10 | Zaman ekseni |
+| Kare periyodu (ms) | 20 | Zaman ekseni |
 
 Not: **Byte Endian** sütunu boş bırakılan çok baytlı alanlar *little-endian* okunur. MATLAB'da `a*256+b` biçiminde birleştirilen alanlar için bu sütuna `big` yazın.
 
@@ -167,12 +167,12 @@ Telemetri görünümü tek panel: **üst çubukta** dosyadan canlı oynatma (▶
 
 ## Binary çerçeve şablonu
 `sablon/MATView_Cerceve_Sablonu.xlsx` (üreten: `test/make_template.py`): Nasıl Kullanılır / Çerçeve (160×80 = 12.800 bayt) / Senaryo / Alanlar / Türler sayfaları. `sablon/sablon_deneme.bin` şablonla uyumlu sentetik deneme verisidir (gerçek veri değildir). Test: `test/pw_sablon.py`.
-Ölçüm (sentetik, 12.800 bayt/kare, 700 sn): 10 Hz = 87,5 MB → çözme 0,2 sn; 50 Hz = 437,5 MB → 0,6 sn; çözülmüş alanların .mat çıktısı birkaç MB.
+Yüzlerce MB'lık sentetik kayıtlar saniyeler içinde çözülür; çözülmüş alanların .mat çıktısı birkaç MB'tır.
 
-Şablon sütun akışlıdır (80 satır × 160 sütun; 1. sütun = bayt 1-80). Alanlardaki `Periyot (kare)` / `Faz` sütunları karışık hızlı (4 ms / 8 ms) akışı destekler: çerçeve en hızlı alt sisteme göre tanımlanır, yavaş alanlar kendi zaman eksenleriyle okunur. 200 Hz × 700 sn = 1,75 GB dosya da çözüldü (≈2 sn, ≈1,8 GB bellek); 2 GB üstü dosyalar henüz desteklenmez.
+Şablon sütun akışlıdır (80 satır × 160 sütun; 1. sütun = bayt 1-80). Alanlardaki `Periyot (kare)` / `Faz` sütunları karışık hızlı (4 ms / 8 ms) akışı destekler: çerçeve en hızlı alt sisteme göre tanımlanır, yavaş alanlar kendi zaman eksenleriyle okunur.
 
 ## Büyük binary dosyalar ve ek analizler
-- 200 MB üstü binary dosyalar blok blok (File.slice) okunur; yalnız Alanlar sayfasında tanımlı alanlar çıkarılır (ham bayt kanalları yok). 2,65 GB dosya ≈3 sn, ≈70 MB bellek. Test: `test/pw_stream.py` (parçalı ve bütün okuma aynı sonucu verir).
+- 200 MB üstü binary dosyalar blok blok (File.slice) okunur; yalnız Alanlar sayfasında tanımlı alanlar çıkarılır (ham bayt kanalları yok). Birkaç GB'lık dosyalar düşük bellekle çözülür. Test: `test/pw_stream.py` (parçalı ve bütün okuma aynı sonucu verir).
 - Analiz sekmesi: oktav/1/3 oktav bant seviyeleri (Z/A/C ağırlık, genel seviye), SRS (Smallwood, mutlak ivme, Q ve nokta/oktav ayarlı), iki kanallı FRF (H1/H2, faz, koherans). Çekirdek: `src/dsp.js`, arayüz: `src/app8.js`, testler: `test/t_an.js` (analitik doğrulamalar), `test/pw_an.py`.
 
 ## Rapor, harmonik imleç, WAV, bit akışı
@@ -180,7 +180,7 @@ Telemetri görünümü tek panel: **üst çubukta** dosyadan canlı oynatma (▶
 - **Harmonik/yan-band imleçleri**: Analiz sekmesi; spektrum görünümünde k×f0 ve ±m×aralık çizgileri (PNG/SVG'ye de girer).
 - **WAV** (PCM 8/16/24/32, float 32/64, çok kanallı) açılır.
 - **TDMS** (NI LabVIEW/DAQ) açılır: grup/kanal ağacı, `wf_increment` ve `wf_start_offset` ile zaman ekseni, birim, çok segmentli / interleaved / big-endian dosyalar, string ve zaman damgası özellikleri. DAQmx ham veri biçimi desteklenmez. Test: `test/make_tdms.py`, `test/t_tdms.js`.
-- **Bit akışı alanı** (`ub`/`sb`, Bit="a-b"): bayta oturmayan paketli bit alanları için; şablonda örnek var.
+- **Bit akışı alanı** (`ub`/`sb`, Bit="a-b"): bayt sınırına oturmayan paketli bit alanları için; şablonda örnek var.
 
 ## MAT dışa aktarma ve Word raporu
 - **MAT**: soldaki ağaçta binary dosya adına / alt sisteme / kanala sağ tıklayın ya da Çıktı sekmesindeki "MAT dışa aktarma" kartını kullanın. Seçenekler: tek alt sistem (ham bayt matrisi uint8 kare×bayt + o alt sisteme ait çözülmüş alanlar, isteğe bağlı bayt aralığı "1-100, 250"), tüm binary tek .mat, her alt sistem ayrı .mat (tek .zip), seçilen kanallar (Ctrl/Shift ile) tek .mat. Büyük dosyada ham bayt parça parça okunur. Açık grafiğin CSV/MAT çıktısı Çıktı sekmesinde durur. Kod: `src/app10.js`, test: `test/pw_mat.py`.

@@ -1,4 +1,4 @@
-"""Sentetik örnek: 160x80 çerçeve tanımı (xlsx) + buna uygun binary dosya. Gerçek veri içermez."""
+"""Sentetik örnek: 80x160 çerçeve tanımı (xlsx) + buna uygun binary dosya. Gerçek veri içermez."""
 import random, struct, math, sys, os
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment

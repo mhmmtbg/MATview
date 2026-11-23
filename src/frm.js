@@ -387,7 +387,7 @@ const FRM = (() => {
         res.push({transpose: tr, shift: s0, votes: vt, exact: Math.floor(vt / 100), packets: per.reduce((a, x) => a + x.packets, 0), hit: per.filter(x => x.packets > 0).length, total: per.length, per, row: Math.floor(s0 / C) + 1, col: s0 % C + 1});
       }
     }
-    return res.sort((a, b) => b.hit - a.hit || b.exact - a.exact || b.packets - a.packets);
+    return res.sort((a, b) => b.hit - a.hit || b.packets - a.packets || b.exact - a.exact);   // doğru kaymada akış yuvaları kesintisiz birleşir → en çok paket
   }
   function frameInfo(size, L, skip) { const body = Math.max(0, size - (skip | 0)); return {frames: Math.floor(body / L), rest: body % L}; }
   return {settings, isSettingsSheet, layout, parseCols, createScanner, locate, gather, slotOf, autoLayout, parse, parseType, parseIndex, parseHex, compile, isFrameBook, coverage, plan, extractFrames, streamScan, streamPackets, applyFormula, compact, frameInfo, fold, MAXSEP, spans};

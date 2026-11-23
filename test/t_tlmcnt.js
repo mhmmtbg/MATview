@@ -15,7 +15,7 @@ async function rowT(b) {
 (async () => {
   const b0 = fs.readFileSync(D + 'kayit.bin'), b = Buffer.from(b0);
   let o = 0; for (let k = 0; k < 300; k++) { o += 12800; if (!(b[o] === 0xC3 && b[o + 1] === 0x5A)) o = b.indexOf(Buffer.from([0xC3, 0x5A]), o - 20); }
-  b[o + 124] ^= 0x5A; b[o + 125] ^= 0x3C;
+  b[o + 159] ^= 0x5A; b[o + 160] ^= 0x3C;
   const ref = await rowT(b0), bad = await rowT(b);
   console.log('özgün sıçramalar', JSON.stringify(ref), '· bozuk sayaçla', JSON.stringify(bad));
   if (JSON.stringify(ref) !== JSON.stringify(bad)) { console.log('HATA: bozuk sayaç zaman eksenini değiştirdi'); process.exit(1); }

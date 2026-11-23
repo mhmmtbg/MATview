@@ -8,9 +8,9 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 out = sys.argv[1] if len(sys.argv) > 1 else 'sablon'; NF = int(sys.argv[2]) if len(sys.argv) > 2 else 2000
 os.makedirs(out, exist_ok=True)
-R, C = 80, 160; L = R * C   # akış sütun sütun: 1. sütun = bayt 1-80, 2. sütun = 101-200 ...
+R, C = 80, 160; L = R * C   # akış sütun sütun: 1. sütun = bayt 1-80, 2. sütun = 81-160 ...
 # ÖRNEK alt sistemler (genel adlar); toplam 12800 bayt
-SUBS = [('BASLIK', 100), ('DURUM', 150), ('GUC', 1200), ('ITKI', 900), ('NAVIG', 1500), ('HABER', 1700), ('ISIL', 1000), ('YAKIT', 600), ('KONTROL', 800), ('SENSOR', 2000), ('YUK', 1500), ('YEDEK', 1050)]
+SUBS = [('BASLIK', 100), ('DURUM', 150), ('GUC', 1200), ('ITKI', 900), ('NAVIG', 1500), ('HABER', 1700), ('ISIL', 1000), ('YAKIT', 600), ('KONTROL', 800), ('SENSOR', 2000), ('YUK', 1500), ('YEDEK', 1350)]
 assert sum(s for _, s in SUBS) == L
 cell = [n for n, s in SUBS for _ in range(s)]
 start = {}; o = 0
@@ -28,7 +28,7 @@ rows = [
  ('Amaç', 'Telemetre/kayıt binary dosyasındaki baytlara ad vermek, değer çevirmek (tür, bit, dönüşüm formülü) ve sonucu MATView içinde incelemek veya .mat olarak kaydetmek.'),
  ('', ''),
  ('ADIMLAR', ''),
- ('1', 'ÇERÇEVE sayfasında her hücre 1 baytı temsil eder (varsayılan 80 satır × 160 sütun = 12.800 bayt; akış sütun sütun: 1. sütun = bayt 1-80, 2. sütun = 101-200 …). Hücreye o baytın ait olduğu alt sistemin/alanın adını yazın. Aynı ad birden çok hücrede geçerse hücreler sırayla AD_1, AD_2, … olarak numaralanır (okuma sırasına göre).'),
+ ('1', 'ÇERÇEVE sayfasında her hücre 1 baytı temsil eder (varsayılan 80 satır × 160 sütun = 12.800 bayt; akış sütun sütun: 1. sütun = bayt 1-80, 2. sütun = 81-160 …). Hücreye o baytın ait olduğu alt sistemin/alanın adını yazın. Aynı ad birden çok hücrede geçerse hücreler sırayla AD_1, AD_2, … olarak numaralanır (okuma sırasına göre).'),
  ('2', 'SENARYO sayfasında okuma sırasını (satır satır / sütun sütun), kare başındaki senkron kelimesini, kare hızını ve varsa sayaç alanını girin.'),
  ('3', 'ALANLAR sayfasında çözmek istediğiniz değerleri tanımlayın: ad, başlangıç hücresi (ör. GUC_1), tür, bayt sırası, istenirse bit aralığı ve dönüşüm formülü, birim. Her satır bir kanal olur.'),
  ('4', 'MATView → Aç ▸ Binary dosya… ile önce bu Excel’i, sonra .bin dosyasını seçin (ya da ikisini birlikte pencereye sürükleyin). Önizlemede kare sayısını ve kayıp kareleri kontrol edip “Çöz”e basın.'),
@@ -48,7 +48,7 @@ rows = [
  ('Bit', 'Boş = tüm değer. “3” = yalnız 3. bit; “4-7” = 4’ten 7’ye bitler (0 = en düşük anlamlı bit). Bit bayrakları ve bayta oturmayan alanlar (u16 + “0-11”) için.'),
  ('İfade', 'Dönüşüm formülü; ham değer x ile gösterilir. Örnek: x*0.01   x*0.1-40   (x-2048)/4096*5   sqrt(x)   Başka alanlar da adıyla kullanılabilir: GUC_VOLT*GUC_AKIM'),
  ('Birim', 'Yalnız görüntü ve çıktı etiketi içindir.'),
- ('Periyot (kare)', 'Alan her kaç karede bir güncelleniyorsa. Çerçeve en hızlı alt sisteme göre (ör. 5 ms → 200 Hz) tanımlanır; 10 ms’de bir gelen alanlara 2 yazılır (1 = her karede). Boş = 1. Alan kendi zaman ekseniyle (5 ms × periyot) görünür.'),
+ ('Periyot (kare)', 'Alan her kaç karede bir güncelleniyorsa. Çerçeve en hızlı alt sisteme göre (ör. 4 ms → 250 Hz) tanımlanır; 8 ms’de bir gelen alanlara 2 yazılır (1 = her karede). Boş = 1. Alan kendi zaman ekseniyle (4 ms × periyot) görünür.'),
  ('Faz', 'Periyot > 1 ise alanın hangi karede güncellendiği: 0 = çift numaralı kareler, 1 = tek numaralı kareler… (kare numarası sayaçtan alınır). Boş = 0.'),
  ('', ''),
  ('SENARYO anahtarları', ''),
@@ -76,7 +76,7 @@ for c in range(C): fr.column_dimensions[get_column_letter(c + 1)].width = 9
 
 # ---- 3. Senaryo ----
 sc = wb.create_sheet('Senaryo'); sc.append(('Anahtar', 'Değer', 'Açıklama'))
-for row in [('Okuma sırası', 'sütun', 'sütun: 1. sütun = bayt 1-80, 2. sütun = 101-200 … ; satır: soldan sağa'), ('Senkron (hex)', 'C3 5A 69 96', 'Kare başı kelimesi; boş bırakılabilir'), ('Kare hızı (Hz)', 200, 'Çerçevenin tekrar hızı: 5 ms → 200'), ('Atlanacak bayt', 0, 'Dosya başlığı bayt sayısı'), ('Sayaç alanı', 'SAYAC', 'ALANLAR’daki sayaç alanının adı; yoksa boş')]: sc.append(row)
+for row in [('Okuma sırası', 'sütun', 'sütun: 1. sütun = bayt 1-80, 2. sütun = 81-160 … ; satır: soldan sağa'), ('Senkron (hex)', 'C3 5A 69 96', 'Kare başı kelimesi; boş bırakılabilir'), ('Kare hızı (Hz)', 250, 'Çerçevenin tekrar hızı: 4 ms → 250'), ('Atlanacak bayt', 0, 'Dosya başlığı bayt sayısı'), ('Sayaç alanı', 'SAYAC', 'ALANLAR’daki sayaç alanının adı; yoksa boş')]: sc.append(row)
 for c in 'ABC': sc[c + '1'].fill = HDR; sc[c + '1'].font = HF
 sc.column_dimensions['A'].width = 20; sc.column_dimensions['B'].width = 18; sc.column_dimensions['C'].width = 44
 dv = DataValidation(type='list', formula1='"sütun,satır"', allow_blank=False); sc.add_data_validation(dv); dv.add('B2')
@@ -85,14 +85,14 @@ dv = DataValidation(type='list', formula1='"sütun,satır"', allow_blank=False);
 al = wb.create_sheet('Alanlar'); al.append(('Ad', 'Başlangıç', 'Tür', 'Bayt sırası', 'Bit', 'İfade', 'Birim', 'Periyot (kare)', 'Faz', 'Açıklama (isteğe bağlı)'))
 FIELDS = [
  ('SAYAC', 'BASLIK_5', 'u16', 'BE', '', '', '', 1, 0, 'Kare sayacı (kayıp kare tespiti); her karede'),
- ('GUC_VOLT', 'GUC_1', 'u16', 'BE', '', 'x*0.001', 'V', 1, 0, 'Her 5 ms (periyot 1)'),
+ ('GUC_VOLT', 'GUC_1', 'u16', 'BE', '', 'x*0.001', 'V', 1, 0, 'Her 4 ms (periyot 1)'),
  ('GUC_AKIM', 'GUC_3', 'i16', 'BE', '', 'x*0.01', 'A', 1, 0, 'İşaretli 16 bit'),
  ('GUC_WATT', 'GUC_1', 'u16', 'BE', '', 'GUC_VOLT*GUC_AKIM', 'W', 1, 0, 'Başka alanlardan hesap (aynı periyotta olmalı)'),
- ('SICAKLIK_1', 'ISIL_1', 'i16', 'LE', '', 'x*0.1-40', 'C', 2, 0, 'Her 10 ms: periyot 2 (çift numaralı kareler)'),
- ('SICAKLIK_12BIT', 'ISIL_3', 'u16', 'BE', '0-11', 'x*0.0625-40', 'C', 2, 0, '12 bit alan (alt 12 bit), 10 ms'),
- ('ENLEM', 'NAVIG_1', 'f32', 'BE', '', '', 'derece', 2, 0, 'IEEE-754 tek duyarlıklı, 10 ms'),
+ ('SICAKLIK_1', 'ISIL_1', 'i16', 'LE', '', 'x*0.1-40', 'C', 2, 0, 'Her 8 ms: periyot 2 (çift numaralı kareler)'),
+ ('SICAKLIK_12BIT', 'ISIL_3', 'u16', 'BE', '0-11', 'x*0.0625-40', 'C', 2, 0, '12 bit alan (alt 12 bit), 8 ms'),
+ ('ENLEM', 'NAVIG_1', 'f32', 'BE', '', '', 'derece', 2, 0, 'IEEE-754 tek duyarlıklı, 8 ms'),
  ('BOYLAM', 'NAVIG_5', 'f32', 'BE', '', '', 'derece', 2, 0, ''),
- ('YAKIT_SEVIYE', 'YAKIT_1', 'u16', 'BE', '', 'x/655.35', '%', 2, 1, '10 ms, tek numaralı kareler (faz 1)'),
+ ('YAKIT_SEVIYE', 'YAKIT_1', 'u16', 'BE', '', 'x/655.35', '%', 2, 1, '8 ms, tek numaralı kareler (faz 1)'),
  ('KONTROL_MOD', 'KONTROL_1', 'u8', 'BE', '4-7', '', '', 1, 0, 'Üst 4 bit mod numarası'),
  ('BAYRAK_0', 'KONTROL_1', 'u8', 'BE', '0', '', '', 1, 0, 'Bit bayrağı'),
  ('BAYRAK_1', 'KONTROL_1', 'u8', 'BE', '1', '', '', 1, 0, 'Bit bayrağı'),
@@ -120,7 +120,7 @@ wb.save(f'{out}/MATView_Cerceve_Sablonu.xlsx')
 rnd = random.Random(11); SYNC = bytes([0xC3, 0x5A, 0x69, 0x96]); LOST = {400, 401}
 rb = bytes(rnd.randrange(256) for _ in range(997)); buf = bytearray()
 for k in range(NF):
-    fr_ = bytearray((rb * 13)[:L]); fr_[k % 997] ^= k % 251; fr_[0:4] = SYNC; t = k / 200
+    fr_ = bytearray((rb * 13)[:L]); fr_[k % 997] ^= k % 251; fr_[0:4] = SYNC; t = k / 250
     def put(nm, idx, fmt, v): o = start[nm] + idx - 1; fr_[o:o + struct.calcsize(fmt)] = struct.pack(fmt, v)
     put('BASLIK', 5, '>H', k % 65536); put('GUC', 1, '>H', int(28000 + 800 * math.sin(0.5 * t))); put('GUC', 3, '>h', int(1200 + 300 * math.sin(0.2 * t)))
     if k % 2 == 0:

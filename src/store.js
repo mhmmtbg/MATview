@@ -107,15 +107,15 @@ Channel.seq = 1;
 function sanitizeName(s) { s = s.replace(/[^A-Za-z0-9_]/g, '_'); if (!/^[A-Za-z]/.test(s)) s = 'v_' + s; return s.slice(0, 60); }
 
 const DEFAULTS = {Tpkt: 0.010, baseFs: 200};
-const DEV_RE = /^([A-Za-z0-9]+?)_dev_?(\d+)_(\d+)_(.+)$/;
+const DEV_RE = /^([A-Za-z0-9]+?)_([a-z]{2,8})_?(\d+)_(\d+)_(.+)$/;   // <önek>_<cihaz><a>_<b>_<ad> (cihaz başına paket sayacı <..>_cnt)
 
 async function importFile(file, onProgress) {
   const mat = await MAT.open(file);
   const f = {id: 'f' + (importFile.seq++), name: file.name, mat, vars: mat.vars, channels: [], mcache: new Map(), Tpkt: DEFAULTS.Tpkt, baseFs: DEFAULTS.baseFs, cnts: {}};
   // paket sayaçları
   for (let vi = 0; vi < mat.vars.length; vi++) {
-    const v = mat.vars[vi]; const m = /^([A-Za-z0-9]+?)_dev_?(\d+)_(\d+)_cnt$/.exec(v.name);
-    if (m && v.numeric) f.cnts[m[1] + '|' + m[2] + '_' + m[3]] = vi;
+    const v = mat.vars[vi]; const m = /^([A-Za-z0-9]+?)_([a-z]{2,8})_?(\d+)_(\d+)_cnt$/.exec(v.name);
+    if (m && v.numeric) f.cnts[m[1] + '|' + m[2] + m[3] + '_' + m[4]] = vi;
   }
   // dosya düzeyi temel uzunluk (cnt'siz kanallar için)
   let baseN = 0;
@@ -125,7 +125,7 @@ async function importFile(file, onProgress) {
     const v = mat.vars[vi]; if (!v.numeric || v.count < 2) continue;
     const full = v.name, m = v.top ? null : DEV_RE.exec(full);
     let pre, dev, rest;
-    if (v.top) { pre = v.top; dev = v.top; rest = full.slice(v.top.length + 1) || full; } else if (m) { pre = m[1]; dev = 'dev' + m[2] + '_' + m[3]; rest = m[4]; } else { const k = full.indexOf('_'); pre = k > 0 ? full.slice(0, k) : full; dev = pre; rest = k > 0 ? full.slice(k + 1) : full; }
+    if (v.top) { pre = v.top; dev = v.top; rest = full.slice(v.top.length + 1) || full; } else if (m) { pre = m[1]; dev = m[2] + m[3] + '_' + m[4]; rest = m[5]; } else { const k = full.indexOf('_'); pre = k > 0 ? full.slice(0, k) : full; dev = pre; rest = k > 0 ? full.slice(k + 1) : full; }
     const dims = v.dims, vec = dims.length === 2 && Math.min(dims[0], dims[1]) === 1;
     const mk = (nm, restN, n, extra) => {
       const base = restN.replace(/_(X|Y|Z|\d+)$/, ''), comp = restN === base ? '' : restN.slice(base.length + 1);
@@ -232,7 +232,7 @@ async function detectTimeVec(f) {
 }
 importFile.seq = 1;
 function countLost(g) { let c = 0; for (let k = 1; k < g.length; k++) if (g[k] - g[k - 1] > 1) c += g[k] - g[k - 1] - 1; return c; }
-function devKeyOf(full) { const m = DEV_RE.exec(full); return m ? m[1] + '|' + m[2] + '_' + m[3] : null; }
+function devKeyOf(full) { const m = DEV_RE.exec(full); return m ? m[1] + '|' + m[2] + m[3] + '_' + m[4] : null; }
 
 function applyTiming(f) {
   for (const ch of f.channels) {

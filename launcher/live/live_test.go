@@ -106,7 +106,7 @@ func TestSerialFile(t *testing.T) {
 	s, _ := Start()
 	defer s.Close()
 	f, _ := os.CreateTemp("", "seri")
-	f.Write([]byte("C35Aabcdef"))
+	f.Write([]byte("C35A0f1e2d"))
 	f.Close()
 	defer os.Remove(f.Name())
 	c, br := dial(t, s, fmt.Sprintf("/serial?t=%s&com=%s&baud=2000000", s.Token, f.Name()))
@@ -114,7 +114,7 @@ func TestSerialFile(t *testing.T) {
 	if op, p := readMsg(t, br); op != 1 || !strings.Contains(string(p), "açıldı") {
 		t.Fatalf("seri bilgi: %s", p)
 	}
-	if op, p := readMsg(t, br); op != 2 || string(p) != "C35Aabcdef" {
+	if op, p := readMsg(t, br); op != 2 || string(p) != "C35A0f1e2d" {
 		t.Fatalf("seri veri: %d %q", op, p)
 	}
 }

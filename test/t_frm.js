@@ -45,9 +45,9 @@ for (const [f, exp] of [['if(L3%8 == 2) X*5/2^16', true], ['x&0x00FF', true], ['
   for (const p of plan) { if (p.v.stream) continue; const a = FRM.extractFrames(bin, 0, NF, L, p).v, b = FRM.extractFrames(P, 0, NF, L, p, lay, 0).v; for (let i = 0; i < a.length; i++) if (!(a[i] === b[i] || (Number.isNaN(a[i]) && Number.isNaN(b[i])))) { same = false; break; } if (!same) { ck(false, 'düzen: ' + p.sheet + '/' + p.name + ' farklı'); break; } }
   const ar = FRM.autoLayout(P, def, {cols: C, rows: R}); ck(ar.length && ar[0].transpose === true && ar[0].shift === SH && ar[0].hit === ar[0].total && ar[0].total > 0, 'autoLayout: ' + JSON.stringify(ar[0] && [ar[0].transpose, ar[0].shift, ar[0].hit, ar[0].total]));
   for (const st of def.sheets.flatMap(x => x.streams)) { const sl = FRM.slotOf(P, lay, loc.starts, 0, st, NF); ck(FRM.streamScan(sl, st).length > 0 || !st.hdr, 'akış ' + st.unit + ' transpoze'); }
-  // sütun atma: 129 sütunlu kayıt, 126-129 atılır
-  const lay2 = FRM.layout({cols: C, rows: R, transpose: false, dropTotal: 129, dropList: '126-129'}); ck(lay2.T === 129 && lay2.PL === 12900 && lay2.perm[125] === 129 && lay2.perm[124] === 124, 'sütun atma perm');
-  let ee = false; try { FRM.layout({cols: 160, rows: 80, dropTotal: 129, dropList: '1-3'}); } catch (e) { ee = true; } ck(ee, 'sütun sayısı uyuşmazlığı hatası');
+  // sütun atma: 164 sütunlu kayıt, 161-164 atılır
+  const lay2 = FRM.layout({cols: C, rows: R, transpose: false, dropTotal: 164, dropList: '161-164'}); ck(lay2.T === 164 && lay2.PL === 13120 && lay2.perm[160] === 164 && lay2.perm[159] === 159, 'sütun atma perm');
+  let ee = false; try { FRM.layout({cols: 160, rows: 80, dropTotal: 164, dropList: '1-3'}); } catch (e) { ee = true; } ck(ee, 'sütun sayısı uyuşmazlığı hatası');
   // header taraması: 37 bayt çöp + [C3 5A gövde] × 5, gövdede C3 5A yok
   const h = FRM.layout({cols: 10, rows: 4, header: 'C3 5A'}), buf = new Uint8Array(37 + 5 * 40 + 11); buf.fill(7); for (let k = 0; k < 5; k++) { buf[37 + k * 40] = 0xC3; buf[38 + k * 40] = 0x5A; }
   const hl = FRM.locate(buf, h); ck(hl.starts.length === 5 && hl.starts[0] === 37 && hl.starts[4] === 37 + 160 && hl.skipped === 37 + 11, 'header taraması ' + [...hl.starts] + ' atlanan ' + hl.skipped);

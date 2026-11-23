@@ -5,14 +5,14 @@ L, NF = 12800, 40; rng = np.random.default_rng(11)
 HDR = ['Birim', 'Index', 'Değişken', 'Tip', 'Eleman Sayısı', 'Formül', 'Byte Endian', 'Bit Endian', 'Örnek Sayısı', 'Undersample Header', 'isUndersample']
 def R(*a): a = list(a) + [None] * (11 - len(a)); return a
 sheets = {
- 'A': [R('A_10ms', 11, 'H1', 'UInt8', 4), R('A_10ms', 'auto', 'CNT', 'UInt16 ', 1, None, 'big'), R('A_5ms', 'auto', 'T1', 'UInt16', 1, 'X*0.01', None, None, 'B2'),
-       R('A_5ms', 'AUTO', 'F1', 'Single', 1, None, None, None, 'B2'), R('A_10ms', 'auto', 'M12', 'uint12', 1, None, None, None, 4), R('A_10ms', 'auto', 'D24', 'int24', 1), R('A_10ms', 'auto', 'W', 'UInt8', 12),
-       R('A_10ms', '50.2', 'FLG', 'bit3', 1)],
+ 'A': [R('A_hizli', 11, 'H1', 'UInt8', 4), R('A_hizli', 'auto', 'CNT', 'UInt16 ', 1, None, 'big'), R('A_blok', 'auto', 'T1', 'UInt16', 1, 'X*0.01', None, None, 'B2'),
+       R('A_blok', 'AUTO', 'F1', 'Single', 1, None, None, None, 'B2'), R('A_hizli', 'auto', 'M12', 'uint12', 1, None, None, None, 4), R('A_hizli', 'auto', 'D24', 'int24', 1), R('A_hizli', 'auto', 'W', 'UInt8', 12),
+       R('A_hizli', '50.2', 'FLG', 'bit3', 1)],
  'L': [R('L', 100, 'SEL', 'UInt8'), R('L', 'auto', 'LV', 'UInt16', None, 'if(SEL%4 == 1) X*2'), R('L', 'auto', 'LB', 'UInt8', None, 'if(%8 == 0) X'), R('L', 'auto', 'BADT', 'Foo')],
  'S': [R('S', 200, 'stream', 'stream', 16, None, None, None, None, 'AA BB 11', 1), R('S', 'auto', 'S1', 'UInt8', 1, None, None, None, None, None, 1), R('S', 'auto', 'S2', 'UInt16', 1, None, None, None, None, None, 1),
        R('S', 'i=1:3, (i-1)*2+10', 'S3', 'UInt8', 1, None, None, None, None, None, 1)],
  'O': [R('O', 12, 'OV', 'UInt8')],
- 'Z': [R('Z', 12499, 'ZZ', 'UInt32')],
+ 'Z': [R('Z', 12799, 'ZZ', 'UInt32')],
 }
 wb = openpyxl.Workbook(); wb.remove(wb.active)
 for n, rows in sheets.items():
