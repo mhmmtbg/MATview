@@ -1,9 +1,9 @@
 // Package live: MATView.exe içinde canlı telemetri kaynakları (UDP ve seri port).
 //
-// Tarayıcı UDP soketi açamaz; telemetryParser bunun için ayrı bir PowerShell köprüsü kullanır. MATView.exe bu işi
+// Tarayıcı UDP soketi açamaz; tarayıcı sürümü bunun için ayrı bir PowerShell köprüsü kullanır. MATView.exe bu işi
 // kendi içinde yapar: 127.0.0.1 üzerinde, yalnız sayfanın bildiği bir anahtarla çalışan küçük bir WebSocket sunucusu
-// UDP paketlerini ve seri port byte'larını sayfaya ikili (binary) mesaj olarak iletir. İleti biçimi telemetryParser
-// v4.8 UDP köprüsüyle aynıdır: ikili mesaj = ham veri, metin mesaj = {"type":"info"|"error","msg":"…"}.
+// UDP paketlerini ve seri port byte'larını sayfaya ikili (binary) mesaj olarak iletir. İleti biçimi tarayıcı sürümündeki
+// UDP köprüsüyle aynıdır: ikili mesaj = ham veri, metin mesaj = {"type":"info"|"error","msg":"…"}.
 package live
 
 import (
@@ -298,7 +298,7 @@ func ifaceOf(ip string) *net.Interface {
 
 /* ---------------- seri port ---------------- */
 
-// SerialConfig: seri port ayarları (telemetryParser live.serial ile aynı adlar)
+// SerialConfig: seri port ayarları (ayar dosyasındaki live.serial ile aynı adlar)
 type SerialConfig struct {
 	Name     string
 	Baud     int

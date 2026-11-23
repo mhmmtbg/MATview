@@ -52,6 +52,9 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.43', d: 'Çerçeve Çözücü', items: [
+    'Telemetri modülünün başlığı “Çerçeve Çözücü” oldu; dışa aktarılan ayar dosyasının adı cerceve_ayarlar_….json. Eski ayar dosyaları ve kayıtlı ayarlar aynen açılır.'
+  ]},
   {v: '2.42', d: 'Örnek dosyalar ve varsayılan değerler', items: [
     'Örnek dosyalar, şablon ve varsayılan çerçeve değerleri (sütun/satır, header) yeni sentetik değerlerle yenilendi; kayıtlı ayarlarınız aynen kullanılır.',
     'README sadeleştirildi.'
@@ -127,13 +130,13 @@ const CHANGELOG = [
   {v: '2.26', d: 'Telemetri: canlı bağlantı — seri port (COM) ve Ethernet (UDP)', items: [
     'Telemetri çekmecesinde kaynak seçimi: Dosyadan Oynat · Seri Port (COM) · Ethernet (UDP). Seçilen kaynağın adı üst çubuktaki düğmede görünür; canlı kaynakta Oynat yerine Bağlan, Durdur yerine Bağlantıyı kes.',
     'MATView.exe seri portu ve UDP portunu doğrudan açar: COM port listesi, baud, data bits, parity, stop bits, akış kontrolü; UDP portu, yerel arayüz, kaynak IP süzgeci, multicast. PowerShell köprüsü gerekmez.',
-    'Tarayıcıda (matview.html): seri port Chrome / Edge’in seri port erişimiyle; UDP telemetryParser v4.8 ile aynı köprüyle (Köprüyü indir).',
+    'Tarayıcıda (matview.html): seri port Chrome / Edge’in seri port erişimiyle; UDP PowerShell köprüsüyle (Köprüyü indir).',
     'Gelen veri dosyadan oynatmayla aynı yoldan akar: Çözülen Veriler, Zaman sekmesindeki canlı grafikler, duraklatma, .bin kaydı, kayıp çerçeve sayacı; bağlantı koparsa uyarı.',
     'Aç menüsü: “Telemetri: canlı bağlantı (seri port / UDP)…”.']},
-  {v: '2.25', d: 'Telemetri: telemetryParser v4.8 uyumu (1) — atılacak byte, her uzantıdan kayıt', items: [
+  {v: '2.25', d: 'Telemetri: çerçeve çözücü uyumu (1) — atılacak byte, her uzantıdan kayıt', items: [
     'Ayarlar > Çerçeve Formatı: “Dikkate alınmayacak byte’lar”. Her çerçevede header’ın hemen önünde ya da arkasında bulunan N byte (örn. .cnv kayıtları) çözümden önce atılır; kayıttaki çerçeve uzunluğu FL + N kabul edilir. Dosya çözme, Çöz ve MATView’de aç, dosyadan oynatma, çerçeve sayımı / aralık seçimi, kopya birleştirme ve özet bunu kullanır.',
     'Kayıt dosyasının uzantısı fark etmez: .bin dışındaki dosyalar (.cnv, .dat, .raw …) telemetri kaydı olarak eklenebilir; telemetri template’i yüklüyken MATView’in tanımadığı uzantılar doğrudan Telemetri’ye gider.',
-    'telemetryParser v4.8 ayar dosyalarındaki yeni alanlar içe aktarılır.']},
+    'Çerçeve çözücü ayar dosyalarındaki yeni alanlar içe aktarılır.']},
   {v: '2.24', d: 'Akustik oynatma: yedek ses oynatıcı', items: [
     'Oynatma başladıktan sonra Web Audio saati ilerlemiyorsa (bazı Windows / WebView2 ses aygıtı durumlarında süre 0,00\'da kalıyor ve ses gelmiyordu) ses otomatik olarak tarayıcının standart ses oynatıcısıyla (<audio>) çalınır; sarma, duraklatma, döngü ve ses düzeyi aynı çalışır. Geçiş ve nedeni Dinle günlüğüne yazılır.',
     'Ses hiç açılamazsa hata mesajı gösterilir (ses çıkış aygıtını denetleme önerisiyle).',
@@ -226,7 +229,7 @@ const CHANGELOG = [
     'Kod: Bul/Değiştir (Ctrl+F/H), Satıra git (Ctrl+G), ayraç eşleme, otomatik tamamlama (işlev, değişken, kanal adı); varsayılan parametreler, spline/pchip, trapz matris, polyfit [p,S,mu].',
     'Oturum v2: türetilmiş kanallar (formülüyle), test fazları, profiller, roller, rapor öğeleri. Rapor: sürükle-bırak, açıklamalar, yan yana şekiller. MAT v7.3 hücre/yapı/char/seyrek, MAT v5 seyrek, MDF 3.x; XLSX/DOCX deflate sıkıştırmalı.']},
   {v: '2.7', d: 'Telemetri: çerçeve tipleri, canlı oynatma, kamera, tek .mat', items: [
-    'Yeni: Telemetri görünümü — Çerçeve Çözücü (telemetryParser v4.6) MATView içinde. Çerçeve tipleri ve template\'ler (belirteç index\'i ile seçim), sütun öncelikli düzen, header, sayaç, dikkate alınmayacak sütunlar, undersample paketler, multiplex formüller, tekrar index\'leri; ayar JSON\'u içe/dışa aktarma. Seri port / UDP canlı telemetri yoktur.',
+    'Yeni: Telemetri görünümü — Çerçeve Çözücü MATView içinde. Çerçeve tipleri ve template\'ler (belirteç index\'i ile seçim), sütun öncelikli düzen, header, sayaç, dikkate alınmayacak sütunlar, undersample paketler, multiplex formüller, tekrar index\'leri; ayar JSON\'u içe/dışa aktarma. Seri port / UDP canlı telemetri yoktur.',
     'Yeni: “Çöz ve MATView\'de aç” — tüm parametreler kanal olur; zaman ekseni sayaçtan (kayıp çerçeveler boşluk), oversample ve koşullu / undersample örnekler doğru zamanda. Veri kanal seçildikçe okunur.',
     'Yeni: tüm binary tek .mat dosyası (etiket başına MATLAB yapısı, t / frame_counter / ad_t alanları).',
     'Yeni: dosyadan canlı oynatma (tablo, template çalışma kopyası, grafikler, çerçeveye git, kayıt) ve kamera videosu (RTP / H.264 → MP4 oynatıcı; canlı oynatmada anlık kamera penceresi).',

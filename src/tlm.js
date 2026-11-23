@@ -1,4 +1,4 @@
-/* Telemetri görünümü: telemetryParser (v4.6) tabanlı çerçeve tipli binary çözme, dosyadan canlı oynatma ve kamera
+/* Telemetri görünümü: çerçeve tipli binary çözme, dosyadan canlı oynatma ve kamera
    (RTP / H.264) videosu. Modül src/tlm/telemetri.html'dir; build.py onu __TLM_HTML olarak gömer ve burada bir
    iframe (srcdoc) içinde açılır — kendi stil ve betikleri MATView'e karışmaz. Köprü:
      MATView → modül : TLM.win.TPHost (addFiles, playFiles, playVideo, setTheme, importSettingsText…)
@@ -37,7 +37,7 @@ function tlmOpenBins(files, how) {
     else { H.addFiles(files); toast(files.map(f => f.name).join(', ') + ' çözme listesine eklendi' + (H.hasTemplates() ? '' : ' · önce Çerçeve Ayarları’ndan çerçeve tipi / template ekleyin'), 6000); }
   });
 }
-// telemetryParser biçimli template'ler (Birim / Index / Değişken / Tip …) çerçeve tipi olarak eklenir
+// Çerçeve çözücü biçimli template'ler (Birim / Index / Değişken / Tip …) çerçeve tipi olarak eklenir
 async function tlmAddTemplates(files) {
   tlmShow('file');
   await new Promise(res => tlmCall(async H => { try { const n = await H.addTemplateFiles(files); if (n) toast(n + ' template çerçeve tipi olarak yüklendi (Telemetri › Çerçeve Ayarları)', 7000); } catch (e) { toast('Template yüklenemedi: ' + (e.message || e), 8000); } res(); }));
@@ -48,7 +48,7 @@ async function tlmImportSettings(file) {
   await new Promise(res => tlmCall(H => { try { n = H.importSettingsText(text); toast(file.name + ': telemetri ayarları yüklendi (' + n + ' template)', 6000); } catch (e) { toast('Telemetri ayarları okunamadı: ' + (e.message || e), 8000); } res(); }));
   tlmShow('file');
 }
-function tlmIsSettingsJson(text) { try { const o = JSON.parse(text); return !!(o && (o.app === 'telemetryParser' || ('frameTypes' in o && 'cols' in o))); } catch (_) { return false; } }
+function tlmIsSettingsJson(text) { try { const o = JSON.parse(text); return !!(o && (o.app === 'telemetryParser' || o.app === 'MATViewCerceve' || ('frameTypes' in o && 'cols' in o))); } catch (_) { return false; } }
 // .bin / template yönlendirmesi: Telemetri'de çerçeve tipi (template) tanımlıysa ya da Telemetri görünümü açıksa Telemetri;
 // değilse önceki davranış (Excel çerçeve akışı). Klasör paneli sağ tık menüsü ve Aç menüsü her ikisini de doğrudan sunar.
 function tlmPrefers() { return tlmHasTemplates() || S.view === 'tlm'; }

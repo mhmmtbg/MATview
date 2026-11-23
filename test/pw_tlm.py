@@ -1,4 +1,4 @@
-# Telemetri görünümü (telemetryParser tabanlı modül) uçtan uca:
+# Telemetri görünümü (çerçeve çözücü modülü) uçtan uca:
 # - Aç ile ayar JSON'u ve template .xlsx dosyaları → çerçeve tipleri; .bin → çözme listesi
 # - "Çöz ve MATView'de aç" → kanallar, zaman ekseni (kayıp çerçeve boşluğu, B2 örnekleri, koşullu / undersample zamanları)
 # - tek .mat (oturumdan), kamera videosu (MP4) oynatma, dosyadan canlı oynatma + canlı kamera (WebCodecs), çerçeveye gitme

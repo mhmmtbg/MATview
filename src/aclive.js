@@ -2,7 +2,7 @@
    Aç menüsünden açılan ayrı, taşınabilir bir penceredir; akustik sekmesinin arayüzünü değiştirmez. Veri telemetri
    modülünün canlı çözümünden gelir (seri port, UDP ya da dosyadan oynatma): dinlenen parametrenin her çerçevedeki tüm
    örnekleri (oversample elemanları) sırayla alınır, durumlu süzgeç zincirinden geçirilir ve kesintisiz çalınır.
-   Süzgeçler ve şebeke (50/60 Hz) tespiti telemetryParser v4.8 ses modülüyle aynıdır. */
+   Süzgeçler ve şebeke (50/60 Hz) tespiti Telemetri ses modülüyle aynıdır. */
 const LAUD = (() => {
   /* ---------- DSP: durumlu biquad bölümleri (doğrudan biçim II devrik) ---------- */
   const D = {};

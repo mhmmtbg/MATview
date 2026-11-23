@@ -1,6 +1,6 @@
 // Telemetri modülü için sentetik kayıt üretir (gerçek veri değildir).
 //   node test/make_tlm.js <çıktı klasörü> [ayar.json] [çerçeve sayısı]
-// Ayar verilmezse telemetryParser'ın örnek ayarları + iki çerçeve tipine birer "video" alanı kullanılır.
+// Ayar verilmezse çerçeve çözücünün örnek ayarları + iki çerçeve tipine birer "video" alanı kullanılır.
 // video alanları için ffmpeg varsa H.264 (RTP / FU-A, "RTP0"+uzunluk kayıtları, 0xAA dolgu, 2 bayt footer) üretilir.
 const fs = require('fs'), path = require('path'), cp = require('child_process');
 const TP = require('./tlm_core.js')();
@@ -14,7 +14,7 @@ else {
   S.frameTypes[0].templateRows.push(vrow('KAMERA_A', 6000, 'goruntu', 990));
   S.frameTypes[1].templateRows.push(vrow('KAMERA_B', 7000, 'goruntu', 1990));
   S.framePeriodMs = 10; S.live = { source: 'sim', sim: { periodMs: 10, loop: false } };
-  fs.writeFileSync(path.join(OUT, 'ayarlar.json'), JSON.stringify({ app: 'telemetryParser', format: 2, version: TP.VERSION, settings: S, liveWork: [] }));
+  fs.writeFileSync(path.join(OUT, 'ayarlar.json'), JSON.stringify({ app: 'MATViewCerceve', format: 2, version: TP.VERSION, settings: S, liveWork: [] }));
   S.frameTypes.forEach((ft, i) => fs.writeFileSync(path.join(OUT, 'template_cerceve' + i + '.xlsx'), TP.writeXlsx(ft.templateRows, 'Template')));
 }
 const C = S.cols, R = S.rows, FL = C * R, hdr = TP.parseHexBytes(S.header).bytes, T = (+S.framePeriodMs || 10) / 1000;

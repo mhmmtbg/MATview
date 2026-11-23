@@ -313,11 +313,11 @@ function chByUid(u) { for (const f of allFiles()) for (const c of f.channels) if
 /* ---------- dosya işlemleri ---------- */
 async function openFiles(files) {
   files = [...files];
-  { // Telemetri: çerçeve tipli binary, telemetryParser ayar JSON'u, kamera videosu
+  { // Telemetri: çerçeve tipli binary, çerçeve çözücü ayar JSON'u, kamera videosu
     const mp4 = files.filter(f => /\.mp4$/i.test(f.name)); if (mp4.length) { mp4.forEach(camAddFile); files = files.filter(f => !mp4.includes(f)); }
     const vids = files.filter(f => /\.(h264|264)$/i.test(f.name)); if (vids.length && typeof tlmPlayVideo === 'function') { tlmPlayVideo(vids[0]); files = files.filter(f => !vids.includes(f)); }
     const js = files.filter(f => /\.json$/i.test(f.name)); for (const j of js) { files = files.filter(f => f !== j); if (tlmIsSettingsJson(await j.text())) await tlmImportSettings(j); else toast(j.name + ': tanınmayan JSON (telemetri ayar dosyası değil)', 6000); }
-    // telemetryParser biçimli template: Telemetri'de çerçeve tipi tanımlıysa ya da görünüm açıksa oraya, değilse (geriye uyum) Excel çerçeve akışına
+    // Çerçeve çözücü biçimli template: Telemetri'de çerçeve tipi tanımlıysa ya da görünüm açıksa oraya, değilse (geriye uyum) Excel çerçeve akışına
     const tpl = [], toTlm = typeof tlmPrefers === 'function' && tlmPrefers();
     if (toTlm) for (const f of files.filter(f => /\.xlsx$/i.test(f.name))) { try { const sh = await XLSX.read(f); if (FRM.isFrameBook(sh) && !sh.some(x => /cerceve_?ayar/.test(FRM.fold(x.name)) || /^(cerceve|çerçeve|frame)/i.test(x.name))) tpl.push(f); } catch (_) {} }
     if (tpl.length && typeof tlmAddTemplates === 'function') { await tlmAddTemplates(tpl); files = files.filter(f => !tpl.includes(f)); }

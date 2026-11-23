@@ -1,4 +1,4 @@
-// telemetryParser v4.8 uyumu: "dikkate alınmayacak byte'lar" (header'dan önce/sonra) — her çerçeveye fazladan byte eklenmiş
+// Çerçeve çözücü: "dikkate alınmayacak byte'lar" (header'dan önce/sonra) — her çerçeveye fazladan byte eklenmiş
 // kayıt, ayar açıkken eklenmemiş kayıtla birebir aynı çözülmeli (sentetik veri: make_tlm.js); çerçeve dizini de aynı sayıda çerçeve bulmalı.
 const fs = require('fs'), cp = require('child_process'), path = require('path');
 const TP = require('./tlm_core.js')();
