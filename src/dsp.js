@@ -198,11 +198,12 @@ const DSP = (() => {
     const flags = [];
     let q = 0;
     if (robust) {
-      let mx = 0; for (let i = 0; i < n; i++) if (isFinite(x[i]) && Math.abs(x[i]) > mx) mx = Math.abs(x[i]);
+      let mx = 0; for (let i = 0; i < n; i++) if (!(del && del[i]) && isFinite(x[i]) && Math.abs(x[i]) > mx) mx = Math.abs(x[i]);   // silinmiş dev değerler veri adımını bozmasın
       const tiny = mx * 1e-9; q = Infinity;
       for (let i = 1; i < n; i++) { const d = Math.abs(x[i] - x[i - 1]); if (d > tiny && d < q && !(del && (del[i] || del[i - 1]))) q = d; }
       if (!isFinite(q)) return new Uint32Array(0);
     }
+    const LB = robust ? Math.max(nsig * q, gmin || 0) : 0;   // eşiğin alt sınırı
     const sideMed = (a, b) => { let m = 0; for (let j = a; j <= b; j++) if (!(del && del[j]) && isFinite(x[j])) buf[m++] = x[j]; if (!m) return NaN; const s2 = buf.subarray(0, m).sort(); return s2[m >> 1]; };
     for (let i = 0; i < n; i++) {
       if (del && del[i]) continue;
@@ -210,6 +211,7 @@ const DSP = (() => {
       const a = Math.max(0, i - k), b = Math.min(n - 1, i + k); let m = 0;
       for (let j = a; j <= b; j++) if (!(del && del[j]) && isFinite(x[j])) buf[m++] = x[j];   // silinmiş / NaN örnekler medyanı bozmasın
       if (m < 3) continue;
+      if (LB > 0) { const xi = x[i]; let near = 0; for (let j = 0; j < m; j++) if (Math.abs(buf[j] - xi) <= LB) near++; if (2 * near > m) continue; }   // medyan ±LB içinde: sıçrama olamaz (sıralamadan hızlı)
       // küçük pencerede ekleme sıralaması, TypedArray.sort'tan çok daha hızlı
       const sub = buf.subarray(0, m); if (m <= 64) { for (let u = 1; u < m; u++) { const t = sub[u]; let w2 = u - 1; while (w2 >= 0 && sub[w2] > t) { sub[w2 + 1] = sub[w2]; w2--; } sub[w2 + 1] = t; } } else sub.sort();
       const med = sub[m >> 1];
@@ -224,6 +226,46 @@ const DSP = (() => {
       flags.push(i);
     }
     return Uint32Array.from(flags);
+  }
+
+  // ---- Otomatik sıçrama temizleme (Temizle › Otomatik temizle) ----
+  // 1) NaN/Inf ve "bozuk" değerler: medyandan sapmaların büyüklük (log10) dağılımında, verinin gövdesinden en az
+  //    `gap` onluk (10^gap kat) kopuk duran üst grup (ör. ±1e155 gibi yanlış çözülmüş örnekler). Küme hâlinde gelseler de bulunur.
+  // 2) kalan sıçramalar: bozuk noktalar dışarıda bırakılarak yinelemeli Hampel (seviye değişimlerinin kenarı korunur). |değer| > 1e20 her zaman bozuk sayılır.
+  const ABSURD = 1e20;   // int64 aralığının da üstü: ölçülmüş bir değer olamaz
+  function grossFlags(x, del, gap) {
+    const n = x.length, step = Math.max(1, Math.floor(n / 200000)), smp = [];
+    for (let i = 0; i < n; i += step) { const v = x[i]; if (!(del && del[i]) && isFinite(v)) smp.push(v); }
+    const out = {mask: new Uint8Array(n), thr: Infinity, med: NaN};
+    if (smp.length >= 8) {
+      const so = Float64Array.from(smp).sort(), med = so[so.length >> 1]; out.med = med;
+      const d = Float64Array.from(smp, v => Math.abs(v - med)).sort(), N = d.length;
+      let i0 = N >> 1; while (i0 < N && !(d[i0] > 0)) i0++;   // gövde: sapmaların alt yarısı
+      for (let i = Math.max(i0, 1); i < N; i++) {
+        if (!(d[i - 1] > 0)) { const ref = Math.abs(med); if (i === i0 && ref > 0 && Math.log10(d[i] / ref) >= gap && (N - i) / N <= 0.45) { out.thr = Math.sqrt(d[i] * ref); break; } continue; }
+        if (Math.log10(d[i] / d[i - 1]) >= gap && (N - i) / N <= 0.45) { out.thr = Math.sqrt(d[i] * d[i - 1]); break; }
+      }
+    }
+    for (let i = 0; i < n; i++) { if (del && del[i]) continue; const v = x[i]; if (!isFinite(v) || Math.abs(v - out.med) > out.thr || Math.abs(v) > ABSURD) out.mask[i] = 1; }
+    return out;
+  }
+  function spikeAuto(x, del, opt) {
+    opt = opt || {}; const n = x.length, nsig = opt.nsig || 6, gap = opt.gap || 3, it = opt.iter || 3;
+    const g = grossFlags(x, del, gap), m = g.mask; let gross = 0, run = 0, maxRun = 0;
+    for (let i = 0; i < n; i++) { if (m[i]) { gross++; if (++run > maxRun) maxRun = run; } else run = 0; }
+    const dm = new Uint8Array(n); for (let i = 0; i < n; i++) dm[i] = (del && del[i]) || m[i] ? 1 : 0;
+    const k = opt.k || 30;   // bozuk noktalar medyana girmez: uzun bozuk kümeler pencereyi büyütmeyi gerektirmez
+    // en az sapma: verinin yayılımının (%1–%99) bir kesri; kuantalı tabanda MAD = 0 iken küçük, olağan dalgalanmalar silinmesin
+    let gmin = opt.gmin || 0;
+    if (opt.gminFrac) { const st = Math.max(1, Math.floor(n / 100000)), sm = []; for (let i = 0; i < n; i += st) if (!dm[i] && isFinite(x[i])) sm.push(x[i]);
+      if (sm.length > 10) { const so = Float64Array.from(sm).sort(), L = so.length; gmin = Math.max(gmin, opt.gminFrac * (so[Math.floor(L * 0.99)] - so[Math.floor(L * 0.01)])); } }
+    let local = 0;
+    if (opt.local !== false) for (let r = 0; r < it; r++) {
+      const f = hampelFlags(x, k, nsig, dm, gmin, true); if (!f.length) break;
+      for (const i of f) { dm[i] = 1; m[i] = 1; } local += f.length;
+    }
+    const idx = new Uint32Array(gross + local); let j = 0; for (let i = 0; i < n; i++) if (m[i]) idx[j++] = i;
+    return {idx: idx.subarray(0, j), gross, local, thr: g.thr, med: g.med, k, gmin};
   }
 
   // ---- Akustik temizleme ----
@@ -1076,6 +1118,6 @@ const DSP = (() => {
     fft(ar, ai, true);
     for (let k = 0; k < n; k++) { const r = ar[k] / M, i = ai[k] / M; re[k] = r * B.wr[k] - i * B.wi[k]; im[k] = r * B.wi[k] + i * B.wr[k]; }
   }
-  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, quantStep, omlsa, omlsaN, noiseProfile, decrackle, transientEvents, speechSegments, levelAgc, wsola, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC, iirDesign, firwin, firApply, filterDesign, filterApply, freqResp, rainflow, rainflowSummary, turningPoints, slidingStats, fftAny, polyRoots};
+  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, quantStep, omlsa, omlsaN, noiseProfile, decrackle, transientEvents, speechSegments, levelAgc, wsola, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, spikeAuto, grossFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC, iirDesign, firwin, firApply, filterDesign, filterApply, freqResp, rainflow, rainflowSummary, turningPoints, slidingStats, fftAny, polyRoots};
 })();
 if (typeof module !== 'undefined') module.exports = DSP;

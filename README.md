@@ -10,7 +10,7 @@ MATLAB `.mat` dosyalarını okuyan, MATLAB benzeri grafik çizen; yakınlaştır
 - MATLAB v5 (sıkıştırılmış) ve v7.3 (HDF5) okuma; yalnızca seçilen değişken yüklenir, 1,5 GB üstü dosyalar parça parça okunur. MDF 3.x / 4.x, TDMS, UNV, CSV/XLSX, WAV, MP4.
 - Zaman ekseni dosyadaki zaman vektöründen (`t`, `zaman_s`, `ad_t` …) ya da `cnt` paket sayacından türetilir (varsayılan 10 ms/paket, "Zaman ayarları"ndan değiştirilebilir); kayıp paketler boşluk olarak görünür.
 - Büyük veri (14 M+ örnek) için min/max inceltme; kutu/tekerlek zoom, pan, veri imleci.
-- Kutu/kement ile nokta silme, eşik ve Hampel sıçrama tespiti, geri al/yinele (orijinal dosya değişmez).
+- Kutu/kement ile nokta silme, tek tıkla otomatik gürültü temizleme, eşik ve Hampel sıçrama tespiti, geri al/yinele (orijinal dosya değişmez).
 - **Telemetri:** çerçeve tipleri ve template'lerle binary çözme, seri port / UDP canlı bağlantı, dosyadan canlı oynatma, H.264 kamera (kanal zamanıyla eşli kamera penceresi), canlı akustik dinleme.
 - Spektrum, spektrogram, Butterworth süzgeçler, MATLAB tarzı ifade satırı.
 - Akustik: OM-LSA gürültü azaltma (değişen gürültüyü izler), olay koruma (darbe / kopma / çarpma bastırılmaz), çıtırtı bastırma, konuşma ve olay bulucu (grafikte işaretler, ⇤ ⇥ gezinme), konuşma odaklı ön ayar, seviye dengeleme ve perdeyi koruyarak yavaşlatma; dinleme (ileri/geri sarma, duraklatma, konum çubuğu — çalan grafiğin altında da; Shift+←/→/Boşluk), tık/notch/HP/LP/spektral gürültü azaltma, WAV kaydı (dinleme için 16-bit normalize ya da kalibre 32-bit float — Pa değerleri korunur).
@@ -120,6 +120,7 @@ Telemetri görünümü tek panel: **üst çubukta** dosyadan canlı oynatma (▶
 - **İzleme (X):** açıkken grafiğe tık o konuma izleme çizgisi sabitler (değer kutularıyla); sabit çizgiler PNG / SVG / rapor çıktısına girer.
 - **Dışa aktarma:** tek *Dışa aktar ▾* menüsü (rapora ekle, PNG, SVG); dosya adı grafikteki parametre adından gelir (`OBC.sicaklik.png`, `…_spektrum.png`).
 - **İptal:** yarım saniyeden uzun süren her işte İptal düğmesi (Esc); iptal edilen kaydetmenin yarım dosyası silinir.
+- **Temizle › Otomatik temizle:** NaN/Inf, verinin gövdesinden binlerce kat kopuk dev değerler (ör. ±1e155; art arda kümeler hâlinde gelseler de) ve kalan sıçramalar tek tıkla bulunup silinir. Hassasiyet: Düşük (yalnız bozuk değerler) / Orta / Yüksek; aktif iz, alt grafik ya da tüm izler; Önizle ile önce kırmızı seçilir. Seviye değişimleri korunur, Ctrl+Z ile geri alınır.
 - **Temizle › Hampel:** basamaklı / kuantalı veride de çalışır (MAD yerine en az veri adımı), gerçek seviye değişimlerinin kenarını seçmez; *En az sapma* ile küçük dalgalanmalar korunur.
 - **Akustik:** WebAudio saati durursa `<audio>` ile oynatma; otomatik temizlemeden sonra *Temizlenmiş* oynatma sonucu yeniden hesaplamaz; analiz ve tık temizleme arka planda.
 - **.mat:** zaman vektörü (`t`, `zaman_s`, `ad_t`, yapı içi `t`) kendiliğinden bulunur; kayıp çerçeve ve düzensiz örnekleme korunur.

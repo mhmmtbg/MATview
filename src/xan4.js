@@ -52,6 +52,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.44', d: 'Otomatik gürültü temizleme', items: [
+    'Temizle › Otomatik temizle: NaN/Inf, verinin gövdesinden binlerce kat kopuk dev değerler (ör. ±1e155, art arda kümeler hâlinde de) ve kalan sıçramalar tek tıkla bulunup silinir; Ctrl+Z ile geri alınır.',
+    'Hassasiyet (Düşük: yalnız bozuk değerler / Orta / Yüksek), aktif iz / alt grafik / tüm izler, tüm kanal ya da görünen aralık; Önizle bulunanları önce kırmızı seçer. Temizlikten sonra y ekseni veriye oturur.',
+    'Hampel: grafikte silinmiş dev değerler artık eşiği bozmaz; büyük kanallarda sıçrama araması belirgin hızlandı.'
+  ]},
   {v: '2.43', d: 'Çerçeve Çözücü', items: [
     'Telemetri modülünün başlığı “Çerçeve Çözücü” oldu; dışa aktarılan ayar dosyasının adı cerceve_ayarlar_….json. Eski ayar dosyaları ve kayıtlı ayarlar aynen açılır.'
   ]},

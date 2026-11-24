@@ -127,6 +127,12 @@ function paintStats(el, tr, s) {
 /* ---------- Temizle ---------- */
 function buildClean() {
   const r = h('div');
+  r.append(card('Otomatik temizle',
+    fr('Hassasiyet', selIn('auSens', [['low', 'Düşük: yalnız bozuk değerler'], ['mid', 'Orta'], ['high', 'Yüksek']], 'mid')),
+    fr('Uygula', selIn('auWhat', [['tr', 'Aktif iz'], ['ax', 'Alt grafikteki tüm izler'], ['all', 'Grafikteki tüm izler']], 'tr')),
+    fr('Kapsam', selIn('auScope', [['all', 'Tüm kanal'], ['vis', 'Görünen aralık']], 'all')),
+    h('div', {class: 'btns'}, btn('Otomatik temizle', () => autoSpikeClean(true), 'primary'), btn('Önizle (seç)', () => autoSpikeClean(false))),
+    h('div', {id: 'auInfo', class: 'note'}, 'Gürültüyü bulur ve siler: NaN/Inf, verinin gövdesinden binlerce kat kopuk dev değerler (ör. ±1e155; art arda gelseler de) ve kalan sıçramalar. Gerçek seviye değişimleri silinmez. Ctrl+Z ile geri alınır.')));
   r.append(card('Seçim ve silme',
     h('div', {class: 'btns', style: 'margin-top:0'}, btn('Kutu seç', () => setMode('box')), btn('Kement seç', () => setMode('lasso'))),
     h('div', {class: 'note'}, 'Grafikte nokta seçin (kırmızı görünür), sonra "Seçilenleri sil" (Delete). Silme orijinal dosyayı değiştirmez, geri alınabilir.'),
@@ -177,6 +183,37 @@ async function findOutliers(kind) {
     S.plot.sel = {axes: ax, type: 'idx', hits: idx.length ? [{tr, idx: Uint32Array.from(idx)}] : []}; S.plot.onSelect(S.plot.sel); S.plot.invalidate();
     toast(idx.length ? `${fmtCnt(idx.length)} nokta bulundu — silmek için "Seçilenleri sil"` : 'Eşleşen nokta bulunamadı');
   });
+}
+
+// Temizle › Otomatik temizle: bozuk değerler + sıçramalar (DSP.spikeAuto, işçide); uygula = sil (geri alınabilir)
+const AU_SENS = {low: {gap: 4, local: false}, mid: {gap: 3, nsig: 7, gminFrac: 0.2}, high: {gap: 2, nsig: 5, gminFrac: 0.05}};
+async function autoSpikeClean(apply) {
+  if (apply && S.rawOn) return toast('Ham veri görünümünde silme kapalı — önce “İşlenmiş görünüme dön”');
+  const ax0 = activeAxes(), what = sv('auWhat'), scope = sv('auScope'), opt = AU_SENS[sv('auSens')] || AU_SENS.mid;
+  const list = []; for (const ax of what === 'all' ? S.plot.axes : ax0 ? [ax0] : []) for (const tr of ax.traces) if (tr.ch && tr.visible && (what !== 'tr' || tr === activeTrace())) list.push([tr, ax]);
+  if (!list.length) return toast('Önce Zaman grafiğine bir iz ekleyin');
+  const hits = [], info = [];
+  await busy('Gürültü aranıyor…', async prog => {
+    let k = 0;
+    for (const [tr, ax] of list) {
+      if (S.cancel) break; const ch = tr.ch; await ensureLoaded(ch);
+      const [a, b] = scope === 'vis' ? visRange(tr, ax) : [0, ch.n]; if (b - a < 8) continue;
+      const r = await DSPW.run('spikeAuto', [ch.data.subarray(a, b), ch.del ? ch.del.subarray(a, b) : null, opt]);
+      if (r.idx.length) { const idx = new Uint32Array(r.idx.length); for (let i = 0; i < idx.length; i++) idx[i] = r.idx[i] + a; hits.push({tr, idx}); }
+      info.push(`${tr.label}: ${fmtCnt(r.idx.length)} nokta` + (r.idx.length ? ` (bozuk ${fmtCnt(r.gross)}, sıçrama ${fmtCnt(r.local)})` : ''));
+      prog(++k / list.length);
+    }
+  });
+  if (S.cancel) return;
+  const n = hits.reduce((s, h) => s + h.idx.length, 0), el = $('#auInfo');
+  if (el) { el.textContent = info.join('\n'); el.style.whiteSpace = 'pre-line'; }
+  if (!n) return toast('Gürültü bulunamadı');
+  if (!apply) { S.plot.sel = {axes: ax0, type: 'idx', hits}; S.plot.onSelect(S.plot.sel); S.plot.invalidate(); return toast(`${fmtCnt(n)} nokta seçildi (kırmızı) — silmek için "Seçilenleri sil" ya da "Otomatik temizle"`); }
+  const group = [];
+  for (const hh of hits) { const done = hh.tr.ch.applyDelete(hh.idx); if (done.length) { group.push({ch: hh.tr.ch, idx: done}); logOp('autoclean', {ch: hh.tr.ch.name, n: done.length}); } }
+  S.plot.clearSelection(); if (group.length) { S.undo.push(group); S.redo = []; }
+  for (const [, ax] of list) { ax.yAuto = true; ax.yAuto2 = true; }
+  toast(fmtCnt(group.reduce((s, g) => s + g.idx.length, 0)) + ' gürültülü nokta silindi (Ctrl+Z ile geri alınır)'); afterEdit();
 }
 
 /* ---------- Analiz ---------- */

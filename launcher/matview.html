@@ -2610,11 +2610,12 @@ const DSP = (() => {
     const flags = [];
     let q = 0;
     if (robust) {
-      let mx = 0; for (let i = 0; i < n; i++) if (isFinite(x[i]) && Math.abs(x[i]) > mx) mx = Math.abs(x[i]);
+      let mx = 0; for (let i = 0; i < n; i++) if (!(del && del[i]) && isFinite(x[i]) && Math.abs(x[i]) > mx) mx = Math.abs(x[i]);   // silinmiş dev değerler veri adımını bozmasın
       const tiny = mx * 1e-9; q = Infinity;
       for (let i = 1; i < n; i++) { const d = Math.abs(x[i] - x[i - 1]); if (d > tiny && d < q && !(del && (del[i] || del[i - 1]))) q = d; }
       if (!isFinite(q)) return new Uint32Array(0);
     }
+    const LB = robust ? Math.max(nsig * q, gmin || 0) : 0;   // eşiğin alt sınırı
     const sideMed = (a, b) => { let m = 0; for (let j = a; j <= b; j++) if (!(del && del[j]) && isFinite(x[j])) buf[m++] = x[j]; if (!m) return NaN; const s2 = buf.subarray(0, m).sort(); return s2[m >> 1]; };
     for (let i = 0; i < n; i++) {
       if (del && del[i]) continue;
@@ -2622,6 +2623,7 @@ const DSP = (() => {
       const a = Math.max(0, i - k), b = Math.min(n - 1, i + k); let m = 0;
       for (let j = a; j <= b; j++) if (!(del && del[j]) && isFinite(x[j])) buf[m++] = x[j];   // silinmiş / NaN örnekler medyanı bozmasın
       if (m < 3) continue;
+      if (LB > 0) { const xi = x[i]; let near = 0; for (let j = 0; j < m; j++) if (Math.abs(buf[j] - xi) <= LB) near++; if (2 * near > m) continue; }   // medyan ±LB içinde: sıçrama olamaz (sıralamadan hızlı)
       // küçük pencerede ekleme sıralaması, TypedArray.sort'tan çok daha hızlı
       const sub = buf.subarray(0, m); if (m <= 64) { for (let u = 1; u < m; u++) { const t = sub[u]; let w2 = u - 1; while (w2 >= 0 && sub[w2] > t) { sub[w2 + 1] = sub[w2]; w2--; } sub[w2 + 1] = t; } } else sub.sort();
       const med = sub[m >> 1];
@@ -2636,6 +2638,46 @@ const DSP = (() => {
       flags.push(i);
     }
     return Uint32Array.from(flags);
+  }
+
+  // ---- Otomatik sıçrama temizleme (Temizle › Otomatik temizle) ----
+  // 1) NaN/Inf ve "bozuk" değerler: medyandan sapmaların büyüklük (log10) dağılımında, verinin gövdesinden en az
+  //    `gap` onluk (10^gap kat) kopuk duran üst grup (ör. ±1e155 gibi yanlış çözülmüş örnekler). Küme hâlinde gelseler de bulunur.
+  // 2) kalan sıçramalar: bozuk noktalar dışarıda bırakılarak yinelemeli Hampel (seviye değişimlerinin kenarı korunur). |değer| > 1e20 her zaman bozuk sayılır.
+  const ABSURD = 1e20;   // int64 aralığının da üstü: ölçülmüş bir değer olamaz
+  function grossFlags(x, del, gap) {
+    const n = x.length, step = Math.max(1, Math.floor(n / 200000)), smp = [];
+    for (let i = 0; i < n; i += step) { const v = x[i]; if (!(del && del[i]) && isFinite(v)) smp.push(v); }
+    const out = {mask: new Uint8Array(n), thr: Infinity, med: NaN};
+    if (smp.length >= 8) {
+      const so = Float64Array.from(smp).sort(), med = so[so.length >> 1]; out.med = med;
+      const d = Float64Array.from(smp, v => Math.abs(v - med)).sort(), N = d.length;
+      let i0 = N >> 1; while (i0 < N && !(d[i0] > 0)) i0++;   // gövde: sapmaların alt yarısı
+      for (let i = Math.max(i0, 1); i < N; i++) {
+        if (!(d[i - 1] > 0)) { const ref = Math.abs(med); if (i === i0 && ref > 0 && Math.log10(d[i] / ref) >= gap && (N - i) / N <= 0.45) { out.thr = Math.sqrt(d[i] * ref); break; } continue; }
+        if (Math.log10(d[i] / d[i - 1]) >= gap && (N - i) / N <= 0.45) { out.thr = Math.sqrt(d[i] * d[i - 1]); break; }
+      }
+    }
+    for (let i = 0; i < n; i++) { if (del && del[i]) continue; const v = x[i]; if (!isFinite(v) || Math.abs(v - out.med) > out.thr || Math.abs(v) > ABSURD) out.mask[i] = 1; }
+    return out;
+  }
+  function spikeAuto(x, del, opt) {
+    opt = opt || {}; const n = x.length, nsig = opt.nsig || 6, gap = opt.gap || 3, it = opt.iter || 3;
+    const g = grossFlags(x, del, gap), m = g.mask; let gross = 0, run = 0, maxRun = 0;
+    for (let i = 0; i < n; i++) { if (m[i]) { gross++; if (++run > maxRun) maxRun = run; } else run = 0; }
+    const dm = new Uint8Array(n); for (let i = 0; i < n; i++) dm[i] = (del && del[i]) || m[i] ? 1 : 0;
+    const k = opt.k || 30;   // bozuk noktalar medyana girmez: uzun bozuk kümeler pencereyi büyütmeyi gerektirmez
+    // en az sapma: verinin yayılımının (%1–%99) bir kesri; kuantalı tabanda MAD = 0 iken küçük, olağan dalgalanmalar silinmesin
+    let gmin = opt.gmin || 0;
+    if (opt.gminFrac) { const st = Math.max(1, Math.floor(n / 100000)), sm = []; for (let i = 0; i < n; i += st) if (!dm[i] && isFinite(x[i])) sm.push(x[i]);
+      if (sm.length > 10) { const so = Float64Array.from(sm).sort(), L = so.length; gmin = Math.max(gmin, opt.gminFrac * (so[Math.floor(L * 0.99)] - so[Math.floor(L * 0.01)])); } }
+    let local = 0;
+    if (opt.local !== false) for (let r = 0; r < it; r++) {
+      const f = hampelFlags(x, k, nsig, dm, gmin, true); if (!f.length) break;
+      for (const i of f) { dm[i] = 1; m[i] = 1; } local += f.length;
+    }
+    const idx = new Uint32Array(gross + local); let j = 0; for (let i = 0; i < n; i++) if (m[i]) idx[j++] = i;
+    return {idx: idx.subarray(0, j), gross, local, thr: g.thr, med: g.med, k, gmin};
   }
 
   // ---- Akustik temizleme ----
@@ -3488,7 +3530,7 @@ const DSP = (() => {
     fft(ar, ai, true);
     for (let k = 0; k < n; k++) { const r = ar[k] / M, i = ai[k] / M; re[k] = r * B.wr[k] - i * B.wi[k]; im[k] = r * B.wi[k] + i * B.wr[k]; }
   }
-  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, quantStep, omlsa, omlsaN, noiseProfile, decrackle, transientEvents, speechSegments, levelAgc, wsola, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC, iirDesign, firwin, firApply, filterDesign, filterApply, freqResp, rainflow, rainflowSummary, turningPoints, slidingStats, fftAny, polyRoots};
+  return {chi2q, psdCI, noiseFloorMinStat, levelSegments, autoClean, quantStep, omlsa, omlsaN, noiseProfile, decrackle, transientEvents, speechSegments, levelAgc, wsola, fft, window, nextPow2, segment, welch, spectrogram, design, filtfilt, hampelFlags, spikeAuto, grossFlags, detrendLinear, declick, spectralDenoise, resample, stats, wavBlob, octaveBands, resonances, parseWav, srs, srsFreqs, frf, wA, wC, iirDesign, firwin, firApply, filterDesign, filterApply, freqResp, rainflow, rainflowSummary, turningPoints, slidingStats, fftAny, polyRoots};
 })();
 
 return DSP;
@@ -5443,6 +5485,12 @@ function paintStats(el, tr, s) {
 /* ---------- Temizle ---------- */
 function buildClean() {
   const r = h('div');
+  r.append(card('Otomatik temizle',
+    fr('Hassasiyet', selIn('auSens', [['low', 'Düşük: yalnız bozuk değerler'], ['mid', 'Orta'], ['high', 'Yüksek']], 'mid')),
+    fr('Uygula', selIn('auWhat', [['tr', 'Aktif iz'], ['ax', 'Alt grafikteki tüm izler'], ['all', 'Grafikteki tüm izler']], 'tr')),
+    fr('Kapsam', selIn('auScope', [['all', 'Tüm kanal'], ['vis', 'Görünen aralık']], 'all')),
+    h('div', {class: 'btns'}, btn('Otomatik temizle', () => autoSpikeClean(true), 'primary'), btn('Önizle (seç)', () => autoSpikeClean(false))),
+    h('div', {id: 'auInfo', class: 'note'}, 'Gürültüyü bulur ve siler: NaN/Inf, verinin gövdesinden binlerce kat kopuk dev değerler (ör. ±1e155; art arda gelseler de) ve kalan sıçramalar. Gerçek seviye değişimleri silinmez. Ctrl+Z ile geri alınır.')));
   r.append(card('Seçim ve silme',
     h('div', {class: 'btns', style: 'margin-top:0'}, btn('Kutu seç', () => setMode('box')), btn('Kement seç', () => setMode('lasso'))),
     h('div', {class: 'note'}, 'Grafikte nokta seçin (kırmızı görünür), sonra "Seçilenleri sil" (Delete). Silme orijinal dosyayı değiştirmez, geri alınabilir.'),
@@ -5493,6 +5541,37 @@ async function findOutliers(kind) {
     S.plot.sel = {axes: ax, type: 'idx', hits: idx.length ? [{tr, idx: Uint32Array.from(idx)}] : []}; S.plot.onSelect(S.plot.sel); S.plot.invalidate();
     toast(idx.length ? `${fmtCnt(idx.length)} nokta bulundu — silmek için "Seçilenleri sil"` : 'Eşleşen nokta bulunamadı');
   });
+}
+
+// Temizle › Otomatik temizle: bozuk değerler + sıçramalar (DSP.spikeAuto, işçide); uygula = sil (geri alınabilir)
+const AU_SENS = {low: {gap: 4, local: false}, mid: {gap: 3, nsig: 7, gminFrac: 0.2}, high: {gap: 2, nsig: 5, gminFrac: 0.05}};
+async function autoSpikeClean(apply) {
+  if (apply && S.rawOn) return toast('Ham veri görünümünde silme kapalı — önce “İşlenmiş görünüme dön”');
+  const ax0 = activeAxes(), what = sv('auWhat'), scope = sv('auScope'), opt = AU_SENS[sv('auSens')] || AU_SENS.mid;
+  const list = []; for (const ax of what === 'all' ? S.plot.axes : ax0 ? [ax0] : []) for (const tr of ax.traces) if (tr.ch && tr.visible && (what !== 'tr' || tr === activeTrace())) list.push([tr, ax]);
+  if (!list.length) return toast('Önce Zaman grafiğine bir iz ekleyin');
+  const hits = [], info = [];
+  await busy('Gürültü aranıyor…', async prog => {
+    let k = 0;
+    for (const [tr, ax] of list) {
+      if (S.cancel) break; const ch = tr.ch; await ensureLoaded(ch);
+      const [a, b] = scope === 'vis' ? visRange(tr, ax) : [0, ch.n]; if (b - a < 8) continue;
+      const r = await DSPW.run('spikeAuto', [ch.data.subarray(a, b), ch.del ? ch.del.subarray(a, b) : null, opt]);
+      if (r.idx.length) { const idx = new Uint32Array(r.idx.length); for (let i = 0; i < idx.length; i++) idx[i] = r.idx[i] + a; hits.push({tr, idx}); }
+      info.push(`${tr.label}: ${fmtCnt(r.idx.length)} nokta` + (r.idx.length ? ` (bozuk ${fmtCnt(r.gross)}, sıçrama ${fmtCnt(r.local)})` : ''));
+      prog(++k / list.length);
+    }
+  });
+  if (S.cancel) return;
+  const n = hits.reduce((s, h) => s + h.idx.length, 0), el = $('#auInfo');
+  if (el) { el.textContent = info.join('\n'); el.style.whiteSpace = 'pre-line'; }
+  if (!n) return toast('Gürültü bulunamadı');
+  if (!apply) { S.plot.sel = {axes: ax0, type: 'idx', hits}; S.plot.onSelect(S.plot.sel); S.plot.invalidate(); return toast(`${fmtCnt(n)} nokta seçildi (kırmızı) — silmek için "Seçilenleri sil" ya da "Otomatik temizle"`); }
+  const group = [];
+  for (const hh of hits) { const done = hh.tr.ch.applyDelete(hh.idx); if (done.length) { group.push({ch: hh.tr.ch, idx: done}); logOp('autoclean', {ch: hh.tr.ch.name, n: done.length}); } }
+  S.plot.clearSelection(); if (group.length) { S.undo.push(group); S.redo = []; }
+  for (const [, ax] of list) { ax.yAuto = true; ax.yAuto2 = true; }
+  toast(fmtCnt(group.reduce((s, g) => s + g.idx.length, 0)) + ' gürültülü nokta silindi (Ctrl+Z ile geri alınır)'); afterEdit();
 }
 
 /* ---------- Analiz ---------- */
@@ -8041,7 +8120,7 @@ async function qualAuto(files) {
 }
 
 /* ===== Faz 2: Test sekmesi — faz tablosu (B1), şartname uygunluk + şablonlar (B2), hesap kaydı (A2) ===== */
-const APP_VER = '2.43';
+const APP_VER = '2.44';
 function logOp(op, detail) { (S.methodLog = S.methodLog || []).push(Object.assign({t: Date.now(), op}, detail || {})); }
 
 /* ---------- Faz tablosu (düzenlenebilir) ---------- */
@@ -8480,6 +8559,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.44', d: 'Otomatik gürültü temizleme', items: [
+    'Temizle › Otomatik temizle: NaN/Inf, verinin gövdesinden binlerce kat kopuk dev değerler (ör. ±1e155, art arda kümeler hâlinde de) ve kalan sıçramalar tek tıkla bulunup silinir; Ctrl+Z ile geri alınır.',
+    'Hassasiyet (Düşük: yalnız bozuk değerler / Orta / Yüksek), aktif iz / alt grafik / tüm izler, tüm kanal ya da görünen aralık; Önizle bulunanları önce kırmızı seçer. Temizlikten sonra y ekseni veriye oturur.',
+    'Hampel: grafikte silinmiş dev değerler artık eşiği bozmaz; büyük kanallarda sıçrama araması belirgin hızlandı.'
+  ]},
   {v: '2.43', d: 'Çerçeve Çözücü', items: [
     'Telemetri modülünün başlığı “Çerçeve Çözücü” oldu; dışa aktarılan ayar dosyasının adı cerceve_ayarlar_….json. Eski ayar dosyaları ve kayıtlı ayarlar aynen açılır.'
   ]},
