@@ -69,7 +69,13 @@ function renderCursorPanel(P) {
   const st = P.cursorStats(), xn = P.opts.xName || 't', xu = xn === 't' ? ' s' : xn === 'f' ? ' Hz' : '';
   const sel = h('select', {title: 'İmleç yakalama: tıklanan noktanın ±14 px çevresindeki görünür tepe / çukur (en az 3 px). Alt+tık: yakalamadan tam tıklanan yere', onchange: e => setSnap(e.target.value)}, ...SNAP_MODES.map(([v, t]) => h('option', {value: v, selected: P.cursorOpt.snap === v ? '' : null}, t)));
   const fl = CPAN.mode === 'float';
-  const head = h('div', {class: 'cph', title: fl ? 'Başlıktan tutup taşıyın' : ''}, h('b', {}, 'İmleçler' + (P.cursors.length ? ' (' + P.cursors.length + ')' : '')), sel,
+  const nC = P.cursors.length, ks = nC ? Math.max(0, Math.min(P.curSel | 0, nC - 1)) : -1;
+  const ed = nC ? h('span', {class: 'cpe'},
+    h('button', {class: 'ib noic', title: 'Seçili imleci yukarı taşı (sıra)', disabled: ks <= 0 ? '' : null, onclick: () => { P.moveCursor(ks, -1); renderCursorPanel(P); }}, '↑'),
+    h('button', {class: 'ib noic', title: 'Seçili imleci aşağı taşı (sıra)', disabled: ks >= nC - 1 ? '' : null, onclick: () => { P.moveCursor(ks, 1); renderCursorPanel(P); }}, '↓'),
+    h('button', {class: 'ib noic', title: 'Seçili imleci yeniden adlandır (ya da ada çift tıklayın)', onclick: () => cpanRename(P, ks)}, '✎'),
+    h('button', {class: 'ib noic', title: 'Seçili imleci sil (Delete)', onclick: () => { P.deleteCursor(ks); renderCursorPanel(P); }}, '🗑')) : null;
+  const head = h('div', {class: 'cph', title: fl ? 'Başlıktan tutup taşıyın' : ''}, h('b', {}, 'İmleçler' + (nC ? ' (' + nC + ')' : '')), sel, ed,
     h('button', {class: 'ib noic', title: CPAN.min ? 'Ölçümleri göster' : 'Yalnız başlık (küçült)', onclick: () => { CPAN.min = !CPAN.min; CPAN.save(); cpanAll(); }}, CPAN.min ? '▸' : '▾'),
     h('button', {class: 'ib noic', title: fl ? 'Grafiğin altına yerleştir' : 'Ayrı pencere yap (taşınabilir)', onclick: () => { CPAN.mode = fl ? 'dock' : 'float'; CPAN.save(); cpanAll(); }}, fl ? '⬓' : '⧉'),
     h('button', {class: 'ib noic', title: 'Tüm imleçleri temizle (Esc)', onclick: () => { P.cursors = []; P.invalidate(); P.onChange('cursor'); renderCursorPanel(P); }}, '✕'));
@@ -77,18 +83,43 @@ function renderCursorPanel(P) {
   const body = h('div', {class: 'cpb'});
   if (!st.rows.length) body.append(h('div', {class: 'note'}, 'Tıkla: imleç · Shift+tıkla: imleç ekle · imlece yakın tık: taşı'));
   else {
-    const t = h('table', {class: 'cpt nofilter'}), tr = (...c) => h('tr', {}, ...c.map(x => h('td', {}, x)));
-    t.append(h('tr', {}, ...['#', xn, 'y', st.rows.length > 1 ? xn + '/' + xn + '₁' : ''].map(x => h('th', {}, x))));
-    for (const r of st.rows) t.append(tr('C' + (r.k + 1) + (r.snap ? (r.snap === 'peak' ? '▲' : '▼') : ''), fmtNum(r.x, 7), fmtNum(r.y, 6), r.ratio != null ? fmtNum(r.ratio, 4) : ''));
+    const t = h('table', {class: 'cpt nofilter'});
+    t.append(h('tr', {}, ...['İmleç', xn, 'y', st.rows.length > 1 ? xn + '/' + xn + '₁' : ''].map(x => h('th', {}, x))));
+    for (const r of st.rows) {
+      const nm = h('td', {class: 'cpn', title: 'Seçmek için tıklayın · yeniden adlandırmak için çift tıklayın'}, r.name + (r.snap ? (r.snap === 'peak' ? ' ▲' : ' ▼') : ''));
+      const row = h('tr', {class: r.k === ks ? 'on' : null, 'data-k': r.k}, nm, ...[fmtNum(r.x, 7), fmtNum(r.y, 6), r.ratio != null ? fmtNum(r.ratio, 4) : ''].map(x => h('td', {}, x)));
+      row.onclick = () => { if (P.curSel !== r.k) { P.curSel = r.k; renderCursorPanel(P); } };
+      nm.ondblclick = e => { e.stopPropagation(); cpanRename(P, r.k); };
+      t.append(row);
+    }
     body.append(t);
     for (const p of st.pairs) {
       const L = [['ΔX', fmtNum(p.dx, 6) + xu], ['ΔY', fmtNum(p.dy, 6)], ['1/ΔX', p.inv != null ? fmtNum(p.inv, 6) + (xn === 't' ? ' Hz' : '') : '—'], ['Eğim ΔY/ΔX', p.slope != null ? fmtNum(p.slope, 6) : '—']];
       if (p.n) L.push(['Alan ∫y dx', fmtNum(p.area, 6)], ['Ortalama', fmtNum(p.mean, 6)], ['RMS', fmtNum(p.rms, 6)], ['Tepe-tepe', fmtNum(p.pp, 6)], ['Örnek', fmtCnt(p.n)]);
       else if (st.rows.length > 1) L.push(['Not', 'farklı izler: alan/RMS yok']);
-      body.append(h('div', {class: 'cpp'}, h('div', {class: 'cpk'}, `C${p.a + 1} → C${p.b + 1}`), ...L.map(([k, v]) => h('div', {class: 'cpr'}, h('span', {}, k), h('span', {}, v)))));
+      body.append(h('div', {class: 'cpp'}, h('div', {class: 'cpk'}, `${P.cursorName(p.a)} → ${P.cursorName(p.b)}`), ...L.map(([k, v]) => h('div', {class: 'cpr'}, h('span', {}, k), h('span', {}, v)))));
     }
   }
   pn.replaceChildren(head, body);
+  pn.tabIndex = -1;
+  pn.onkeydown = e => {   // panel odaktayken: Delete seçili imleci siler, ↑/↓ seçimi değiştirir
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || !P.cursors.length) return;
+    const k = Math.max(0, Math.min(P.curSel | 0, P.cursors.length - 1));
+    if (e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); P.deleteCursor(k); renderCursorPanel(P); pn.focus(); }
+    else if (e.key === 'F2') { e.preventDefault(); cpanRename(P, k); }
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); const j = k + (e.key === 'ArrowUp' ? -1 : 1); if (j >= 0 && j < P.cursors.length) { if (e.altKey) P.moveCursor(k, j - k); else P.curSel = j; renderCursorPanel(P); pn.focus(); } }
+  };
+}
+// imleç adını tablodaki hücrede düzenle (Enter / odak kaybı: kaydet · Esc: vazgeç)
+function cpanRename(P, k) {
+  const pn = P._cpanel; if (!pn || !P.cursors[k]) return; if (CPAN.min) { CPAN.min = false; CPAN.save(); renderCursorPanel(P); }
+  const td = pn.querySelector(`tr[data-k="${k}"] .cpn`); if (!td) return;
+  P.curSel = k; pn.querySelectorAll('.cpt tr.on').forEach(r => r.classList.remove('on')); td.parentNode.classList.add('on');
+  const inp = h('input', {type: 'text', class: 'cpin', value: P.cursorName(k), maxlength: 40, 'aria-label': 'İmleç adı'}); let done = false;
+  const fin = ok => { if (done) return; done = true; if (ok) P.renameCursor(k, inp.value); renderCursorPanel(P); };
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') fin(true); else if (e.key === 'Escape') fin(false); };
+  inp.onblur = () => fin(true); inp.onclick = e => e.stopPropagation();
+  td.replaceChildren(inp); inp.focus(); inp.select();
 }
 // başlangıç: tercihler ve kancalar
 (function () {
@@ -279,4 +310,65 @@ function fitBar(el) {
     MVUI.fx($('#statsbar')); MVUI.tableFilters(document);
     window.addEventListener('resize', () => { const m = $('#popm'); if (m) popClose(); });
   }, 0));
+})();
+
+/* ---------- İmleç tablosu dışa aktarılan görsele (PNG / SVG / panoya / rapor) ----------
+   İmleçler paneli görünürken (küçültülmemişse) grafiğin altına aynı ölçümler tablo olarak eklenir. */
+function cpanExportModel(P) {
+  const pn = P._cpanel; if (!pn || pn.classList.contains('hidden') || CPAN.min || !P.cursors.length) return null;
+  const st = P.cursorStats(), xn = P.opts.xName || 't', xu = xn === 't' ? ' s' : xn === 'f' ? ' Hz' : '', multi = st.rows.length > 1;
+  const head = ['İmleç', 'İz', xn, 'y'].concat(multi ? [xn + '/' + xn + '₁'] : []);
+  const rows = st.rows.map(r => [r.name + (r.snap ? (r.snap === 'peak' ? ' ▲' : ' ▼') : ''), r.label, fmtNum(r.x, 7), fmtNum(r.y, 6)].concat(multi ? [r.ratio != null ? fmtNum(r.ratio, 4) : ''] : []));
+  const pairs = st.pairs.map(p => {
+    const L = [['ΔX', fmtNum(p.dx, 6) + xu], ['ΔY', fmtNum(p.dy, 6)], ['1/ΔX', p.inv != null ? fmtNum(p.inv, 6) + (xn === 't' ? ' Hz' : '') : '—'], ['Eğim', p.slope != null ? fmtNum(p.slope, 6) : '—']];
+    if (p.n) L.push(['Alan', fmtNum(p.area, 6)], ['Ortalama', fmtNum(p.mean, 6)], ['RMS', fmtNum(p.rms, 6)], ['Tepe-tepe', fmtNum(p.pp, 6)], ['Örnek', fmtCnt(p.n)]);
+    return {k: `${P.cursorName(p.a)} → ${P.cursorName(p.b)}`, L};
+  });
+  return {head, rows, pairs, colors: P.cursors.map(c => c.tr.color)};
+}
+// ctx: CanvasRenderingContext2D ya da SvgCtx; (0,0) tablonun sol üstü; dönen: kullanılan yükseklik
+function cpanDrawTable(ctx, W, T, m) {
+  const pad = 10, rh = 16, F = '11px system-ui,sans-serif', FB = '600 11px system-ui,sans-serif';
+  ctx.save(); ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  ctx.strokeStyle = T.grid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, .5); ctx.lineTo(W - pad, .5); ctx.stroke();
+  let y = 6 + rh / 2; ctx.font = FB; ctx.fillStyle = T.fg; ctx.fillText('İmleçler', pad, y); y += rh + 2;
+  // sütun genişlikleri
+  const cw = m.head.map((hd, j) => { ctx.font = FB; let w = ctx.measureText(hd).width; ctx.font = F; for (const r of m.rows) w = Math.max(w, ctx.measureText(r[j]).width); return w + 16; });
+  let x = pad + 12; ctx.font = FB; ctx.fillStyle = T.muted; m.head.forEach((hd, j) => { ctx.fillText(hd, x, y); x += cw[j]; }); y += rh;
+  ctx.font = F;
+  m.rows.forEach((r, i) => {
+    ctx.fillStyle = m.colors[i] || T.fg; ctx.fillRect(pad, y - 4, 7, 7);   // iz rengi
+    x = pad + 12; ctx.fillStyle = T.fg; r.forEach((v, j) => { ctx.fillText(v, x, y); x += cw[j]; }); y += rh;
+  });
+  // çift ölçümleri: satıra sığdığı kadar, sonra alt satır
+  ctx.font = FB; const kw = Math.max(0, ...m.pairs.map(p => ctx.measureText(p.k).width));   // değerler aynı sütundan başlasın
+  for (const p of m.pairs) {
+    y += 3; ctx.font = FB; ctx.fillStyle = T.fg; ctx.fillText(p.k, pad, y); const x0 = pad + kw + 14; x = x0;
+    ctx.font = F;
+    for (const [k, v] of p.L) {
+      const s = k + ' = ' + v, w = ctx.measureText(s).width + 16;
+      if (x + w > W - pad && x > x0) { y += rh - 1; x = x0; }
+      ctx.fillStyle = T.muted; ctx.fillText(k + ' =', x, y); ctx.fillStyle = T.fg; ctx.fillText(v, x + ctx.measureText(k + ' = ').width, y); x += w;
+    }
+    y += rh - 1;
+  }
+  ctx.restore(); return Math.ceil(y + 4);
+}
+(function () {
+  const mctx = () => (cpanDrawTable._m = cpanDrawTable._m || document.createElement('canvas').getContext('2d'));
+  const measure = (W, T, m) => { const g = mctx(); g.save(); g.setTransform(1, 0, 0, 1, 0, 0); const r = cpanDrawTable(g, W, T, m); g.restore(); return r; };
+  const oPNG = Plot.prototype.toPNG, oSVG = Plot.prototype.toSVG;
+  Plot.prototype.toPNG = function (scale = 2, light = true) {
+    const c = oPNG.call(this, scale, light), m = cpanExportModel(this); if (!m) return c;
+    const T = light ? THEMES.light : curTheme(), W = this.W, H = this.H, th = measure(W, T, m);
+    const o = document.createElement('canvas'); o.width = c.width; o.height = Math.round((H + th) * scale);
+    const g = o.getContext('2d'); g.fillStyle = T.bg; g.fillRect(0, 0, o.width, o.height); g.drawImage(c, 0, 0);
+    g.scale(scale, scale); g.translate(0, H); cpanDrawTable(g, W, T, m); return o;
+  };
+  Plot.prototype.toSVG = function (light = true) {
+    const m = cpanExportModel(this); if (!m) return oSVG.call(this, light);
+    const T = light ? THEMES.light : curTheme(), W = this.W, H = this.H, th = measure(W, T, m), c = new SvgCtx(W, H + th), keep = this.cursors;
+    c.fillStyle = T.bg; c.fillRect(0, 0, W, H + th); this.render(c, W, H, T, true); this.cursors = keep;
+    c.save(); c.translate(0, H); cpanDrawTable(c, W, T, m); c.restore(); return c.toString();
+  };
 })();

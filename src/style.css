@@ -305,6 +305,7 @@ table.tbl tr.q2 td{color:#c0392b}table.tbl tr.q1 td{color:#b9770e}table.tbl a{co
 .curpanel.hidden{display:none}.curpanel .cph{display:flex;gap:6px;align-items:center;padding:4px 6px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel)}
 .curpanel .cph b{flex:1}.curpanel select{font-size:11px;padding:1px 2px}.curpanel .cpb{padding:4px 6px}
 .curpanel .cpt{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.curpanel .cpt th{text-align:left;color:var(--muted);font-weight:500}.curpanel .cpt td{padding:1px 4px 1px 0}
+.curpanel .cpe{display:inline-flex;gap:2px}.curpanel .cpe button:disabled{opacity:.35;cursor:default}.curpanel .cpt tr[data-k]{cursor:pointer}.curpanel .cpt tr[data-k]:hover td{background:var(--hover)}.curpanel .cpt tr.on td{background:var(--hover);color:var(--accent)}.curpanel .cpt tr.on td.cpn{font-weight:600}.curpanel .cpin{width:9em;font:inherit;padding:0 3px;border:1px solid var(--accent);background:var(--field);color:var(--fg)}.curpanel:focus{outline:none}
 .curpanel .cpp{margin-top:5px;border-top:1px dashed var(--border);padding-top:3px}.curpanel .cpk{font-weight:600;margin-bottom:1px}
 .curpanel .cpr{display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}.curpanel .cpr span:first-child{color:var(--muted)}
 

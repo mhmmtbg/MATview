@@ -52,6 +52,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.45', d: '.mat zamanı, imleç düzenleme', items: [
+    '.mat kaydet: “Seçili kanalları .mat olarak kaydet”, binary “Tüm alanlar” ve Çıktı › .mat dosyalarında farklı hızdaki kanalların zamanı açarken yanlış eşleniyordu; artık her kanal kendi zamanıyla açılır (önceden kaydedilmiş dosyalar da).',
+    'İmleçler: ada çift tıklayarak (ya da ✎ / F2) yeniden adlandırma, ↑ / ↓ ile sıralama, seçili imleci 🗑 ya da Delete ile silme. Taşınan imleç adını korur.',
+    'İmleçler paneli açıkken PNG kaydet, SVG, panoya kopyala ve rapora ekle görsellerine imleç tablosu (ölçümlerle birlikte) grafiğin altına eklenir; panel küçültülünce eklenmez.'
+  ]},
   {v: '2.44', d: 'Otomatik gürültü temizleme', items: [
     'Temizle › Otomatik temizle: NaN/Inf, verinin gövdesinden binlerce kat kopuk dev değerler (ör. ±1e155, art arda kümeler hâlinde de) ve kalan sıçramalar tek tıkla bulunup silinir; Ctrl+Z ile geri alınır.',
     'Hassasiyet (Düşük: yalnız bozuk değerler / Orta / Yüksek), aktif iz / alt grafik / tüm izler, tüm kanal ya da görünen aralık; Önizle bulunanları önce kırmızı seçer. Temizlikten sonra y ekseni veriye oturur.',

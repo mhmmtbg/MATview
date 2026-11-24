@@ -418,7 +418,7 @@ class Plot {
     ctx.strokeStyle = c.tr.color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(x + .5, r.y); ctx.lineTo(x + .5, r.y + r.h); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = T.bg; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 4, 0, 6.283); ctx.fill(); ctx.stroke();
-    const xl = this.opts.xName || 't', lines = [(this.cursors.length > 1 ? 'C' + (k + 1) + ' · ' : '') + c.tr.label, `${xl} = ${fmtNum(c.x, 7)}`, `y = ${fmtNum(c.y, 6)}`];
+    const xl = this.opts.xName || 't', lines = [(this.cursors.length > 1 || (c.name && !/^C\d+$/.test(c.name)) ? this.cursorName(k) + ' · ' : '') + c.tr.label, `${xl} = ${fmtNum(c.x, 7)}`, `y = ${fmtNum(c.y, 6)}`];
     if (c.i != null && this.cursors.length < 3) lines.push('i = ' + c.i);
     if (c.snap) lines.push(c.snap === 'peak' ? 'tepe' : 'çukur');
     ctx.font = '11px system-ui,sans-serif'; let w = 0; for (const l of lines) w = Math.max(w, ctx.measureText(l).width);
@@ -575,10 +575,17 @@ class Plot {
     if (!best) return;
     const cur = {axes: ax, tr: best.tr, x: best.x, y: best.y, i: best.i};
     const snap = this.cursorOpt.snap; if (snap && snap !== 'off' && !this._noSnap) this.snapCursor(cur, px, py, snap);   // Alt+tık: yakalamasız
+    if (ci >= 0 && this.cursors[ci]) cur.name = this.cursors[ci].name;   // taşınan imleç adını korur
+    else { const kept = ci < 0 ? [] : this.cursors, used = new Set(kept.map(c => c && c.name)); let k = 1; while (used.has('C' + k)) k++; cur.name = 'C' + k; }   // yeni imleç: boştaki ilk C<n> (sıralayınca adı onunla gider)
     if (ci < 0) this.cursors = [cur]; else this.cursors[ci] = cur;
-    this.cursors = this.cursors.filter(Boolean);
+    this.cursors = this.cursors.filter(Boolean); this.curSel = Math.max(0, Math.min(ci < 0 ? 0 : ci, this.cursors.length - 1));
     this.invalidate(); this.onChange('cursor');
   }
+  // imleç adı / sırası / silme (İmleçler paneli)
+  cursorName(k) { const c = this.cursors[k]; return (c && c.name) || 'C' + (k + 1); }
+  renameCursor(k, nm) { const c = this.cursors[k]; if (!c) return; nm = String(nm || '').trim().slice(0, 40); if (!nm) { const used = new Set(this.cursors.filter(x => x !== c).map(x => x.name)); let j = 1; while (used.has('C' + j)) j++; nm = 'C' + j; } c.name = nm; this.invalidate(); this.onChange('cursor'); }
+  moveCursor(k, d) { const j = k + d, cs = this.cursors; if (!cs[k] || j < 0 || j >= cs.length) return; [cs[k], cs[j]] = [cs[j], cs[k]]; this.curSel = j; this.invalidate(); this.onChange('cursor'); }
+  deleteCursor(k) { if (!this.cursors[k]) return; this.cursors.splice(k, 1); this.curSel = Math.max(0, Math.min(k, this.cursors.length - 1)); this.invalidate(); this.onChange('cursor'); }
   // ±14 px içindeki yerel tepe / çukur (auto: tıklanan noktaya değer olarak en yakın uç)
   snapCursor(c, px, py, mode) {
     const ax = c.axes, tr = c.tr, w = 14, xa = this.pxX(ax, px - w), xb = this.pxX(ax, px + w);
@@ -602,7 +609,7 @@ class Plot {
   // imleç ölçümleri: ardışık çiftler için Δ, eğim, alan (yamuk), RMS, ortalama, min/maks; x / x₁ (harmonik oranı)
   cursorStats() {
     const cs = this.cursors, rows = [], pairs = [];
-    cs.forEach((c, k) => rows.push({k, label: c.tr.label, x: c.x, y: c.y, ratio: k && cs[0].x ? c.x / cs[0].x : null, snap: c.snap || ''}));
+    cs.forEach((c, k) => rows.push({k, name: this.cursorName(k), label: c.tr.label, x: c.x, y: c.y, ratio: k && cs[0].x ? c.x / cs[0].x : null, snap: c.snap || ''}));
     for (let k = 1; k < cs.length; k++) {
       const p = cs[k - 1], q = cs[k], dx = q.x - p.x, dy = q.y - p.y, o = {a: k - 1, b: k, dx, dy, inv: dx ? 1 / Math.abs(dx) : null, slope: dx ? dy / dx : null};
       if (p.tr === q.tr) {

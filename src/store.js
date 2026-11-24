@@ -206,7 +206,7 @@ async function detectTimeVec(f) {
   for (const ch of f.channels) {
     const v = vars[ch.varIdx]; if (!v) continue;
     const st = v.top ? structT.get(v.top) : undefined;
-    const cand = [byName.get(v.name + '_t'), st, glob >= 0 ? glob : undefined];
+    const cand = [byName.get(v.name + '_t'), byName.get(v.name + '_zaman_s'), byName.get(v.name + '_time'), st, glob >= 0 ? glob : undefined];   // MATView seçim/binary .mat'i: <ad>_zaman_s
     let done = false;
     for (const ti of cand) {
       if (ti == null || ti === ch.varIdx || vars[ti].count !== ch.n) continue;
@@ -220,9 +220,9 @@ async function detectTimeVec(f) {
       multiOf(ti, tv, k); ch.tvi = ti + '*' + k; used.add(ti); break;
     }
   }
-  // "<ad>_t" zaman alanları (ad kanal olarak açılamasa da, ör. bayt dizisi) ve yapı zamanları listelenmez
+  // "<ad>_t" / "<ad>_zaman_s" zaman alanları (ad kanal olarak açılamasa da, ör. bayt dizisi) ve yapı zamanları listelenmez
   const allNames = new Set(vars.map(v => v.name));
-  vars.forEach((v, i) => { if (/_t$/.test(v.name) && isVec(v) && allNames.has(v.name.slice(0, -2))) used.add(i); });
+  vars.forEach((v, i) => { const m = /(_t|_zaman_s|_time)$/.exec(v.name); if (m && isVec(v) && allNames.has(v.name.slice(0, -m[1].length))) used.add(i); });
   for (const i of structT.values()) used.add(i);
   f.tvecs = tvs;
   if (glob >= 0 && tvs.get(glob)) f.tvec = tvs.get(glob);

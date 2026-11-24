@@ -827,7 +827,7 @@ async function exportData(kind) {
       for (let s = 0; s < rows; s += CH) { const lines = []; for (let i = s; i < Math.min(rows, s + CH); i++) lines.push(cols.map(c => i < c.v.length ? c.t[i] + ',' + c.v[i] : ',').join(',')); parts.push(lines.join('\n') + '\n'); }
       await saveBlob(new Blob(parts, {type: 'text/csv'}), 'veri.csv');
     } else {
-      const vars = []; for (const c of cols) { const nm = sanitizeName(c.name); vars.push({name: nm, data: c.v}, {name: sanitizeName(nm + '_t').slice(0, 63), data: c.t}); }
+      const vars = [], used = new Set(); for (const c of cols) { let nm = sanitizeName(c.name).slice(0, 61), k = 2; while (used.has(nm)) nm = sanitizeName(c.name).slice(0, 57) + '_' + k++; used.add(nm); vars.push({name: nm, data: c.v}, {name: nm + '_t', data: c.t}); }   // <ad>_t açarken kanalın zamanı
       await saveBlob(matWrite(vars), 'veri.mat');
     }
   });

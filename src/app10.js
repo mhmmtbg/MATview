@@ -22,13 +22,14 @@ const MAT_CAP = 1.3e9;
 // o: {subs: [ad]|null (tümü), raw, fields, time, nan, ranges: {ad: Set}|null, zip}
 async function binMatBuild(f, o, prog, subs) {
   const vars = [], sc = f.bin.sc, lay = f.bin.lay, n = sc.frames, used = new Set();
-  const uniq = nm => { let s = sanitizeName(nm).slice(0, 63), k = 2; while (used.has(s)) s = sanitizeName(nm).slice(0, 58) + '_' + k++; used.add(s); return s; };
+  const uniq = (nm, mx = 63) => { let s = sanitizeName(nm).slice(0, mx), k = 2; while (used.has(s)) s = sanitizeName(nm).slice(0, mx - 5) + '_' + k++; used.add(s); return s; };
   if (o.time !== false) { const t = new Float64Array(n), kn = new Float64Array(n); for (let i = 0; i < n; i++) { kn[i] = sc.g ? sc.g[i] : i; t[i] = kn[i] * f.Tpkt; } vars.push({name: uniq('zaman_s'), data: t}, {name: uniq('kare_no'), data: kn}); }
   if (o.fields) {
     const fl = f.channels.filter(c => c.dev === 'Alanlar' && (!o.subs || subs.includes(binFieldSub(f, (f.bin.def.fields.find(x => BIN.clean(x.name) === c.name)) || {}))));
     let k = 0; for (const c of fl) {
       await ensureLoaded(c); let d = c.data; if (o.nan && c.del) { d = Float64Array.from(d); for (let i = 0; i < d.length; i++) if (c.del[i]) d[i] = NaN; }
-      vars.push({name: uniq(c.name), data: d}); if (d.length !== n && o.time !== false) { const tt = new Float64Array(d.length); for (let i = 0; i < tt.length; i++) tt[i] = c.t(i); vars.push({name: uniq(c.name + '_zaman_s'), data: tt}); } if (prog) prog(++k / (fl.length + 1) * 0.3);
+      const own = d.length !== n && o.time !== false, vn = uniq(c.name, own ? 55 : 63); vars.push({name: vn, data: d});
+      if (own) { const tt = new Float64Array(d.length); for (let i = 0; i < tt.length; i++) tt[i] = c.t(i); vars.push({name: uniq(vn + '_zaman_s'), data: tt}); }   // açarken <ad>_zaman_s kanalın zamanı olur if (prog) prog(++k / (fl.length + 1) * 0.3);
     }
   }
   if (o.raw) for (const s of subs) {
@@ -55,15 +56,20 @@ async function binMatExport(f, o) {
 async function matSelExport(chs, o = {}) {
   if (!chs.length) return toast('Önce kanal seçin (tıklama / Ctrl / Shift)');
   await busy('MAT hazırlanıyor…', async prog => {
-    const vars = [], used = new Set(); const uniq = nm => { let s = sanitizeName(nm).slice(0, 63), k = 2; while (used.has(s)) s = sanitizeName(nm).slice(0, 58) + '_' + k++; used.add(s); return s; };
+    const vars = [], used = new Set(); const uniq = (nm, mx = 63) => { let s = sanitizeName(nm).slice(0, mx), k = 2; while (used.has(s)) s = sanitizeName(nm).slice(0, mx - 5) + '_' + k++; used.add(s); return s; };
     const byF = new Map(); for (const c of chs) if (c.bin && c.dev !== 'Alanlar' && c.file.bin) { if (!byF.has(c.file)) byF.set(c.file, []); byF.get(c.file).push(c); }
     let tref = null, k = 0;
-    const addT = (c, nm) => { if (o.time === false) return; const key = c.n + '|' + c.t(0) + '|' + c.t(c.n - 1); if (!tref) { tref = key; const t = new Float64Array(c.n); for (let i = 0; i < c.n; i++) t[i] = c.t(i); vars.push({name: uniq('zaman_s'), data: t}); } else if (key !== tref) { const t = new Float64Array(c.n); for (let i = 0; i < c.n; i++) t[i] = c.t(i); vars.push({name: uniq(nm + '_zaman_s'), data: t}); } };
+    // ortak zaman_s: seçimdeki en uzun kanalınki; zamanı ondan farklı her kanala kendi <ad>_zaman_s'i yazılır (açarken o kanala bağlanır)
+    const tOf = c => { const t = new Float64Array(c.n); for (let i = 0; i < c.n; i++) t[i] = c.t(i); return t; };
+    const sameT = (c, t) => { if (!t || c.n !== t.length) return false; for (let i = 0; i < c.n; i++) if (Math.abs(c.t(i) - t[i]) > 1e-9 * Math.max(1, Math.abs(t[i]))) return false; return true; };
+    const ref = o.time === false ? null : chs.reduce((a, c) => (c.n > (a ? a.n : -1) ? c : a), null);
+    if (ref) { await ensureLoaded(ref); tref = tOf(ref); vars.push({name: uniq('zaman_s'), data: tref}); }
+    const addT = (c, vn) => { if (!tref || sameT(c, tref)) return; vars.push({name: uniq(vn + '_zaman_s'), data: tOf(c)}); };
     for (const [f, list] of byF) {
       const offs = list.map(c => f.bin.lay.pos.get(c.name)), n = f.bin.sc.frames; if (offs.length * n > MAT_CAP) throw new Error('Seçim çok büyük (' + fmtCnt(Math.round(offs.length * n / 1e6)) + ' MB)');
-      const m = await binRawU8(f, offs, p => prog(p * 0.5)); list.forEach((c, j) => { addT(c, c.name); vars.push({name: uniq(c.name), data: m.subarray(j * n, (j + 1) * n), u8: true}); });
+      const m = await binRawU8(f, offs, p => prog(p * 0.5)); list.forEach((c, j) => { const vn = uniq(c.name, 55); vars.push({name: vn, data: m.subarray(j * n, (j + 1) * n), u8: true}); addT(c, vn); });
     }
-    for (const c of chs) { if (byF.has(c.file) && byF.get(c.file).includes(c)) continue; await ensureLoaded(c); let d = c.data; if (o.nan !== false && c.del) { d = Float64Array.from(d); for (let i = 0; i < d.length; i++) if (c.del[i]) d[i] = NaN; } addT(c, c.name); vars.push({name: uniq(c.name), data: d}); prog(0.5 + 0.5 * (++k / chs.length)); }
+    for (const c of chs) { if (byF.has(c.file) && byF.get(c.file).includes(c)) continue; await ensureLoaded(c); let d = c.data; if (o.nan !== false && c.del) { d = Float64Array.from(d); for (let i = 0; i < d.length; i++) if (c.del[i]) d[i] = NaN; } const vn = uniq(c.name, 55); vars.push({name: vn, data: d}); addT(c, vn); prog(0.5 + 0.5 * (++k / chs.length)); }
     await saveBlob(matWrite(vars), 'MATView_secim_' + chs.length + '_kanal.mat');
   });
 }
