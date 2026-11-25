@@ -14,6 +14,27 @@ function mxAnon() {
 }
 
 /* ---------- Zaman tanılama raporu ---------- */
+// sayaç / saat vektörünün adım dağılımı: kaç kez +1, +2 … geri; varsa eş zaman vektörüyle sayaç hızı
+function mxSteps(v, t) {
+  const n = v.length, B = [['0', 0], ['+1', 0], ['+2', 0], ['+3…+10', 0], ['+11…+1000', 0], ['> +1000', 0], ['geri (azalan)', 0], ['NaN', 0]], cnt = new Map(), rs = [];
+  let big = [];
+  for (let k = 1; k < n; k++) {
+    const d = v[k] - v[k - 1]; if (!(d === d)) { B[7][1]++; continue; }
+    const b = d === 0 ? 0 : d === 1 ? 1 : d === 2 ? 2 : d > 0 && d <= 10 ? 3 : d > 10 && d <= 1000 ? 4 : d > 1000 ? 5 : 6; B[b][1]++;
+    if (b >= 5 || b === 6) big.push([k, v[k - 1], v[k]]);
+    if (cnt.size < 5000 || cnt.has(d)) cnt.set(d, (cnt.get(d) || 0) + 1);
+    if (t && t.length === n && k % Math.max(1, Math.floor(n / 50000)) === 0) { const dt = t[k] - t[k - 1]; if (dt > 0 && d > 0) rs.push(d / dt); }
+  }
+  const top = [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([d, c]) => fmtNum(d, 6) + ' (' + fmtCnt(c) + ')').join(', ');
+  rs.sort((a, b) => a - b);
+  return {B, top, rate: rs.length ? rs[rs.length >> 1] : NaN, big: big.slice(0, 6), nBig: big.length};
+}
+function mxStepLines(L, name, v, t, num) {
+  const s = mxSteps(v, t);
+  L.push('- ' + name + ' · n=' + fmtCnt(v.length) + ' · ilk ' + num(v[0]) + ' · son ' + num(v[v.length - 1]),
+    '    adımlar: ' + s.B.filter(b => b[1]).map(([k, c]) => k + ' ' + fmtCnt(c)).join(' · ') + ' · en sık: ' + s.top,
+    '    eş zamana göre hız: ' + (isFinite(s.rate) ? fmtNum(s.rate, 6) + ' sayım/s' : '—') + (s.nBig ? ' · büyük sıçrama / geri dönüş ' + s.nBig + ': ' + s.big.map(([k, a, b]) => '(' + (k + 1) + ') ' + num(a) + '→' + num(b)).join(', ') : ''));
+}
 async function timeDiagReport(f, opt) {
   opt = opt || {};
   const an = mxAnon(), L = [], vars = f.vars || [], m = f.mat || {};
@@ -28,7 +49,7 @@ async function timeDiagReport(f, opt) {
     'Biçim: ' + (m.h5 ? 'MAT v7.3 (HDF5)' : 'MAT v5') + (m.lazy ? ' · büyük dosya (parça parça okunuyor)' : '') + (vars.some(v => v.compressed) ? ' · sıkıştırılmış öğeler var' : ''),
     'Değişken: ' + vars.length + ' (sayısal ' + vars.filter(v => v.numeric).length + ', yapı/hücre ' + vars.filter(v => !v.numeric && v.top == null).length + ', yapı içi alan ' + vars.filter(v => v.top != null).length + ')',
     'Kanal: ' + f.channels.length + ' · varsayılan hız ' + fmtNum(f.baseFs, 6) + ' Hz · temel uzunluk ' + (f.baseN || '—'),
-    f.tmap ? 'ZAMAN EKSENİ: kanal ' + an(f.tmap.src) + ' × ' + f.tmap.scale + (f.tmap.off ? ' (ilk değer 0)' : '') + ' · ' + f.tmap.n + ' eşleme noktası, ' + f.tmap.drop + ' atlanan değer' : 'Zaman ekseni: dosyanın kendi zamanı', '');
+    f.tmap ? 'ZAMAN EKSENİ: kanal ' + an(f.tmap.src) + ' × ' + f.tmap.scale + (f.tmap.off ? ' (ilk değer 0)' : '') + ' · ' + f.tmap.n + ' eşleme noktası, ' + f.tmap.drop + ' atlanan değer, ' + (f.tmap.resets || 0) + ' sıfırlanma / sıçrama köprülendi, eğim ' + fmtNum(f.tmap.slope, 6) + ' s/s' : 'Zaman ekseni: dosyanın kendi zamanı', '');
   // zaman vektörleri: ada göre zaman olan ya da bir kanala bağlanan
   const used = new Map(); for (const c of f.channels) if (c.tvi != null) { const k = String(c.tvi).split('*')[0]; used.set(+k, (used.get(+k) || 0) + 1); }
   const leaf = v => v.top ? v.name.slice(v.top.length + 1) : v.name;
@@ -50,6 +71,17 @@ async function timeDiagReport(f, opt) {
     L.push('- ' + s);
   }
   if (tcand.length > 400) L.push('… ' + (tcand.length - 400) + ' zaman vektörü daha');
+  L.push('');
+  // sayaç / saat vektörleri: adım dağılımı (ilk birimdekiler ve zaman ekseni yapılan kanal)
+  const CNT = /(^|_)(frame_?counter|cnt|counter|tick\w*|sayac)$/i, seenTop = new Set(), cv = [];
+  vars.forEach((v, i) => { if (!isVec(v) || !CNT.test(leaf(v))) return; const key = leaf(v).toLowerCase() === 'frame_counter' ? 'fc' : v.name; if (seenTop.has(key)) return; seenTop.add(key); cv.push(i); });
+  if (f.tmap && f.tmap.chan) { const vi = f.tmap.chan.varIdx; if (vi != null && !cv.includes(vi)) cv.unshift(vi); }
+  L.push('== Sayaç / saat vektörleri (' + cv.length + ') ==');
+  for (const i of cv.slice(0, 30)) {
+    const v = vars[i]; let x, tt = null; try { x = await MAT.load(m, v); } catch (e) { L.push('- ' + an(v.name) + ' okunamadı'); continue; }
+    const tv = vars.findIndex(w => w.top == v.top && TIME_RE.test(leaf(w)) && w.count === v.count); if (tv >= 0) { try { tt = await MAT.load(m, vars[tv]); } catch (_) {} }
+    mxStepLines(L, an(v.name) + (f.tmap && f.tmap.chan && f.tmap.chan.varIdx === i ? ' (ZAMAN EKSENİ)' : ''), x, tt, x2 => x2 == null ? '—' : fmtNum(Number(x2), 10));
+  }
   L.push('');
   // kanallar: zamanın kaynağına göre
   const groups = new Map();
@@ -333,6 +365,9 @@ async function tlmDiagReport(f, opt) {
     L.push('- ' + an(u.name) + ' · satır ' + fmtCnt(g ? g.length : u.rows) + ' (' + (ss.frames ? fmtNum(100 * (g ? g.length : u.rows) / ss.frames, 4) : '—') + '% çerçevede) · ilk / son çerçeve ' + (g && g.length ? fmtCnt(g[0]) + ' / ' + fmtCnt(g[g.length - 1]) : '—') +
       ' · süre ' + (g && g.length ? sec((g[g.length - 1] - g[0]) * T) : '—') + ' · boşluk ' + gaps + (miss ? ' (' + fmtCnt(miss) + ' çerçeve)' : '') + (dup ? ' · aynı çerçevede ' + dup + ' satır (sayaç tekrarı)' : '') + (back ? ' · GERİ GİDEN satır zamanı ' + back : '') + ' · ' + u.cols.length + ' sütun');
   }
+  // çerçeve sayacı sütununun adım dağılımı
+  { const ui = ss.units.findIndex(u => u.cols.some(c => c.counter)); if (ui >= 0) { const ci = ss.units[ui].cols.findIndex(c => c.counter);
+      try { const v = (await cl.request('col', {sid: ss.id, u: ui, c: ci})).v, g = rows[ui]; L.push('', 'Çerçeve sayacı sütunu:'); mxStepLines(L, an(ss.units[ui].name) + '/frame_counter', v, g ? Float64Array.from(g, x => x * T) : null, num); } catch (_) {} } }
   // kayıp çerçeve boşluklarının dağılımı (her çerçevede gelen ilk birimin satırlarından)
   const gi = rows.findIndex(g => g && g.length && g.length === Math.max(...rows.map(x => (x && x.length) || 0)));
   if (gi >= 0) {
@@ -442,8 +477,7 @@ async function tlmDiagReport(f, opt) {
 async function timeFromChannel(ch, scale, offMode) {
   await ensureLoaded(ch); const n = ch.n, d = ch.data, xs = new Float64Array(n), ys = new Float64Array(n);
   for (let i = 0; i < n; i++) { xs[i] = ch.tRaw(i); ys[i] = (ch.del && ch.del[i]) ? NaN : Number(d[i]) * scale; }
-  let off = 0; if (offMode === 'zero') { for (let i = 0; i < n; i++) if (isFinite(ys[i])) { off = -ys[i]; break; } for (let i = 0; i < n; i++) ys[i] += off; }
-  return makeTimeMap(xs, ys, {src: ch.name, scale, off, chan: ch});
+  return makeTimeMap(xs, ys, {src: ch.name, scale, off: 0, zero: offMode === 'zero', chan: ch});
 }
 function timeAxisDlg(ch) {
   const f = ch.file; if (!f) return;
@@ -462,7 +496,7 @@ function timeAxisDlg(ch) {
       busy('Zaman ekseni kuruluyor…', async () => {
         const M = await timeFromChannel(ch, k, sv('taOff')); f.tmap = M;
         S.plot.fitAll(true); refreshAll(); renderTree();
-        toast(`${f.name}: zaman ekseni “${ch.name}” × ${k} (${fmtCnt(M.n)} nokta${M.drop ? ', ' + fmtCnt(M.drop) + ' bozuk / geri giden değer atlandı' : ''})`, 9000, {t: 'Geri al', fn: () => timeAxisReset(f)});
+        toast(`${f.name}: zaman ekseni “${ch.name}” × ${k} (${fmtCnt(M.n)} nokta${M.drop ? ', ' + fmtCnt(M.drop) + ' bozuk değer atlandı' : ''}${M.resets ? ', ' + M.resets + ' sıfırlanma / sıçrama köprülendi' : ''})`, 9000, {t: 'Geri al', fn: () => timeAxisReset(f)});
       });
     }}, {t: 'Vazgeç'}]);
   });

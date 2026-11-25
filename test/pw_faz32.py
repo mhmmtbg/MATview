@@ -34,6 +34,15 @@ async def main():
           const ax = S.plot.axes[0]; const d = addDerived('olay2', Float64Array.from(c.data), c, 0, true); return [ax.xlim, d.t(30000) - d.t(10000)]; })()""")
         print('xlim / türetilmiş', r); ok(r[0][0] >= 4999 and r[0][1] <= 5501, 'eksen saat zamanında'); ok(abs(r[1] - 200) < 1e-6, 'türetilmiş kanal eşlemeyi korumalı')
         rep = await pg.evaluate("timeDiagReport(S.files[0], {cursors: false})"); ok('ZAMAN EKSENİ: kanal' in rep, 'raporda zaman ekseni')
+        print(rep[rep.find('== Sayaç'):rep.find('== Kanal')]); ok('== Sayaç / saat vektörleri' in rep and 'A1 (ZAMAN EKSENİ)' in rep and 'eş zamana göre hız: 100 sayım/s' in rep and '+1 ' in rep, 'raporda sayaç adımları')
+        # bozuk ilk değer + sayaç sıfırlanması (taşma): eşleme yine doğru, köprülenir
+        r = await pg.evaluate("""(async () => { const n = 40000, t = new Float64Array(n), tk = new Float64Array(n), x = new Float64Array(n);
+          for (let k = 0; k < n; k++) { t[k] = k * 0.01 + (k >= 20000 ? 300 : 0); tk[k] = k < 25000 ? 4294000000 + k : k - 25000; x[k] = (k === 10000 || k === 30000) ? 1 : 0; }
+          tk[0] = 7; tk[1] = 1e12;
+          await openFiles([new File([matWrite([{name: 't', data: t}, {name: 'tick2', data: tk}, {name: 'olay', data: x}])], 'tasma.mat')]); await sleep(200);
+          const f = S.files.find(f => f.name === 'tasma.mat'), c = f.channels.find(c => c.name === 'olay');
+          f.tmap = await timeFromChannel(f.channels.find(c => c.name === 'tick2'), 0.01, 'zero'); return [c.t(30000) - c.t(10000), c.t(0), f.tmap.resets, f.tmap.outliers, f.tmap.n]; })()""")
+        print('taşma', r); ok(abs(r[0] - 200) < 1e-6 and abs(r[1]) < 0.025 and r[2] == 1 and r[3] >= 2, 'bozuk ilk değer ve sayaç taşması: %s' % r)
         await pg.evaluate("timeAxisReset(S.files[0]); 0")
         ok(abs(await pg.evaluate("(() => { const c = S.files[0].channels.find(c => c.name === 'olay'); return c.t(30000) - c.t(10000); })()") - 500) < 1e-6, 'geri al')
         # telemetri oturumu: frame_counter × periyot → sayaç zamanıyla aynı

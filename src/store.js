@@ -32,22 +32,35 @@ const PYR_B = 32;
    ys: parametre değeri × ölçek + ofset; ikisi de artan tutulur (bozuk / geri giden değerler atılır). Arada doğrusal,
    uçlarda son parçanın eğimiyle. fwd: eski → yeni, inv: yeni → eski. */
 function makeTimeMap(xs0, ys0, info) {
-  const n = Math.min(xs0.length, ys0.length), xs = [], ys = [];
-  // medyan eğim: bozuk sıçramaları ayıklamak için
-  const sl = []; const st = Math.max(1, Math.floor(n / 5000)); for (let i = st; i < n; i += st) { const dx = xs0[i] - xs0[i - st], dy = ys0[i] - ys0[i - st]; if (dx > 0 && isFinite(dy)) sl.push(dy / dx); }
-  sl.sort((a, b) => a - b); const m = sl.length ? sl[sl.length >> 1] : 1; let drop = 0;
+  info = info || {};
+  // geçerli noktalar (aynı x'te tekrarlar tek)
+  const n0 = Math.min(xs0.length, ys0.length), X0 = [], Y0 = []; let bad = 0;
+  for (let i = 0; i < n0; i++) { const x = xs0[i], y = ys0[i]; if (!isFinite(x) || !isFinite(y)) { bad++; continue; } if (X0.length && x <= X0[X0.length - 1]) { if (x < X0[X0.length - 1]) bad++; continue; } X0.push(x); Y0.push(y); }
+  const n = X0.length; if (n < 2) throw new Error('Zaman parametresinde kullanılabilir değer yok');
+  // eğim: ardışık artan adımların medyanı (sıfırlanma / bozuk değerlerden etkilenmez)
+  const sl = [], dxs = []; for (let i = 1; i < n; i++) { const dx = X0[i] - X0[i - 1], dy = Y0[i] - Y0[i - 1]; dxs.push(dx); if (dy > 0) sl.push(dy / dx); }
+  if (sl.length < n * 0.05) throw new Error('Zaman parametresi artmıyor (artan adım: ' + sl.length + ' / ' + (n - 1) + ')');
+  sl.sort((a, b) => a - b); dxs.sort((a, b) => a - b); const m = sl[sl.length >> 1], mdx = dxs[dxs.length >> 1];
+  // tekil bozuk değerler: y − m·x'in kayan medyanından sapanlar
+  const W = 7, tol = Math.max(5 * m * mdx, 1e-12), r = new Float64Array(n), keep = new Uint8Array(n); let out = 0;
+  for (let i = 0; i < n; i++) r[i] = Y0[i] - m * X0[i];
+  const win = new Float64Array(2 * W + 1);
+  for (let i = 0; i < n; i++) { const a = Math.max(0, i - W), b = Math.min(n - 1, i + W); let k = 0; for (let j = a; j <= b; j++) win[k++] = r[j]; const w = win.subarray(0, k).sort(); if (Math.abs(r[i] - w[k >> 1]) <= tol) keep[i] = 1; else out++; }
+  // sürekli zaman: sıfırlanma / taşma ya da beklenmeyen sıçramada (geri giden ya da beklenenin çok üstünde) değer, önceki noktadan
+  // beklenen eğimle devam edecek biçimde kaydırılır
+  const X = [], Y = []; let off = 0, resets = 0;
   for (let i = 0; i < n; i++) {
-    const x = xs0[i], y = ys0[i]; if (!isFinite(x) || !isFinite(y)) { drop++; continue; }
-    const L = xs.length;
-    if (L) { const dx = x - xs[L - 1], dy = y - ys[L - 1]; if (dx <= 0) { if (dx === 0 && dy === 0) continue; drop++; continue; }
-      if (dy < 0 || (m > 0 && dy > 50 * m * dx + 1e-9 && dy > 1e-6)) { drop++; continue; } }   // geri giden ya da sıçrayan değer
-    xs.push(x); ys.push(y);
+    if (!keep[i]) continue; const x = X0[i]; let y = Y0[i] + off;
+    if (X.length) { const L = X.length - 1, e = m * (x - X[L]), d = y - Y[L];
+      if (d < 0 || d > 20 * e + 5 * m * mdx) { const y2 = Y[L] + e; off += y2 - y; y = y2; resets++; } }
+    X.push(x); Y.push(y);
   }
-  if (xs.length < 2) throw new Error('Zaman parametresi artan değil (kullanılabilir değer: ' + xs.length + ')');
-  const X = Float64Array.from(xs), Y = Float64Array.from(ys), N = X.length;
+  if (X.length < 2) throw new Error('Zaman parametresinde kullanılabilir değer yok');
+  const Xa = Float64Array.from(X), Ya = Float64Array.from(Y), N = Xa.length;
+  if (info.zero) { const y0 = Ya[0]; for (let i = 0; i < N; i++) Ya[i] -= y0; info.off = -y0; }
   const seg = (A, v) => { let lo = 0, hi = N - 2; while (lo < hi) { const md = (lo + hi + 1) >> 1; if (A[md] <= v) lo = md; else hi = md - 1; } return lo; };
   const lerp = (A, B, v) => { const k = v <= A[0] ? 0 : v >= A[N - 1] ? N - 2 : seg(A, v), d = A[k + 1] - A[k]; return d > 0 ? B[k] + (B[k + 1] - B[k]) * (v - A[k]) / d : B[k]; };
-  return Object.assign({xs: X, ys: Y, n: N, drop, slope: m, fwd: x => lerp(X, Y, x), inv: y => lerp(Y, X, y)}, info || {});
+  return Object.assign({xs: Xa, ys: Ya, n: N, drop: bad + out, outliers: out, resets, slope: m, fwd: x => lerp(Xa, Ya, x), inv: y => lerp(Ya, Xa, y)}, info);
 }
 class Channel {
   constructor(o) {

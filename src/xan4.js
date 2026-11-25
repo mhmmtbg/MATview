@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.53', d: 'Zaman ekseni: sayaç taşması ve bozuk değerler', items: [
+    'Bir kanalı zaman ekseni yaparken bozuk tekil değerler (ilk değer dahil) kayan medyanla ayıklanır; sayaç sıfırlanması / taşması ya da beklenmeyen sıçramalar bir önceki noktadan beklenen eğimle köprülenir. Önceden bozuk bir ilk değer neredeyse tüm noktaların atılmasına yol açabiliyordu.',
+    'Zaman tanılama raporuna sayaç / saat vektörlerinin adım dağılımı (+1, +2, geri …), en sık adımlar, eş zamana göre sayaç hızı ve büyük sıçramalar eklendi (.mat ve telemetri kaydı).'
+  ]},
   {v: '2.52', d: 'Parametreyi zaman ekseni yapmak', items: [
     'Kanala sağ tık › Bu kanalı dosyanın zaman ekseni yap: telemetrideki bir tick sayacı ya da saniye cinsinden saat alanı dosyanın zamanı olur; dosyadaki tüm kanallar bu parametrenin aynı andaki değerine göre zamanlanır (MATLAB’de o parametreyle çizmekle aynı). Ölçek önerilir (ör. 10 ms tick → 0,01), geri giden / sıçrayan saat değerleri atlanır, “ilk değer 0” seçilebilir. Geri almak için kanal ya da dosya menüsünden “Dosyanın kendi zamanına dön”.',
     'Çizim, imleçler, .mat / CSV dışa aktarma ve türetilmiş kanallar eşlenmiş zamanı kullanır; zaman tanılama raporu kullanılan zaman eksenini yazar.'
