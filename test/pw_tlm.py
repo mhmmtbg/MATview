@@ -31,11 +31,11 @@ async def main():
         n_ft = await f.evaluate("TPUI.getS().frameTypes.length")
         ok(n_ft == 2, 'çerçeve tipi sayısı %s' % n_ft)
         # template .xlsx bırakma: aynı adlı çerçeve tipinin template'i yenilenir
-        await pg.set_input_files('#fileIn', [D + 'template_cerceve0.xlsx'])
+        await pg.set_input_files('#fileIn', [D + 'ornek_sablon_0.xlsx'])
         await pg.wait_for_timeout(800)
         st = await f.evaluate("(() => { const s = TPUI.getS(); return [s.frameTypes.length, s.frameTypes.map(x => x.templateName)]; })()")
         print('çerçeve tipleri:', st)
-        ok(st[0] == 3 or 'template_cerceve0.xlsx' in st[1], 'template eklenmedi')
+        ok(st[0] == 3 or 'ornek_sablon_0.xlsx' in st[1], 'template eklenmedi')
         await f.evaluate("document.querySelector('#btnSettingsClose').click()")
         # yeniden ayarları yükle (temiz iki tip)
         await pg.set_input_files('#fileIn', [D + 'ayarlar.json'])

@@ -15,7 +15,7 @@ else {
   S.frameTypes[1].templateRows.push(vrow('KAMERA_B', 7000, 'goruntu', 1990));
   S.framePeriodMs = 10; S.live = { source: 'sim', sim: { periodMs: 10, loop: false } };
   fs.writeFileSync(path.join(OUT, 'ayarlar.json'), JSON.stringify({ app: 'MATViewCerceve', format: 2, version: TP.VERSION, settings: S, liveWork: [] }));
-  S.frameTypes.forEach((ft, i) => fs.writeFileSync(path.join(OUT, 'template_cerceve' + i + '.xlsx'), TP.writeXlsx(ft.templateRows, 'Template')));
+  S.frameTypes.forEach((ft, i) => fs.writeFileSync(path.join(OUT, 'ornek_sablon_' + i + '.xlsx'), TP.writeXlsx(ft.templateRows, 'Template')));
 }
 const C = S.cols, R = S.rows, FL = C * R, hdr = TP.parseHexBytes(S.header).bytes, T = (+S.framePeriodMs || 10) / 1000;
 const comp = S.frameTypes.map(ft => TP.compileTemplate(ft.templateRows, S));

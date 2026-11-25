@@ -4734,8 +4734,8 @@ TP.buildSamples = function () {
     version: 1, cols: 160, rows: 80, header: 'C3 5A', headerPos: 'start', transpose: true, strictSync: false,
     frameIdEnabled: true, frameIdIndex: 3,
     frameTypes: [
-      { name: 'Çerçeve 0', id: '0x00', templateName: 'template_cerceve0.xlsx', templateRows: t0, loadedAt: new Date().toISOString() },
-      { name: 'Çerçeve 1', id: '0x01', templateName: 'template_cerceve1.xlsx', templateRows: t1, loadedAt: new Date().toISOString() }
+      { name: 'Çerçeve 0', id: '0x00', templateName: 'ornek_sablon_0.xlsx', templateRows: t0, loadedAt: new Date().toISOString() },
+      { name: 'Çerçeve 1', id: '0x01', templateName: 'ornek_sablon_1.xlsx', templateRows: t1, loadedAt: new Date().toISOString() }
     ],
     counterEnabled: true, counterIndex: 1, counterType: 'uint16', counterEndian: 'little', counterToOutput: true, matEnabled: true
   };
@@ -4876,8 +4876,8 @@ TP.buildSamples = function () {
     settings: settings,
     meta: meta,
     files: [
-      { name: 'template_cerceve0.xlsx', data: writeXlsx(t0, 'Template', widths) },
-      { name: 'template_cerceve1.xlsx', data: writeXlsx(t1, 'Template', widths) },
+      { name: 'ornek_sablon_0.xlsx', data: writeXlsx(t0, 'Template', widths) },
+      { name: 'ornek_sablon_1.xlsx', data: writeXlsx(t1, 'Template', widths) },
       { name: 'ornek_kayit_bolum1.bin', data: bin.subarray(0, split) },
       { name: 'ornek_kayit_bolum2.bin', data: bin.subarray(split) },
       { name: 'ornek_ayarlar.json', data: utf8enc.encode(JSON.stringify(settings, null, 2)) },
