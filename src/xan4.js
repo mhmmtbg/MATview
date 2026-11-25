@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.54', d: 'Sayaç bit hataları, işlemci saati', items: [
+    'Telemetri: çerçeve sayacı bozuk okunduğunda (tek bit hatası; ör. +4 ya da +32769 sıçrayıp geri dönme) sonraki çerçevelere bakılarak değer bozuk sayılır; zamana sahte boşluk eklenmez, kayıp sayılmaz. Önceden küçük bit hataları “kayıp çerçeve” sayılıp zaman eksenini uzatıyordu. MATView oturumu, birim / tek .mat t ve video eşlemesi düzeltilmiş zamanı kullanır (Ayarlar › Çerçeve sayacı › Sayaç bit hatası düzeltmesi, varsayılan açık).',
+    'Zaman ekseni yapılan kanalda işaretsiz sayaç taşmaları (8 / 16 / 24 / 32 bit) açılır; ölçek önerisi yaygın saat frekanslarından (ör. 333,33 MHz işlemci zamanlayıcısı → 3e-9 s) seçilir.'
+  ]},
   {v: '2.53', d: 'Zaman ekseni: sayaç taşması ve bozuk değerler', items: [
     'Bir kanalı zaman ekseni yaparken bozuk tekil değerler (ilk değer dahil) kayan medyanla ayıklanır; sayaç sıfırlanması / taşması ya da beklenmeyen sıçramalar bir önceki noktadan beklenen eğimle köprülenir. Önceden bozuk bir ilk değer neredeyse tüm noktaların atılmasına yol açabiliyordu.',
     'Zaman tanılama raporuna sayaç / saat vektörlerinin adım dağılımı (+1, +2, geri …), en sık adımlar, eş zamana göre sayaç hızı ve büyük sıçramalar eklendi (.mat ve telemetri kaydı).'

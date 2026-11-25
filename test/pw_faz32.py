@@ -42,7 +42,17 @@ async def main():
           await openFiles([new File([matWrite([{name: 't', data: t}, {name: 'tick2', data: tk}, {name: 'olay', data: x}])], 'tasma.mat')]); await sleep(200);
           const f = S.files.find(f => f.name === 'tasma.mat'), c = f.channels.find(c => c.name === 'olay');
           f.tmap = await timeFromChannel(f.channels.find(c => c.name === 'tick2'), 0.01, 'zero'); return [c.t(30000) - c.t(10000), c.t(0), f.tmap.resets, f.tmap.outliers, f.tmap.n]; })()""")
-        print('taşma', r); ok(abs(r[0] - 200) < 1e-6 and abs(r[1]) < 0.025 and r[2] == 1 and r[3] >= 2, 'bozuk ilk değer ve sayaç taşması: %s' % r)
+        print('taşma', r);
+        # 333 MHz, 32 bit işlemci zamanlayıcısı (~12,9 sn'de bir taşar), bozuk değerler: ölçek önerisi 3e-9, taşmalar açılır
+        r2 = await pg.evaluate("""(async () => { const n = 40000, t = new Float64Array(n), tk = new Float64Array(n), x = new Float64Array(n);
+          for (let k = 0; k < n; k++) { t[k] = k * 0.01 + (k >= 20000 ? 300 : 0); tk[k] = (k * 3333333 + 123456789) % 4294967296; x[k] = (k === 10000 || k === 30000) ? 1 : 0; }
+          tk[5000] = 7; tk[15000] += 2 ** 20;
+          await openFiles([new File([matWrite([{name: 't', data: t}, {name: 'cpu', data: tk}, {name: 'olay', data: x}])], 'cpu.mat')]); await sleep(200);
+          const f = S.files.find(f => f.name === 'cpu.mat'), c = f.channels.find(c => c.name === 'olay');
+          timeAxisDlg(f.channels.find(c => c.name === 'cpu')); await sleep(400); const sug = document.querySelector('#modal input[type=number]').value; document.querySelector('#mclose').click();
+          f.tmap = await timeFromChannel(f.channels.find(c => c.name === 'cpu'), +sug, 'zero'); return [sug, c.t(30000) - c.t(10000), f.tmap.wraps, f.tmap.drop, f.tmap.resets]; })()""")
+        print('cpu saati', r2); ok(r2[0] == '3e-9' and abs(r2[1] - 199.99998) < 1e-3 and r2[2] >= 30, 'cpu saati: %s' % r2)
+        ok(abs(r[0] - 200) < 1e-6 and abs(r[1]) < 0.025 and r[2] == 1 and r[3] >= 2, 'bozuk ilk değer ve sayaç taşması: %s' % r)
         await pg.evaluate("timeAxisReset(S.files[0]); 0")
         ok(abs(await pg.evaluate("(() => { const c = S.files[0].channels.find(c => c.name === 'olay'); return c.t(30000) - c.t(10000); })()") - 500) < 1e-6, 'geri al')
         # telemetri oturumu: frame_counter × periyot → sayaç zamanıyla aynı

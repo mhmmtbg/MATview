@@ -16,8 +16,21 @@ async function rowT(b) {
   const b0 = fs.readFileSync(D + 'kayit.bin'), b = Buffer.from(b0);
   let o = 0; for (let k = 0; k < 300; k++) { o += 12800; if (!(b[o] === 0xC3 && b[o + 1] === 0x5A)) o = b.indexOf(Buffer.from([0xC3, 0x5A]), o - 20); }
   b[o + 159] ^= 0x5A; b[o + 160] ^= 0x3C;
+  // v2.54: tek bit hataları (küçük sıçrayıp geri dönme: ±1, ±2, ±4, ±64 …) — önceden "kayıp çerçeve" sayılıp zamana sahte boşluk ekleniyordu
+  const at = k0 => { let q = 0; for (let k = 0; k < k0; k++) { q += 12800; if (!(b[q] === 0xC3 && b[q + 1] === 0x5A)) q = b.indexOf(Buffer.from([0xC3, 0x5A]), q - 20); } return q; };
+  [[420, 159, 0x04], [500, 160, 0x04], [610, 159, 0x40], [700, 160, 0x02], [820, 159, 0x01], [905, 160, 0x10]].forEach(([k, byte, x]) => { b[at(k) + byte] ^= x; });
   const ref = await rowT(b0), bad = await rowT(b);
   console.log('özgün sıçramalar', JSON.stringify(ref), '· bozuk sayaçla', JSON.stringify(bad));
   if (JSON.stringify(ref) !== JSON.stringify(bad)) { console.log('HATA: bozuk sayaç zaman eksenini değiştirdi'); process.exit(1); }
+  // düzeltme kapalıyken eski davranış (bit hataları kayıp sayılır) — karşılaştırma için
+  S.cntGlitchFix = false; const off = await rowT(b); S.cntGlitchFix = true;
+  console.log('düzeltme kapalı:', JSON.stringify(off)); if (JSON.stringify(off) === JSON.stringify(ref)) { console.log('HATA: test bit hatası üretmedi'); process.exit(1); }
+  // birim testi: gerçek kayıp, taşma, tekrar korunur; tek bit hataları kaldırılır
+  const cv = [], M = 65536; let c = 65500; for (let k = 0; k < 400; k++) { cv.push(c % M); c += (k === 100 ? 6 : 1); }   // 100'de 5 kayıp, 36'da taşma
+  const g = cv.slice(); g[150] ^= 4; g[200] ^= 512; g[250] ^= 0x8000; g[300] = g[299];   // bit hataları + bir tekrar
+  const oldT = []; let tf = 0, prev = g[0]; for (let k = 0; k < g.length; k++) { if (k) { let d = (((g[k] - prev) % M) + M) % M; if (d > M / 2) d -= M; tf += d === 0 ? 0 : d > 1 && d - 1 <= 1000 ? d : 1; prev = g[k]; } oldT.push(tf); }
+  const fx = TP.cntGlitchFix(g, oldT, M, 1000), nt = oldT.map(fx.map);
+  console.log('birim testi:', fx.glitch, 'bozuk ·', fx.lost, 'kayıp · son', nt[nt.length - 1], nt[101] - nt[100], nt[300] - nt[299], nt[150] - nt[149], nt[151] - nt[150]);
+  if (fx.glitch !== 4 || fx.lost !== 5 || nt[399] !== 399 + 5 || nt[101] - nt[100] !== 6 || nt[302] - nt[301] !== 1)   // tekrar çerçevesi eski zamanla eşlenir (değer tabanlı eşleme), sonrası doğru { console.log('HATA: sayaç düzeltmesi'); process.exit(1); }
   console.log('sayaç dayanıklılığı OK');
 })().catch(e => { console.error(e); process.exit(1); });
