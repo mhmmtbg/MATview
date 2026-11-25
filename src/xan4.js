@@ -52,6 +52,12 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.47', d: '.mat içeriği, tanılama, seçili parametre çözme', items: [
+    '.mat içerik görüntüleyici: sol panelde dosyaya sağ tık › İçeriği görüntüle / düzenle. Değişkenler (yapı alanları dahil), boyut / tip, sayfalı değer tablosu; hücreye çift tıklayarak değer değiştirme, değişken silme ve yeniden adlandırma. Değişiklikler yeni bir …_duzenlenmis.mat dosyasına yazılır (asıl dosya değişmez; değişmeyen değişkenler bayt bayt kopyalanır).',
+    'Zaman tanılama raporu (anonim): dosyaya sağ tık. Değişken adları gizlenir (A1, A2 …), veri değeri içermez; her kanalın zamanının nereden geldiğini ve bulunamadıysa nedenini yazar. Panoya kopyalanır ya da .txt kaydedilir.',
+    'Telemetri › Çöz ve dosyalara yaz artık yalnız .mat yazar (CSV isteğe bağlı: Ayarlar › Çıktı); büyük kayıtlarda yazım çok daha hızlı.',
+    'Telemetri › Parametreler: yalnız seçilen parametreler çözülür (arama, etiket / parametre seçimi). Seçilmeyenler okunmaz, MATView’e aktarılmaz ve dosyalara yazılmaz.'
+  ]},
   {v: '2.46', d: '.mat açarken zaman', items: [
     '.mat açarken kanalların zamanı her durumda dosyadaki zaman vektöründen alınır: büyük birimlerin yapı yerine düz değişken (<birim>_t, <birim>_<alan>) yazıldığı dosyalar, uzunluğu zamanın tam katı olmayan alanlar (yarım son çerçeve), kayan / düzensiz örnekleme ve yinelenen zaman damgaları. Önceden bu dosyalarda kanallar varsayılan 200 Hz ile açılıp imleç farkları yanlış çıkabiliyordu.',
     'Dosyada eşleşen zaman vektörü bulunamayan kanallar varsa açılışta bildirilir (varsayılan hız, Zaman ayarlarından değiştirilebilir).'

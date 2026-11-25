@@ -43,9 +43,9 @@ async def main():
         await f.wait_for_function("/tamamlandı/.test(document.querySelector('#result').textContent)", timeout=90000)
         made = [os.path.join(dp, x) for dp, _, fs in os.walk(OUT) for x in fs]
         print('yazılan dosyalar', len(made), sorted(os.path.basename(x) for x in made)[:6], 'istek', len(hits), 'seçici', await pg.evaluate('window.__picked'))
-        ok(any(x.endswith('OBC.csv') for x in made), 'OBC.csv yazılmadı'); ok(any(x.endswith('.mp4') for x in made) or not os.path.exists(D + 'kamera_1.h264'), 'MP4 yazılmadı')
-        csv = next((x for x in made if x.endswith('OBC.csv')), None)
-        if csv: ok(sum(1 for _ in open(csv)) > 1000, 'OBC.csv eksik')
+        ok(any(x.endswith('OBC.mat') for x in made) and not any(x.endswith('.csv') for x in made), 'OBC.mat yazılmalı, CSV (varsayılan kapalı) yazılmamalı'); ok(any(x.endswith('.mp4') for x in made) or not os.path.exists(D + 'kamera_1.h264'), 'MP4 yazılmadı')
+        mt = next((x for x in made if x.endswith('OBC.mat')), None)
+        if mt: ok(os.path.getsize(mt) > 10000, 'OBC.mat eksik')
         ok(await pg.evaluate('window.__picked') == 1, 'yerel klasör seçici kullanılmadı')
         ok(await f.evaluate("document.querySelector('#outDirLabel').textContent") == OUT, 'klasör etiketi tam yol değil')
         ok(not errs, 'sayfa hatası ' + str(errs)); await b.close()

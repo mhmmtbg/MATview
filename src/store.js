@@ -219,20 +219,25 @@ async function detectTimeVec(f) {
   for (const ch of f.channels) {
     const v = vars[ch.varIdx]; if (!v) continue;
     const st = v.top ? structT.get(v.top) : prefT(v);
+    const SRC = ['ad_t', 'ad_zaman_s', 'ad_time', v.top ? 'yapı t' : 'önek t', 'dosya zamanı'];
     const cand = [byName.get(v.name + '_t'), byName.get(v.name + '_zaman_s'), byName.get(v.name + '_time'), st, glob >= 0 ? glob : undefined];   // MATView seçim/binary .mat'i: <ad>_zaman_s
-    let done = false;
-    for (const ti of cand) {
-      if (ti == null || ti === ch.varIdx || vars[ti].count !== ch.n) continue;
-      const tv = await tvOf(ti); if (!tv) continue;
-      ch.tvi = ti; used.add(ti); done = true; break;
+    let done = false; const tried = [];   // tanılama raporu: denenen adaylar ve sonuçları
+    for (let ci = 0; ci < cand.length; ci++) {
+      const ti = cand[ci]; if (ti == null || ti === ch.varIdx) continue;
+      if (vars[ti].count !== ch.n) { tried.push([ti, SRC[ci], 'uzunluk ' + vars[ti].count]); continue; }
+      const tv = await tvOf(ti); if (!tv) { tried.push([ti, SRC[ci], 'zaman vektörü geçersiz (artmıyor / sayısal değil)']); continue; }
+      ch.tvi = ti; ch.tsrc = SRC[ci]; used.add(ti); done = true; break;
     }
-    if (!done) for (const ti of [byName.get(v.name + '_t'), byName.get(v.name + '_zaman_s'), st, glob >= 0 ? glob : undefined]) {   // n = k × (zaman uzunluğu); son çerçeve yarım olabilir (± bir çerçeve)
-      if (ti == null || ti === ch.varIdx) continue; const nt = vars[ti].count, k = Math.round(ch.n / nt);
-      if (!(k >= 1 && Math.abs(ch.n - k * nt) <= k && nt >= 8)) continue;
-      const tv = await tvOf(ti); if (!tv) continue;
-      if (k === 1) ch.tvi = ti; else { multiOf(ti, tv, k); ch.tvi = ti + '*' + k; }
-      used.add(ti); break;
-    }
+    if (!done) { const C2 = [cand[0], cand[1], st, glob >= 0 ? glob : undefined], S2 = [SRC[0], SRC[1], SRC[3], SRC[4]];
+      for (let ci = 0; ci < C2.length; ci++) {   // n = k × (zaman uzunluğu); son çerçeve yarım olabilir (± bir çerçeve)
+        const ti = C2[ci]; if (ti == null || ti === ch.varIdx) continue; const nt = vars[ti].count, k = Math.round(ch.n / nt);
+        if (!(k >= 1 && Math.abs(ch.n - k * nt) <= k && nt >= 8)) continue;
+        const tv = await tvOf(ti); if (!tv) continue;
+        if (k === 1) ch.tvi = ti; else { multiOf(ti, tv, k); ch.tvi = ti + '*' + k; }
+        ch.tsrc = S2[ci] + (k > 1 ? ' ×' + k : '') + (ch.n !== k * nt ? ' (yakın uzunluk ' + (ch.n - k * nt > 0 ? '+' : '') + (ch.n - k * nt) + ')' : '');
+        used.add(ti); done = true; break;
+      } }
+    if (!done) ch.ttried = tried;
   }
   // "<ad>_t" / "<ad>_zaman_s" zaman alanları (ad kanal olarak açılamasa da, ör. bayt dizisi) ve yapı zamanları listelenmez
   const allNames = new Set(vars.map(v => v.name));

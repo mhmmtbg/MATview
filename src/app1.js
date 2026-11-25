@@ -50,7 +50,7 @@ async function busy(txt, fn, opt) {
   } finally { clearTimeout(showT); S.busyDepth = 0; S.cancelHooks = []; S.cancelWake = null; b.classList.add('hidden'); }
 }
 function modal(title, body, buttons) {
-  $('#mtitle').textContent = title; const mb = $('#mbody'); mb.replaceChildren(body); const f = $('#mfoot'); f.replaceChildren();
+  $('#modal').classList.remove('mx-modal'); $('#mtitle').textContent = title; const mb = $('#mbody'); mb.replaceChildren(body); const f = $('#mfoot'); f.replaceChildren();
   const close = () => $('#modal').classList.add('hidden');
   for (const b of buttons || [{t: 'Kapat'}]) f.append(h('button', {class: (b.primary ? 'primary' : '') + (b.noic ? ' noic' : ''), onclick: () => { if (!b.fn || b.fn() !== false) close(); }}, b.t));
   $('#mclose').onclick = close; $('#modal').classList.remove('hidden');

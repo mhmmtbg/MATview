@@ -511,6 +511,18 @@ body.rz-chart, body.rz-chart * { cursor: nwse-resize !important; user-select: no
 .raw-units { border: 1px solid var(--line); border-radius: var(--radius); max-width: 560px; margin-top: 10px; max-height: 260px; overflow: auto; }
 .raw-units label { display: flex; align-items: center; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--line2); font-size: 13px; cursor: pointer; }
 .raw-units label:last-child { border-bottom: none; }
+.pf-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.pf-bar .inp { flex: 1; min-width: 180px; }
+.pf-list { border: 1px solid var(--line); border-radius: var(--radius); max-height: 52vh; overflow: auto; }
+.pf-g { border-bottom: 1px solid var(--line2); }
+.pf-g:last-child { border-bottom: none; }
+.pf-gh { display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 13px; cursor: pointer; user-select: none; }
+.pf-gh .tw { width: 14px; color: var(--muted); }
+.pf-gh .rg { margin-left: auto; color: var(--muted); font-size: 12px; }
+.pf-ps { padding: 2px 10px 6px 34px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0 12px; }
+.pf-ps label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 1px 0; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pf-g.closed .pf-ps { display: none; }
+.pf-cnt { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
 .raw-units .rg { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--muted); text-align: right; }
 .raw-units .empty { padding: 10px; }
 .raw-custom { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 13px; }
@@ -643,7 +655,7 @@ main.tl-main > #lvRawCard { flex: none; }
     </div>
     <div>
       <h1>Çerçeve Çözücü</h1>
-      <div class="sub">Telemetri çerçevesi ayrıştırma ve CSV / MAT dışa aktarma</div>
+      <div class="sub">Telemetri çerçevesi ayrıştırma ve .mat dışa aktarma</div>
     </div>
   </div>
   <div style="display:flex;align-items:center">
@@ -674,8 +686,9 @@ main.tl-main > #lvRawCard { flex: none; }
   <span class="badge mute tl-frame" id="tlFrameBadge" title="Oynatılan / duraklatılan çerçeve">Çerçeve –</span>
   <button class="btn sm" type="button" id="tlFrameXls" title="Bir çerçevenin çözülen değerlerini Excel'e aktar (varsayılan: şu anki çerçeve)">⤓ Excel</button>
   <span class="sep"></span>
+  <button class="btn sm" id="btnParams" type="button" title="Yalnız seçilen parametreleri çöz: seçilmeyenler okunmaz, MATView'e aktarılmaz ve dosyalara yazılmaz (büyük kayıtlarda çok daha hızlı)">Parametreler: tümü</button>
   <button class="btn sm" id="btnRunMv" type="button" title="Kaydın tamamını çözer ve tüm parametreleri MATView'e kanal olarak yükler (çizim, spektrum, kod). Dosya yazılmaz.">Çöz ve MATView'de aç</button>
-  <button class="btn sm" id="btnRun" type="button" title="Kaydın tamamını çözer; CSV / MAT / ham veri / video dosyalarını çıktı klasörüne (veya ZIP'e) yazar">Çöz ve dosyalara yaz</button>
+  <button class="btn sm" id="btnRun" type="button" title="Kaydı çözer; .mat (istenirse CSV) / ham veri / video dosyalarını çıktı klasörüne (veya ZIP'e) yazar">Çöz ve dosyalara yaz</button>
   <button class="btn sm" id="btnStop" type="button" disabled title="Çözümlemeyi durdur">Durdur</button>
   <span class="tl-prog" id="tlProg" title="Çözümleme ilerlemesi"><span class="progress"><span class="bar" id="pBar"></span></span><b id="pPct">0%</b></span>
   <span id="runState" class="badge mute" role="button" tabindex="0" title="Çözümleme durumu · tıklayın: İşlem Kaydı">Hazır</span>
@@ -1043,7 +1056,7 @@ if errorlevel 1 pause
       </div>
       <div class="vp-list hidden" id="vpListBox"><span class="vp-ll">Çözülen kamera videoları:</span><span id="vpList"></span></div>
       <div class="drop" id="vpDrop">Dosya Çözümleme'nin ürettiği video <code>.bin</code> dosyasını, düz <code>.h264</code> ya da <code>.mp4</code> dosyasını buraya sürükleyin</div>
-      <p class="hint">Kamera verisi template'te <code>video</code> tipindeki alanlarda akar (RTP / H.264). <b>Çöz ve MATView'de aç</b> veya <b>Çöz ve dosyalara yaz</b> sonrasında çıkan videolar burada <b>Oynat</b> ile açılır; canlı oynatmada video satırının ikonuyla anlık izlenir. Video <code>.bin</code> dosyası her çerçeveden alınan video alanlarının art arda yazılmış hâlidir. Bir çerçevedeki video alanının boyutu (990, 1990 …), parça sonundaki footer ve <code>0xAA</code> dolgusu veriden otomatik bulunur.</p>
+      <p class="hint">Kamera verisi template'te <code>video</code> tipindeki alanlarda akar (RTP / H.264). <b>Çöz ve MATView'de aç</b> veya <b>Çöz ve dosyalara yaz</b> sonrasında çıkan videolar burada <b>Oynat</b> ile açılır; canlı oynatmada video satırının ikonuyla anlık izlenir. Video <code>.bin</code> dosyası her çerçeveden alınan video alanlarının art arda yazılmış hâlidir. Bir çerçevedeki video alanının boyutu ve parça sonundaki dolgu veriden otomatik bulunur.</p>
       <div class="vplayer hidden" id="vpPlayer">
         <div class="chart-h vp-ctl">
           <span class="ctools">
@@ -1262,13 +1275,15 @@ if errorlevel 1 pause
               <div class="help" id="outDirHelp"></div>
             </div>
             <label>MAT dosyası</label>
-            <div class="field"><label class="switch"><input type="checkbox" id="s_matEnabled"><span class="tr"></span><span class="sl">.mat (MATLAB v5) dosyası da oluştur</span></label>
+            <div class="field"><label class="switch"><input type="checkbox" id="s_matEnabled"><span class="tr"></span><span class="sl">Her birim için .mat (MATLAB v5) dosyası oluştur</span></label>
             <div class="help">Her birim için <code>Birim.mat</code>. Her değişken ayrı bir MATLAB değişkenidir; çok elemanlı değişkenler N×eleman matrisi, byte array'ler uint8 matris olarak yazılır. MATLAB'a uymayan adlar otomatik düzeltilir.</div></div>
             <label>Tek .mat dosyası</label>
             <div class="field"><label class="switch"><input type="checkbox" id="s_singleMat"><span class="tr"></span><span class="sl">Tüm binary'yi tek <code>.mat</code> dosyasında da topla</span></label>
             <div class="help">Kayıt adıyla <code>kayit_tum.mat</code> yazılır: her etiket (birim) bir MATLAB yapısıdır, ör. <code>OBC.temp</code>, <code>PSU.voltage</code>. Her yapıda <code>frame_counter</code> ve <code>t</code> (saniye, kayıp çerçeveler dahil; çerçeve periyodu Canlı Oynatma'daki periyottur) bulunur. Çok elemanlı değişkenler N×eleman matristir; koşullu (multiplex) ve undersample değişkenlerin kendi zaman vektörü <code>ad_t</code> olarak yazılır. Video alanları .mat'e girmez (.mp4 / .bin). <b>Çöz ve MATView'de aç</b> sonrasında da sonuç kartından tek .mat indirilebilir.</div></div>
-            <label>CSV formatı</label>
-            <div class="field"><div class="ro" style="font-family:inherit">Ayraç <code>,</code> · Ondalık <code>.</code> · UTF-8 · bölgesel ayardan bağımsız</div>
+            <label>CSV dosyası</label>
+            <div class="field"><label class="switch"><input type="checkbox" id="s_csvEnabled"><span class="tr"></span><span class="sl">Her birim için CSV dosyası da oluştur (yavaş)</span></label>
+            <div class="help">Kapalıyken yalnız .mat yazılır (birim .mat'i ve/veya tek .mat; ikisi de kapalıysa birim .mat'leri). CSV büyük kayıtlarda yazımı belirgin yavaşlatır.</div>
+            <div class="ro" style="font-family:inherit">Ayraç <code>,</code> · Ondalık <code>.</code> · UTF-8 · bölgesel ayardan bağımsız</div>
             <div class="help">Her satır bir örnektir. Oversample edilmiş değişkenlerin sütunları daha uzundur; kısa kalan sütunların sonu boş hücredir.</div></div>
             <label>Çözülecek etiketler</label>
             <div class="field"><label class="switch"><input type="checkbox" id="s_lfEnabled"><span class="tr"></span><span class="sl">Yalnız seçilen etiketleri çöz</span></label>
@@ -3953,7 +3968,7 @@ async function runJob(job, post) {
   var cntMaxGap = Math.max(100, Math.round((+S.counterMaxGapSec > 0 ? +S.counterMaxGapSec : 10) / Math.max(1e-6, framePeriodSec(S))));
   /* MATView: collect = sonuçları dosyaya yazmadan geçici depoda tut (oturum), MATView kanalları istedikçe okur.
      wantT: satır zamanları (çerçeve sırası, kayıp çerçeveler dahil) ve koşullu / undersample sütunların kendi zamanları tutulur. */
-  var collect = !!job.collect, wantT = collect || !!S.singleMat || !!S.matEnabled, Tper = framePeriodSec(S), tF = 0, firstFrame = true; var tcUpgraded = 0, cntSuspect = null;
+  var collect = !!job.collect, wantT = collect || !!S.singleMat || !!S.matEnabled || !S.csvEnabled, Tper = framePeriodSec(S), tF = 0, firstFrame = true; var tcUpgraded = 0, cntSuspect = null;
   if (cntEnabled) {
     var ctp = parseType(S.counterType);
     if (!ctp || ctp.kind !== 'int' || ctp.bits % 8) throw new Error('Çerçeve sayacı veri tipi geçersiz');
@@ -4070,9 +4085,12 @@ async function runJob(job, post) {
     };
   }
   // Ayarlar > Çıktı: yalnız seçilen etiketler çözülür (büyük kayıtlarda tek bir birime hızlı bakmak için)
-  var lf = S.labelFilter, lfSet = lf && lf.enabled ? new Set(lf.labels || []) : null;
-  function wanted(d) { return !lfSet || lfSet.has(d.label); }
-  if (lfSet) log('BİLGİ', 'Yalnız seçilen etiketler çözülüyor: ' + (lf.labels.length ? lf.labels.join(', ') : '(hiçbiri)'));
+  // Parametreler düğmesi: etiket kısmen seçiliyse yalnız seçilen parametreleri (lf.params[etiket]) çözülür
+  var lf = S.labelFilter, lfSet = lf && lf.enabled ? new Set(lf.labels || []) : null, lfP = {};
+  if (lfSet && lf.params) Object.keys(lf.params).forEach(function (k) { if (Array.isArray(lf.params[k])) lfP[k] = new Set(lf.params[k]); });
+  function wanted(d) { return !lfSet || (lfSet.has(d.label) && (!lfP[d.label] || lfP[d.label].has(d.name))); }
+  if (lfSet) { var nP = 0; Object.keys(lfP).forEach(function (k) { if (lfSet.has(k)) nP += lfP[k].size; });
+    log('BİLGİ', 'Yalnız seçilenler çözülüyor: ' + (lf.labels.length ? lf.labels.map(function (l) { return lfP[l] ? l + ' (' + lfP[l].size + ' parametre)' : l; }).join(', ') : '(hiçbiri)')); }
   // undersample akışı birim başınadır; paket içeriği satırların kendi etiketlerinin çıktısına yazılır
   var streamMap = new Map();
   function createStream(un, sd) {
@@ -4322,8 +4340,8 @@ async function runJob(job, post) {
   if (job.sink) sink = job.sink;
   else if (job.dir) sink = await DirSink.create(job.dir, job.folderName);
   else sink = new ZipSink(job.folderName);
-  var mat = !!S.matEnabled, totalVals = 0, doneVals = 0, curFile = '';
-  outUnits.forEach(function (u) { var m = 0; u.cols.forEach(function (c) { if (c.n > m) m = c.n; }); var sum = 0; u.cols.forEach(function (c) { sum += c.n; }); totalVals += m + (mat ? sum : 0) + (S.singleMat ? sum : 0); });
+  var csv = !!S.csvEnabled, mat = !!S.matEnabled || (!csv && !S.singleMat), totalVals = 0, doneVals = 0, curFile = '';   // CSV kapalıysa en az bir .mat yazılır
+  outUnits.forEach(function (u) { var m = 0; u.cols.forEach(function (c) { if (c.n > m) m = c.n; }); var sum = 0; u.cols.forEach(function (c) { sum += c.n; }); totalVals += (csv ? m : 0) + (mat ? sum : 0) + (S.singleMat ? sum : 0); });
   var lastW = 0;
   function tick(n) {
     doneVals += n;
@@ -4336,11 +4354,9 @@ async function runJob(job, post) {
     while (usedNames.has(b2.toLowerCase())) b2 = base + '_' + kk++;
     usedNames.add(b2.toLowerCase());
     var maxN = 0; u.cols.forEach(function (c) { if (c.n > maxN) maxN = c.n; });
-    curFile = b2 + '.csv'; tick(0);
-    await writeCsv(u, sink, b2 + '.csv', tick);
-    written.push(b2 + '.csv');
+    if (csv) { curFile = b2 + '.csv'; tick(0); await writeCsv(u, sink, b2 + '.csv', tick); written.push(b2 + '.csv'); }
     if (mat) { curFile = b2 + '.mat'; await writeMat(u, sink, b2 + '.mat', tick, log, Tper); written.push(b2 + '.mat'); }
-    log('BİLGİ', b2 + ': ' + maxN + ' satır (en uzun sütun), ' + u.cols.length + ' sütun yazıldı');
+    if (csv || mat) log('BİLGİ', b2 + ': ' + maxN + ' satır (en uzun sütun), ' + u.cols.length + ' sütun yazıldı');
   }
   if (S.singleMat && outUnits.length) {
     var sm = fileSafe(recName) + '_tum', sm2 = sm, smk = 2;
@@ -4890,9 +4906,9 @@ function defaults() {
     frameIdEnabled: false, frameIdIndex: 8,
     frameTypes: [{ name: 'Çerçeve 0', id: '0x00', templateName: '', templateRows: null, loadedAt: '' }],
     counterEnabled: false, counterIndex: 1, counterType: 'uint16', counterEndian: 'little', counterToOutput: true,
-    matEnabled: true, fileMode: 'concat', singleMat: false, framePeriodMs: 10,
+    matEnabled: true, csvEnabled: false, fileMode: 'concat', singleMat: false, framePeriodMs: 10,
     rawOut: rawOutDefaults(),
-    labelFilter: { enabled: false, labels: [] },
+    labelFilter: { enabled: false, labels: [], params: {} },
     colDrop: colDropDefaults(),
     live: liveDefaults()
   };
@@ -4916,8 +4932,9 @@ function normalize(o) {
   s.colDrop = Object.assign(colDropDefaults(), (o && o.colDrop) || {});
   s.rawOut = Object.assign(rawOutDefaults(), (o && o.rawOut) || {});
   if (!Array.isArray(s.rawOut.units)) s.rawOut.units = [];
-  s.labelFilter = Object.assign({ enabled: false, labels: [] }, (o && o.labelFilter) || {});
+  s.labelFilter = Object.assign({ enabled: false, labels: [], params: {} }, (o && o.labelFilter) || {});
   if (!Array.isArray(s.labelFilter.labels)) s.labelFilter.labels = [];
+  if (!s.labelFilter.params || typeof s.labelFilter.params !== 'object') s.labelFilter.params = {};
   ['serial', 'udp', 'sim', 'raw'].forEach(function (k) { s.live[k] = Object.assign(liveDefaults()[k], lv[k] || {}); });
   if (!s.live.perRow || typeof s.live.perRow !== 'object' || Array.isArray(s.live.perRow)) s.live.perRow = {};
   if (!Array.isArray(s.frameTypes) || !s.frameTypes.length) s.frameTypes = defaults().frameTypes;
@@ -5070,9 +5087,9 @@ function renderSummary() {
   rows.push(['Çerçeve sayacı', S.counterEnabled ? 'index ' + S.counterIndex + ' · ' + esc(S.counterType) + ' · ' + (S.counterEndian === 'big' ? 'big' : 'little') + ' endian' + (S.counterToOutput ? ' · çıktıya ekleniyor' : '') : 'Yok']);
   rows.push(['Çıktı', FS_OK ? (outDir ? 'Klasör: <code>' + esc(outDir.name) + '</code>' : 'Klasör seçilmedi (Çöz\'e basınca sorulur)') : 'ZIP olarak indirilir (bu tarayıcı klasöre yazmayı desteklemiyor)']);
   var rawN = S.rawOut.enabled ? S.rawOut.units.length + (TP.parseRanges(S.rawOut.custom).ranges || []).length : 0;
-  rows.push(['Dosya türleri', 'CSV' + (S.matEnabled ? ' + MAT (v5)' : '') + (S.singleMat ? ' + tek .mat (tüm etiketler)' : '') + (rawN ? ' + ham veri (' + rawN + ' .bin)' : '')]);
+  rows.push(['Dosya türleri', [S.csvEnabled ? 'CSV' : '', S.matEnabled || (!S.csvEnabled && !S.singleMat) ? 'MAT (v5)' : '', S.singleMat ? 'tek .mat (tüm etiketler)' : ''].filter(Boolean).join(' + ') + (rawN ? ' + ham veri (' + rawN + ' .bin)' : '')]);
   rows.push(['Çerçeve periyodu', esc(String(S.framePeriodMs)) + ' ms (MATView zaman ekseni)']);
-  if (S.labelFilter.enabled) rows.push(['Çözülecek etiketler', S.labelFilter.labels.length ? S.labelFilter.labels.map(esc).join(', ') : '<span style="color:var(--err)">hiçbiri seçilmedi</span>']);
+  if (S.labelFilter.enabled) rows.push(['Çözülecek etiketler', S.labelFilter.labels.length ? S.labelFilter.labels.map(function (l) { var pp = S.labelFilter.params[l]; return esc(l) + (pp ? ' (' + pp.length + ' parametre)' : ''); }).join(', ') : '<span style="color:var(--err)">hiçbiri seçilmedi</span>']);
   $('#summary').innerHTML = rows.map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>'; }).join('');
   var notes = '', probs = settingsProblems();
   if (saveError) notes += '<div class="notice err">' + esc(saveError) + '</div>';
@@ -5271,7 +5288,7 @@ var BIND = [
   ['s_transpose', 'transpose', 'bool'], ['s_strict', 'strictSync', 'bool'], ['s_discardEnabled', 'discardEnabled', 'bool'], ['s_discardCount', 'discardCount', 'int'], ['s_discardPos', 'discardPos', 'str'], ['s_streamInner', 'streamInnerSearch', 'bool'], ['s_frameIdEnabled', 'frameIdEnabled', 'bool'],
   ['s_frameIdIndex', 'frameIdIndex', 'int'], ['s_counterEnabled', 'counterEnabled', 'bool'], ['s_counterIndex', 'counterIndex', 'int'],
   ['s_counterType', 'counterType', 'str'], ['s_counterEndian', 'counterEndian', 'str'], ['s_counterToOutput', 'counterToOutput', 'bool'],
-  ['s_matEnabled', 'matEnabled', 'bool'], ['s_singleMat', 'singleMat', 'bool'], ['s_framePeriod', 'framePeriodMs', 'num']
+  ['s_matEnabled', 'matEnabled', 'bool'], ['s_csvEnabled', 'csvEnabled', 'bool'], ['s_singleMat', 'singleMat', 'bool'], ['s_framePeriod', 'framePeriodMs', 'num']
 ];
 function fillForm() {
   BIND.forEach(function (b) { var el = $('#' + b[0]); if (b[2] === 'bool') el.checked = !!S[b[1]]; else el.value = S[b[1]]; });
@@ -5742,20 +5759,107 @@ function renderLabelFilter() {
   var list = labelInfo();
   var html = list.map(function (it) {
     var us = Object.keys(it.units), info = it.n + ' parametre' + (it.video ? ' · ' + it.video + ' video' : '') + (us.length > 1 || us[0] !== it.name ? ' · ' + us.join(', ') : '');
-    return '<label><input type="checkbox" data-lf="' + esc(it.name) + '"' + (sel[it.name] ? ' checked' : '') + '><b>' + esc(it.name) + '</b><span class="rg">' + esc(info) + '</span></label>';
+    var pp = sel[it.name] && lf.params[it.name]; if (pp) info = pp.length + ' parametre seçili' + (us.length > 1 || us[0] !== it.name ? ' · ' + us.join(', ') : '');
+    return '<label><input type="checkbox" data-lf="' + esc(it.name) + '"' + (sel[it.name] ? ' checked' : '') + (pp ? ' data-mixed="1"' : '') + '><b>' + esc(it.name) + '</b><span class="rg">' + esc(info) + '</span></label>';
   }).join('');
   lf.labels.forEach(function (u) { if (!list.some(function (it) { return it.name === u; })) html += '<label><input type="checkbox" data-lf="' + esc(u) + '" checked><b>' + esc(u) + '</b><span class="rg" style="color:var(--err)">template\'te yok</span></label>'; });
   box.innerHTML = html || '<div class="empty">Etiket listesi template yüklendikten sonra görünür.</div>';
+  box.querySelectorAll('input[data-mixed]').forEach(function (x) { x.indeterminate = true; });
+  renderParamBtn();
 }
-$('#s_lfEnabled').addEventListener('change', function () { S.labelFilter.enabled = this.checked; save(); renderLabelFilter(); renderSummary(); });
+$('#s_lfEnabled').addEventListener('change', function () { S.labelFilter.enabled = this.checked; save(); renderLabelFilter(); renderSummary(); renderParamBtn(); });
 $('#lfList').addEventListener('change', function (e) {
   var u = e.target.dataset.lf; if (u == null) return;
   var l = S.labelFilter.labels.filter(function (x) { return x !== u; });
   if (e.target.checked) l.push(u);
-  S.labelFilter.labels = l; save(); renderSummary();
+  delete S.labelFilter.params[u];   // etiket kutusu: etiketin tamamı
+  S.labelFilter.labels = l; save(); renderSummary(); renderParamBtn();
 });
-$('#lfAll').onclick = function () { S.labelFilter.labels = labelInfo().map(function (it) { return it.name; }); save(); renderLabelFilter(); renderSummary(); };
-$('#lfNone').onclick = function () { S.labelFilter.labels = []; save(); renderLabelFilter(); renderSummary(); };
+$('#lfAll').onclick = function () { S.labelFilter.labels = labelInfo().map(function (it) { return it.name; }); S.labelFilter.params = {}; save(); renderLabelFilter(); renderSummary(); renderParamBtn(); };
+$('#lfNone').onclick = function () { S.labelFilter.labels = []; S.labelFilter.params = {}; save(); renderLabelFilter(); renderSummary(); renderParamBtn(); };
+
+/* ---------- Parametreler: yalnız seçilen parametreleri çöz ---------- */
+function paramInfo() {   // etiket → benzersiz parametre adları (template sırasıyla)
+  var list = [], map = {};
+  activeTypes().forEach(function (i) {
+    var v = validations[i]; if (!v || !v.defs) return;
+    v.defs.forEach(function (d) {
+      if (d.bad || d.isSlot || !d.name) return;
+      var it = map[d.label]; if (!it) { it = map[d.label] = { name: d.label, params: [], seen: {} }; list.push(it); }
+      if (!it.seen[d.name]) { it.seen[d.name] = 1; it.params.push({ name: d.name, video: !!(d.type && d.type.video) }); }
+    });
+  });
+  return list;
+}
+function paramSel() {   // { etiket: Set(parametre) } — filtre kapalıysa hepsi
+  var lf = S.labelFilter, out = {}, info = paramInfo(), on = !!lf.enabled, ls = new Set(lf.labels);
+  info.forEach(function (it) {
+    if (on && !ls.has(it.name)) { out[it.name] = new Set(); return; }
+    var pp = on && lf.params[it.name]; out[it.name] = new Set(pp ? pp : it.params.map(function (p) { return p.name; }));
+  });
+  return { info: info, sel: out };
+}
+function paramStore(sel, info) {   // seçim → S.labelFilter (tam seçili etiket: params yok; kısmi: params[etiket])
+  var labels = [], params = {}, all = true;
+  info.forEach(function (it) {
+    var s = sel[it.name], n = s ? s.size : 0;
+    if (n) labels.push(it.name);
+    if (n && n < it.params.length) { params[it.name] = it.params.map(function (p) { return p.name; }).filter(function (p) { return s.has(p); }); }
+    if (n < it.params.length) all = false;
+  });
+  S.labelFilter.labels = labels; S.labelFilter.params = params; S.labelFilter.enabled = !all;
+  save(); renderLabelFilter(); renderSummary(); renderParamBtn();
+}
+function renderParamBtn() {
+  var b = $('#btnParams'); if (!b) return;
+  var r = paramSel(), tot = 0, on = 0; r.info.forEach(function (it) { tot += it.params.length; on += r.sel[it.name].size; });
+  var part = S.labelFilter.enabled && on < tot;
+  b.textContent = part ? 'Parametreler: ' + on + ' / ' + tot : 'Parametreler: tümü';
+  b.classList.toggle('primary', part);
+}
+function openParamPicker() {
+  var r = paramSel(), info = r.info, sel = r.sel, q = '', open = {};
+  if (!info.length) { showModal('Parametreler', '<div class="notice">Parametre listesi template yüklendikten sonra görünür.</div>'); return; }
+  info.forEach(function (it) { open[it.name] = info.length <= 3; });
+  var match = function (it, p) { return !q || (it.name + ' ' + p.name).toLowerCase().indexOf(q) >= 0; };
+  function list() {
+    var tot = 0, on = 0;
+    var html = info.map(function (it, gi) {
+      var ps = it.params.filter(function (p) { return match(it, p); }); if (!ps.length) return '';
+      var s = sel[it.name], n = s.size, all = n === it.params.length; tot += it.params.length; on += n;
+      return '<div class="pf-g' + (open[it.name] || q ? '' : ' closed') + '" data-g="' + gi + '"><div class="pf-gh"><span class="tw">' + (open[it.name] || q ? '▾' : '▸') + '</span>' +
+        '<input type="checkbox" data-lab="' + gi + '"' + (all ? ' checked' : '') + (n && !all ? ' data-mixed="1"' : '') + '><b>' + esc(it.name) + '</b><span class="rg">' + n + ' / ' + it.params.length + '</span></div>' +
+        '<div class="pf-ps">' + ps.map(function (p) { var pi = it.params.indexOf(p); return '<label title="' + esc(it.name + ' · ' + p.name) + '"><input type="checkbox" data-g="' + gi + '" data-p="' + pi + '"' + (s.has(p.name) ? ' checked' : '') + '>' + esc(p.name) + (p.video ? ' <span class="rg">video</span>' : '') + '</label>'; }).join('') + '</div></div>';
+    }).join('');
+    $('#pfList').innerHTML = html || '<div class="empty" style="padding:10px">Eşleşen parametre yok</div>';
+    $('#pfList').querySelectorAll('input[data-mixed]').forEach(function (x) { x.indeterminate = true; });
+    var T = 0, O = 0; info.forEach(function (it) { T += it.params.length; O += sel[it.name].size; });
+    $('#pfCnt').textContent = O + ' / ' + T + ' parametre seçili · ' + info.filter(function (it) { return sel[it.name].size; }).length + ' / ' + info.length + ' etiket' + (O === T ? ' (tümü çözülür)' : O ? ' — yalnız bunlar çözülür' : ' — hiçbiri seçilmedi');
+  }
+  var setVisible = function (v) { info.forEach(function (it) { it.params.forEach(function (p) { if (match(it, p)) { if (v) sel[it.name].add(p.name); else sel[it.name].delete(p.name); } }); }); list(); };
+  showModal('Çözülecek parametreler', '<div class="pf-bar"><input class="inp" id="pfQ" type="search" placeholder="Ara: etiket ya da parametre adı" spellcheck="false">' +
+    '<button class="btn sm" type="button" id="pfVis">Görünenleri seç</button><button class="btn sm" type="button" id="pfVisN">Görünenleri bırak</button>' +
+    '<button class="btn sm" type="button" id="pfAll">Tümü</button><button class="btn sm" type="button" id="pfNone">Hiçbiri</button></div>' +
+    '<div class="pf-list" id="pfList"></div><div class="pf-cnt" id="pfCnt"></div>' +
+    '<div class="help" style="margin-top:6px">Seçilmeyen parametreler hiç çözülmez: MATView’e aktarılmaz, .mat / CSV / MP4 dosyalarına yazılmaz. Çerçeve sayacı ve zaman her zaman yazılır. Ham veri çıktısı bu seçimden bağımsızdır.</div>',
+    [{ label: 'Uygula', primary: true, close: true, onClick: function () { paramStore(sel, info); } }]);
+  list();
+  $('#pfQ').oninput = function () { q = this.value.trim().toLowerCase(); list(); };
+  $('#pfVis').onclick = function () { setVisible(true); }; $('#pfVisN').onclick = function () { setVisible(false); };
+  $('#pfAll').onclick = function () { q = ''; $('#pfQ').value = ''; setVisible(true); }; $('#pfNone').onclick = function () { q = ''; $('#pfQ').value = ''; setVisible(false); };
+  $('#pfList').onclick = function (e) {
+    if (e.target.tagName === 'INPUT') return; var gh = e.target.closest('.pf-gh'); if (!gh) return;
+    var it = info[+gh.parentNode.dataset.g]; open[it.name] = !open[it.name]; list();
+  };
+  $('#pfList').onchange = function (e) {
+    var x = e.target, it;
+    if (x.dataset.lab != null) { it = info[+x.dataset.lab]; var full = sel[it.name].size === it.params.length; sel[it.name] = new Set(full ? [] : it.params.map(function (p) { return p.name; })); }
+    else if (x.dataset.p != null) { it = info[+x.dataset.g]; var nm = it.params[+x.dataset.p].name; if (x.checked) sel[it.name].add(nm); else sel[it.name].delete(nm); }
+    list();
+  };
+  setTimeout(function () { var qi = $('#pfQ'); if (qi) qi.focus(); }, 0);
+}
+$('#btnParams').onclick = openParamPicker;
 
 /* ---------- çıktı dizini ---------- */
 function renderOutDir() {
