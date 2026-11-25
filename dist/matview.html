@@ -8190,7 +8190,7 @@ async function qualAuto(files) {
 }
 
 /* ===== Faz 2: Test sekmesi — faz tablosu (B1), şartname uygunluk + şablonlar (B2), hesap kaydı (A2) ===== */
-const APP_VER = '2.50';
+const APP_VER = '2.51';
 function logOp(op, detail) { (S.methodLog = S.methodLog || []).push(Object.assign({t: Date.now(), op}, detail || {})); }
 
 /* ---------- Faz tablosu (düzenlenebilir) ---------- */
@@ -8629,6 +8629,9 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.51', d: 'Zaman tanılama: saat parametresi arama', items: [
+    'Telemetri zaman tanılaması kayıtta zaman taşıyan (düzenli artan) parametreleri arar: her aday için birim / s, ms, µs tahmini, sayaç zamanına ve çözülen satırlara göre eğim ve sapma; imleç noktalarında adayların o anki değeri. MATLAB’de x ekseni olarak kullanılan zamanla karşılaştırmak ve çerçeve periyodu ya da sayaç boşluklarının doğruluğunu görmek için.'
+  ]},
   {v: '2.50', d: 'Zaman tanılama: sayaç ayrıntıları', items: [
     'Telemetri zaman tanılamasına sayaç tekrarları, makul olmayan sıçramalar, kayıp çerçeve boşluklarının boyut dağılımı ve en büyük boşluklar eklendi; iki imleç arasında çözülen ve kayıp sayılan çerçeve sayısı da yazılır. “Geri giden satır zamanı” yerine sayaç tekrarları ayrı gösterilir.'
   ]},
@@ -15613,6 +15616,37 @@ async function tlmDiagReport(f, opt) {
         '\n      zaman: ' + mode + (why ? ' — neden: ' + why : '') + ' · ' + sec(t0) + ' → ' + sec(t1) + ' · hız ' + hz(rate) + (isFinite(expRate) ? ' (çerçeveden beklenen ' + hz(expRate) + ')' : '')]);
     }
   }
+  // saat parametresi arama: kayıtta zamanı taşıyan (artan) parametreler — MATLAB'de x ekseni olarak kullanılan zaman olabilir
+  if (opt.clocks !== false) {
+    const KW = /zaman|time|saat|s[uü]re|tick|clock|gps|utc|tow|epoch|stamp|msec|usec|(^|_)(t|ms|us|sec|sn)(_|\d|$)/i, cand = [];
+    ss.units.forEach((u, ui) => { const g = rows[ui] || []; for (const col of u.cols) { if (col.kind === 'bytes' || col.counter || col.ctx !== 'frame' || col.conditional || (col.perFrame | 0) > 1 || col.n !== g.length || col.n < 100) continue; const kw = KW.test(col.name); cand.push([ui, col, kw]); } });
+    // önce adı zamanla ilgili, sonra tamsayı, sonra ondalıklı
+    cand.sort((a, b) => (b[2] - a[2]) || ((a[1].kind === 'f64') - (b[1].kind === 'f64'))); const pick = cand.slice(0, 300), found = [];
+    for (const [ui, col, kw] of pick) {
+      let v; try { v = (await cl.request('col', {sid: ss.id, u: ui, c: col.i})).v; } catch (_) { continue; }
+      const g = rows[ui], n = v.length; let up = 0, dn = 0, eq = 0; for (let k = 1; k < n; k++) { const d = v[k] - v[k - 1]; if (d > 0) up++; else if (d < 0) dn++; else eq++; }
+      if (!(up > n * 0.05 && dn <= Math.max(3, (up + dn) * 0.02))) continue;
+      // doğrusal uyum: değer ↔ sayaç zamanı (g·T) ve ↔ satır zamanı (k·T); seyrek örnekle
+      const fit = xf => { const st = Math.max(1, Math.floor(n / 20000)); let sx = 0, sy = 0, sxx = 0, sxy = 0, m = 0; for (let k = 0; k < n; k += st) { const x = xf(k), y = v[k]; if (!isFinite(y)) continue; sx += x; sy += y; sxx += x * x; sxy += x * y; m++; }
+        const a = (m * sxy - sx * sy) / (m * sxx - sx * sx), b = (sy - a * sx) / m; let e = 0, q = 0; for (let k = 0; k < n; k += st) { const y = v[k]; if (!isFinite(y)) continue; e = Math.max(e, Math.abs(y - (a * xf(k) + b))); q++; } return {a, b, e}; };
+      const fc = fit(k => g[k] * T), fr = fit(k => k * T);
+      found.push({ui, col, kw, up, dn, n, fc, fr, v0: v[0], v1: v[n - 1]});
+      if (found.length >= 25) break;
+    }
+    const unitName = a => { const r = Math.abs(a); return [[1, 's'], [1e3, 'ms'], [1e6, 'µs'], [1e-3, 'ks'], [100, '10 ms'], [10, '100 ms']].map(([k, u]) => [Math.abs(Math.log10(r / k)), u]).sort((x, y) => x[0] - y[0])[0]; };
+    L.push('== Saat / zaman taşıyan parametre adayları (' + found.length + ' bulundu, ' + pick.length + ' parametre tarandı) ==');
+    if (!found.length) L.push('(kayıt boyunca düzenli artan parametre bulunamadı)');
+    for (const r of found) {
+      const uc = unitName(r.fc.a), ur = unitName(r.fr.a);
+      L.push('- ' + an(ss.units[r.ui].name + '/' + r.col.name) + (r.kw ? ' (adı zamanla ilgili)' : '') + ' · ' + r.col.kind + ' · artan ' + fmtNum(100 * r.up / (r.n - 1), 4) + '%, azalan ' + r.dn +
+        ' · ilk / son değer ' + num(r.v0) + ' / ' + num(r.v1) + ' (fark ' + num(r.v1 - r.v0) + ')',
+        '    sayaç zamanına göre eğim ' + fmtNum(r.fc.a, 6) + ' birim/s' + (uc[0] < 0.03 ? ' ≈ ' + uc[1] + ' saati' : '') + ', en büyük sapma ' + num(r.fc.e) +
+        ' · satır no × periyoda göre eğim ' + fmtNum(r.fr.a, 6) + ' birim/s' + (ur[0] < 0.03 ? ' ≈ ' + ur[1] + ' saati' : '') + ', en büyük sapma ' + num(r.fr.e));
+    }
+    if (found.length) L.push('  Yorum: bir saat parametresinin sayaç zamanına göre sapması küçükse MATView zamanı doğrudur; satır zamanına göre sapması küçükse sayaçtaki boşluklar gerçek kayıp değildir. Eğim saniyeden farklı çıkarsa (ör. 1,16) çerçeve periyodu ayarı yanlıştır.');
+    L.push('');
+    tlmDiagReport._clocks = found;
+  }
   L.push('== Parametrelerin zamanı ==');
   for (const [k, n] of [...modes].sort((a, b) => (b[0].startsWith('EŞİT') ? 1 : 0) - (a[0].startsWith('EŞİT') ? 1 : 0))) L.push((k.startsWith('EŞİT') ? '! ' : '  ') + k + ': ' + n + ' parametre');
   if ([...modes.keys()].some(k => k.startsWith('EŞİT'))) L.push('  ! işaretliler kaydın tamamına eşit aralıkla yayılır: parametre kaydın yalnız bir bölümünde geliyorsa zamanı yanlış görünür.');
@@ -15636,6 +15670,12 @@ async function tlmDiagReport(f, opt) {
       if (ci >= 0 && row != null) { const key = ui + '/' + ci; if (!cnt.has(key)) { try { cnt.set(key, (await cl.request('col', {sid: ss.id, u: ui, c: ci})).v); } catch (_) { cnt.set(key, null); } }
         const v = cnt.get(key); if (v && v[row] != null) L.push('  çerçeve sayacı (frame_counter) bu satırda: ' + num(v[row])); }
       L.push('  eşit aralıklı yaymada olacak zaman: ' + sec(i * ss.span * T / ch.n) + ' · satır no × periyotta: ' + (row != null ? sec(row * T) : '—'));
+      // saat adaylarının bu andaki değeri (aynı çerçeve: satır zamanından en yakın satır)
+      for (const r of (tlmDiagReport._clocks || []).slice(0, 6)) {
+        const g2 = rows[r.ui]; if (!g2 || !g2.length) continue; const fr = ch.t(i) / T; let lo = 0, hi = g2.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (g2[m] < fr) lo = m + 1; else hi = m; }
+        let v; try { v = (await cl.request('col', {sid: ss.id, u: r.ui, c: r.col.i})).v; } catch (_) { continue; }
+        L.push('  saat adayı ' + an(ss.units[r.ui].name + '/' + r.col.name) + ' bu anda: ' + num(v[lo]));
+      }
     }
     if (cs.length >= 2) {
       const a = cs[0][0], b = cs[cs.length - 1][0], ta = a.tr.ch.t(a.i), tb = b.tr.ch.t(b.i); L.push('Fark (son − ilk imleç, MATView, sayaç zamanıyla): ' + sec(tb - ta));

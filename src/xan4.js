@@ -52,6 +52,9 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.51', d: 'Zaman tanılama: saat parametresi arama', items: [
+    'Telemetri zaman tanılaması kayıtta zaman taşıyan (düzenli artan) parametreleri arar: her aday için birim / s, ms, µs tahmini, sayaç zamanına ve çözülen satırlara göre eğim ve sapma; imleç noktalarında adayların o anki değeri. MATLAB’de x ekseni olarak kullanılan zamanla karşılaştırmak ve çerçeve periyodu ya da sayaç boşluklarının doğruluğunu görmek için.'
+  ]},
   {v: '2.50', d: 'Zaman tanılama: sayaç ayrıntıları', items: [
     'Telemetri zaman tanılamasına sayaç tekrarları, makul olmayan sıçramalar, kayıp çerçeve boşluklarının boyut dağılımı ve en büyük boşluklar eklendi; iki imleç arasında çözülen ve kayıp sayılan çerçeve sayısı da yazılır. “Geri giden satır zamanı” yerine sayaç tekrarları ayrı gösterilir.'
   ]},

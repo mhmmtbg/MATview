@@ -26,8 +26,11 @@ async def main():
           const A = S.plot.axes[0], B = S.plot.axes[1]; S.plot.cursors = [{axes: A, tr: A.traces[0], x: a.t(100), y: 0, i: 100, name: 'C1'}, {axes: B, tr: B.traces[0], x: b2.t(Math.floor(b2.n / 2)), y: 0, i: Math.floor(b2.n / 2), name: 'C2'}];
           S.plot.invalidate(); return [a.name, b2.name]; })()""")
         print('imleçli kanallar', names)
-        await pg.click('#btnSet'); await pg.click('#btnTdiag'); await pg.wait_for_selector('.mx-rep', timeout=20000)
-        rep = await pg.inner_text('.mx-rep'); print(rep[:1200]); print(rep[rep.find('== İmleç'):])
+        t0 = __import__('time').time(); await pg.click('#btnSet'); await pg.click('#btnTdiag')
+        try: await pg.wait_for_selector('.mx-rep', timeout=60000)
+        except Exception: print('TOAST', await pg.evaluate("document.querySelector('#toast').textContent"), errs); raise
+        print('rapor süresi %.1f sn' % (__import__('time').time() - t0))
+        rep = await pg.inner_text('.mx-rep'); print(rep[:1200]); print(rep[rep.find('== Saat'):rep.find('== Parametrelerin')]); print(rep[rep.find('== İmleç'):])
         ok('telemetri oturumu' in rep and '== Kayıt ==' in rep and '== Birimler' in rep and '== Parametrelerin zamanı ==' in rep, 'bölümler')
         ok('Çerçeve periyodu: 10 ms' in rep, 'periyot')
         ok('İmleç noktaları (2)' in rep and 'örnek 101' in rep and 'birim satırı 101' in rep, 'imleç noktası')
