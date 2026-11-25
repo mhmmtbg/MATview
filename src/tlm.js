@@ -71,8 +71,8 @@ function tlmAddSession(ss, client) {
         else if (col.ctx === 'frame' && !col.timeBad && !col.conditional) {
           const g = await rowT(ui);
           if (g.length * spp === r.v.length) { c.g = g; c.spp = spp; c.Tpkt = T; }
-          else { c.g = null; c.dtS = (ss.span * T) / Math.max(1, r.v.length); }
-        } else { c.g = null; c.dtS = (ss.span * T) / Math.max(1, r.v.length); }
+          else { c.g = null; c.dtS = (ss.span * T) / Math.max(1, r.v.length); c.t0 = (ss.t0f || 0) * T; }
+        } else { c.g = null; c.dtS = (ss.span * T) / Math.max(1, r.v.length); c.t0 = (ss.t0f || 0) * T; }
         return r.v;
       };
       maxSpp = Math.max(maxSpp, spp); nCh++;

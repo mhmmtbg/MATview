@@ -31,6 +31,13 @@ async function rowT(b) {
   const oldT = []; let tf = 0, prev = g[0]; for (let k = 0; k < g.length; k++) { if (k) { let d = (((g[k] - prev) % M) + M) % M; if (d > M / 2) d -= M; tf += d === 0 ? 0 : d > 1 && d - 1 <= 1000 ? d : 1; prev = g[k]; } oldT.push(tf); }
   const fx = TP.cntGlitchFix(g, oldT, M, 1000), nt = oldT.map(fx.map);
   console.log('birim testi:', fx.glitch, 'bozuk ·', fx.lost, 'kayıp · son', nt[nt.length - 1], nt[101] - nt[100], nt[300] - nt[299], nt[150] - nt[149], nt[151] - nt[150]);
-  if (fx.glitch !== 4 || fx.lost !== 5 || nt[399] !== 399 + 5 || nt[101] - nt[100] !== 6 || nt[302] - nt[301] !== 1)   // tekrar çerçevesi eski zamanla eşlenir (değer tabanlı eşleme), sonrası doğru { console.log('HATA: sayaç düzeltmesi'); process.exit(1); }
+  if (fx.glitch !== 4 || fx.lost !== 5 || nt[399] !== 399 + 5 || nt[101] - nt[100] !== 6 || nt[302] - nt[301] !== 1) { console.log('HATA: sayaç düzeltmesi'); process.exit(1); }   // tekrar çerçevesi eski zamanla eşlenir (değer tabanlı eşleme), sonrası doğru
+  // v2.55: sonraki çerçevelerle doğrulanan uzun kesinti (> en büyük boşluk) gerçek kayıptır; mutlak zaman = sayaç × periyot
+  { const cv2 = []; let c2 = 70000; for (let k = 0; k < 300; k++) { cv2.push(c2 % M); c2 += (k === 99 ? 5001 : 1); }   // 100'de 5000 çerçevelik kesinti
+    cv2[200] ^= 1 << 13;   // bit hatası (+8192 sıçrayıp geri dönme)
+    const o2 = cv2.map((_, k) => k); const f2 = TP.cntGlitchFix(cv2, o2, M, 1000, false), f3 = TP.cntGlitchFix(cv2, o2, M, 1000, true);
+    const n2 = o2.map(f2.map), n3 = o2.map(f3.map);
+    console.log('uzun kesinti:', n2[100] - n2[99], 'son', n2[299], '· mutlak ilk', n3[0], 'son', n3[299], '·', f2.longGaps, 'uzun,', f2.glitch, 'bozuk');
+    if (n2[100] - n2[99] !== 5001 || n2[299] !== 299 + 5000 || f2.glitch !== 1 || f2.longGaps !== 1 || n3[0] !== 70000 % M || n3[299] - n3[0] !== n2[299]) { console.log('HATA: uzun kesinti / mutlak zaman'); process.exit(1); } }
   console.log('sayaç dayanıklılığı OK');
 })().catch(e => { console.error(e); process.exit(1); });

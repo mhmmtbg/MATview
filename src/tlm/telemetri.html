@@ -1259,7 +1259,9 @@ if errorlevel 1 pause
             <div class="help">Sayaç taşması (örn. uint16'da 65535 → 0) kayıp sayılmaz. Atlama tespit edildiğinde kayıp çerçeve sayısı artırılır ve kayda yazılır.</div></div>
             <label>Sayaç bit hatası düzeltmesi</label>
             <div class="field"><label class="switch"><input type="checkbox" id="s_cntGlitchFix"><span class="tr"></span><span class="sl">Bozuk okunan sayaç değerlerini kayıp sayma</span></label>
-            <div class="help">Bozuk çerçevede sayaç tek bit hatasıyla okunursa (ör. 1000 → 33769 → 1002 ya da +4 sıçrayıp geri dönme) sonraki çerçeveler eski diziden sürüyorsa o değer bozuk sayılır: zamana sahte boşluk eklenmez, kayıp sayılmaz. Karar sonraki 3 çerçeveye bakılarak verilir.</div></div>
+            <div class="field"><label class="switch"><input type="checkbox" id="s_cntAbsTime"><span class="tr"></span><span class="sl">Zaman sayaç değerinden başlasın (sayaç × periyot)</span></label></div>
+            <div class="help">Açıkken zaman, MATLAB'de <code>frame_counter × periyot</code> ile çizmekle aynı mutlak değerleri alır (kayıt başı 0 değil, ilk sayaç değeri × periyot). Kapalıyken kayıt 0 sn'den başlar; iki olay arası süre her iki durumda aynıdır.</div>
+            <div class="help">Bozuk çerçevede sayaç tek bit hatasıyla okunursa (ör. 1000 → 33769 → 1002 ya da +4 sıçrayıp geri dönme) sonraki çerçeveler eski diziden sürüyorsa o değer bozuk sayılır: zamana sahte boşluk eklenmez, kayıp sayılmaz. Uzun kesintiler (sayaç büyük atlayıp sonraki çerçevelerde yeni değerden sürüyorsa) boyutu ne olursa olsun kayıp sayılır, sıfırlanma (geri gitme) 1 çerçeve ilerletilir. Karar sonraki 3 çerçeveye bakılarak verilir.</div></div>
           </div>
         </section>
 
@@ -2636,9 +2638,9 @@ Col.prototype.chunk = async function (k) {
    Beklenmeyen değerde sonraki 3 çerçeveye bakılır: eski diziden (güvenilen + 1, + 2 …) sürüyorlarsa değer bozuktur → 1 çerçeve;
    yeni değerden sürüyorlarsa gerçek kayıp (≤ en büyük boşluk) ya da sıfırlanmadır. Dönen map(x): eski tF → yeni tF
    (çerçeve içi kesirler korunur). */
-function cntGlitchFix(cv, old, M, maxGap) {
+function cntGlitchFix(cv, old, M, maxGap, abs) {
   var n = cv.length, sd = function (a) { a = ((a % M) + M) % M; return a >= M / 2 ? a - M : a; };
-  var nw = new Float64Array(n), trusted = cv[0], glitch = 0, lost = 0;
+  var nw = new Float64Array(n), trusted = cv[0], glitch = 0, lost = 0, longGaps = 0, resets = 0;
   for (var k = 1; k < n; k++) {
     var c = cv[k], d = sd(c - trusted), st;
     if (d === 1) { st = 1; trusted = c; }
@@ -2649,18 +2651,20 @@ function cntGlitchFix(cv, old, M, maxGap) {
       var A = 0, B = 0;
       for (var j = 1; j <= 3 && k + j < n; j++) { var a = sd(cv[k + j] - c), b = sd(cv[k + j] - (trusted + 1)); if (a === j) A++; if (b === j) B++; }   // tam devam: yeni değerden mi, eski diziden mi
       if (B > A) { st = 1; trusted = (trusted + 1) % M; glitch++; }
-      else if (d > 1 && d - 1 <= maxGap) { st = d; trusted = c; lost += d - 1; }
-      else { st = 1; trusted = c; }
+      else if (d > 1 && (d - 1 <= maxGap || A >= 2)) { st = d; trusted = c; lost += d - 1; if (d - 1 > maxGap) longGaps++; }   // sonraki çerçeveler yeni değerden sürüyorsa uzun kesinti de gerçek kayıptır
+      else { st = 1; trusted = c; if (d < 0) resets++; }   // sayaç geri gitti (sıfırlanma) ya da doğrulanamayan sıçrama
     }
     nw[k] = nw[k - 1] + st;
   }
+  var base = abs ? cv[0] : 0;   // mutlak: zaman = sayaç × periyot (ilk çerçevenin sayaç değerinden başlar)
+  if (base) for (k = 0; k < n; k++) nw[k] += base;
   // değişim noktaları: eski tF → fark (yeni − eski)
   var xs = [], off = [], last = NaN;
   for (k = 0; k < n; k++) { var o = nw[k] - old[k]; if (o !== last) { xs.push(old[k]); off.push(o); last = o; } }
-  if (xs.length === 1 && off[0] === 0) return { map: null, glitch: glitch, lost: lost };
+  if (xs.length === 1 && off[0] === 0) return { map: null, glitch: glitch, lost: lost, longGaps: longGaps, resets: resets, base: base };
   var X = Float64Array.from(xs), O = Float64Array.from(off), m = X.length;
   var map = function (x) { if (x < X[0]) return x + O[0]; var lo = 0, hi = m - 1; while (lo < hi) { var md = (lo + hi + 1) >> 1; if (X[md] <= x) lo = md; else hi = md - 1; } return x + O[lo]; };
-  return { map: map, glitch: glitch, lost: lost, removed: old[n - 1] - nw[n - 1] };
+  return { map: map, glitch: glitch, lost: lost, longGaps: longGaps, resets: resets, base: base, removed: old[n - 1] - (nw[n - 1] - base) };
 }
 TP.cntGlitchFix = cntGlitchFix;
 Col.prototype.release = function () { this.cacheK = -1; this.cacheV = null; this.pre = null; };
@@ -4008,7 +4012,7 @@ async function runJob(job, post) {
   var cntMaxGap = Math.max(100, Math.round((+S.counterMaxGapSec > 0 ? +S.counterMaxGapSec : 10) / Math.max(1e-6, framePeriodSec(S))));
   /* MATView: collect = sonuçları dosyaya yazmadan geçici depoda tut (oturum), MATView kanalları istedikçe okur.
      wantT: satır zamanları (çerçeve sırası, kayıp çerçeveler dahil) ve koşullu / undersample sütunların kendi zamanları tutulur. */
-  var collect = !!job.collect, wantT = collect || !!S.singleMat || !!S.matEnabled || !S.csvEnabled, Tper = framePeriodSec(S), tF = 0, firstFrame = true, frCv = [], frOld = []; var tcUpgraded = 0, cntSuspect = null;
+  var collect = !!job.collect, wantT = collect || !!S.singleMat || !!S.matEnabled || !S.csvEnabled, Tper = framePeriodSec(S), tF = 0, firstFrame = true, frCv = [], frOld = [], tBase = 0; var tcUpgraded = 0, cntSuspect = null;
   if (cntEnabled) {
     var ctp = parseType(S.counterType);
     if (!ctp || ctp.kind !== 'int' || ctp.bits % 8) throw new Error('Çerçeve sayacı veri tipi geçersiz');
@@ -4362,12 +4366,12 @@ async function runJob(job, post) {
   // sayaç bit hatası düzeltmesi: tüm sayaç dizisine (sonraki çerçevelere de) bakarak bozuk okunan değerlerin eklediği sahte
   // boşluklar kaldırılır; zaman sütunlarına (birim t, kendi zamanı, video eşlemesi) okunurken uygulanır
   if (cntEnabled && S.cntGlitchFix !== false && frCv.length > 2) {
-    var fx = cntGlitchFix(frCv, frOld, cntMod, cntMaxGap);
+    var fx = cntGlitchFix(frCv, frOld, cntMod, cntMaxGap, !!S.cntAbsTime); tBase = fx.base || 0;
     if (fx.map) {
       unitOrder.forEach(function (u) { if (u.tCol) u.tCol.tmapF = fx.map; u.cols.forEach(function (c) { if (c.tc) c.tc.tmapF = fx.map; }); });
       videoOuts.forEach(function (vt) { vt.mw.tf = vt.mw.tf.map(function (x) { return isFinite(x) ? fx.map(x) : x; }); });
-      log('BİLGİ', 'Sayaç bit hatası düzeltmesi: ' + fx.glitch + ' bozuk sayaç değeri kayıp sayılmadı (' + fmtInt(Math.round(fx.removed)) + ' sahte kayıp çerçeve kaldırıldı); kayıp çerçeve ' + stats.lost + ' → ' + fx.lost + ', süre ' + (tF + 1) + ' → ' + (fx.map(tF) + 1) + ' çerçeve');
-      stats.lostRaw = stats.lost; stats.lost = fx.lost; stats.cntGlitch = fx.glitch; tF = fx.map(tF);
+      log('BİLGİ', 'Sayaç düzeltmesi: ' + fx.glitch + ' bozuk sayaç değeri kayıp sayılmadı, ' + fx.longGaps + ' uzun kesinti (> ' + cntMaxGap + ' çerçeve, sonraki çerçevelerle doğrulandı) kayıp sayıldı' + (fx.resets ? ', ' + fx.resets + ' sayaç sıfırlanması' : '') + '; kayıp çerçeve ' + stats.lost + ' → ' + fx.lost + ', süre ' + (tF + 1) + ' → ' + (fx.map(tF) - tBase + 1) + ' çerçeve' + (tBase ? '; zaman sayaç değerinden başlar (' + tBase + ' × periyot)' : ''));
+      stats.lostRaw = stats.lost; stats.lost = fx.lost; stats.cntGlitch = fx.glitch; stats.cntLong = fx.longGaps; stats.cntResets = fx.resets; tF = fx.map(tF) - tBase;
     }
   }
   frCv = frOld = null;
@@ -4387,9 +4391,9 @@ async function runJob(job, post) {
     stats.elapsed = Date.now() - T0;
     log('BİLGİ', 'Tamamlandı. ' + outUnits.length + ' etiket MATView\'e aktarılmaya hazır' + (vids.length ? ', ' + vids.length + ' video' : '') + '. Toplam süre ' + (stats.elapsed / 1000).toFixed(1) + ' sn.');
     flushLogs();
-    var dinfo = { periodMs: Tper * 1000, periodSet: +S.framePeriodMs > 0, counter: S.counterEnabled ? (S.counterType || 'uint16') : null, frameTypes: fts.length, lost: stats.lost, lostRaw: stats.lostRaw, cntGlitch: stats.cntGlitch || 0, cntJumps: stats.cntJumps || 0, cntDup: stats.cntDup || 0, cntMaxGap: cntMaxGap, skipped: stats.skipped, unknownId: stats.unknownId, packetsOk: stats.packetsOk, packetsDropped: stats.packetsDropped,
+    var dinfo = { periodMs: Tper * 1000, periodSet: +S.framePeriodMs > 0, counter: S.counterEnabled ? (S.counterType || 'uint16') : null, frameTypes: fts.length, lost: stats.lost, lostRaw: stats.lostRaw, cntGlitch: stats.cntGlitch || 0, cntLong: stats.cntLong || 0, cntResets: stats.cntResets || 0, absBase: tBase, cntJumps: stats.cntJumps || 0, cntDup: stats.cntDup || 0, cntMaxGap: cntMaxGap, skipped: stats.skipped, unknownId: stats.unknownId, packetsOk: stats.packetsOk, packetsDropped: stats.packetsDropped,
       types: (stats.types || []).map(function (t) { return { frames: t.count }; }) };   // zaman tanılama raporu için (ad içermez)
-    return { stats: stats, files: [], folder: job.folderName, session: { id: sid, name: recName, label: job.label || recName, T: Tper, frames: stats.frames, span: tF + 1, units: describeUnits(outUnits), diag: dinfo }, videos: vids };
+    return { stats: stats, files: [], folder: job.folderName, session: { id: sid, name: recName, label: job.label || recName, T: Tper, frames: stats.frames, span: tF + 1, t0f: tBase, units: describeUnits(outUnits), diag: dinfo }, videos: vids };
   }
   var sink;
   if (job.sink) sink = job.sink;
@@ -4961,7 +4965,7 @@ function defaults() {
     frameIdEnabled: false, frameIdIndex: 8,
     frameTypes: [{ name: 'Çerçeve 0', id: '0x00', templateName: '', templateRows: null, loadedAt: '' }],
     counterEnabled: false, counterIndex: 1, counterType: 'uint16', counterEndian: 'little', counterToOutput: true,
-    matEnabled: true, csvEnabled: false, cntGlitchFix: true, fileMode: 'concat', singleMat: false, framePeriodMs: 10,
+    matEnabled: true, csvEnabled: false, cntGlitchFix: true, cntAbsTime: false, fileMode: 'concat', singleMat: false, framePeriodMs: 10,
     rawOut: rawOutDefaults(),
     labelFilter: { enabled: false, labels: [], params: {} },
     colDrop: colDropDefaults(),
@@ -5342,7 +5346,7 @@ var BIND = [
   ['s_cols', 'cols', 'int'], ['s_rows', 'rows', 'int'], ['s_header', 'header', 'str'], ['s_headerPos', 'headerPos', 'str'],
   ['s_transpose', 'transpose', 'bool'], ['s_strict', 'strictSync', 'bool'], ['s_discardEnabled', 'discardEnabled', 'bool'], ['s_discardCount', 'discardCount', 'int'], ['s_discardPos', 'discardPos', 'str'], ['s_streamInner', 'streamInnerSearch', 'bool'], ['s_frameIdEnabled', 'frameIdEnabled', 'bool'],
   ['s_frameIdIndex', 'frameIdIndex', 'int'], ['s_counterEnabled', 'counterEnabled', 'bool'], ['s_counterIndex', 'counterIndex', 'int'],
-  ['s_counterType', 'counterType', 'str'], ['s_counterEndian', 'counterEndian', 'str'], ['s_counterToOutput', 'counterToOutput', 'bool'], ['s_cntGlitchFix', 'cntGlitchFix', 'bool'],
+  ['s_counterType', 'counterType', 'str'], ['s_counterEndian', 'counterEndian', 'str'], ['s_counterToOutput', 'counterToOutput', 'bool'], ['s_cntGlitchFix', 'cntGlitchFix', 'bool'], ['s_cntAbsTime', 'cntAbsTime', 'bool'],
   ['s_matEnabled', 'matEnabled', 'bool'], ['s_csvEnabled', 'csvEnabled', 'bool'], ['s_singleMat', 'singleMat', 'bool'], ['s_framePeriod', 'framePeriodMs', 'num']
 ];
 function fillForm() {
@@ -5360,7 +5364,7 @@ function updateDerived() {
   $('#s_header').classList.toggle('invalid', !!h.error);
   $('#s_frameIdIndex').disabled = !S.frameIdEnabled;
   $('#e_frameId').textContent = S.frameIdEnabled && S.frameIdIndex >= FL ? 'Index çerçeve dışında' : '';
-  ['s_counterIndex', 's_counterType', 's_counterEndian', 's_counterToOutput', 's_cntGlitchFix'].forEach(function (id) { $('#' + id).disabled = !S.counterEnabled; });
+  ['s_counterIndex', 's_counterType', 's_counterEndian', 's_counterToOutput', 's_cntGlitchFix', 's_cntAbsTime'].forEach(function (id) { $('#' + id).disabled = !S.counterEnabled; });
   var ct = TP.parseType(S.counterType);
   $('#e_counter').textContent = S.counterEnabled && ct && S.counterIndex + ct.bits / 8 > FL ? 'Index çerçeve dışında' : '';
   var cd = S.colDrop, cdErr = TP.colDropError(S), ecd = $('#e_cd'), cl = TP.parseColList(cd.list);

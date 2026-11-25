@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.55', d: 'Sayaç: uzun kesintiler, mutlak zaman', items: [
+    'Telemetri: sayaç 10 sn’den (en büyük boşluk) uzun atlayıp sonraki çerçevelerde yeni değerden sürüyorsa bu gerçek bir kesintidir ve artık kayıp sayılır; önceden “makul olmayan sıçrama” sayılıp 1 çerçeveye sıkıştırılıyor, uzun kesintili kayıtlarda iki olay arası süre kısa çıkıyordu. Bozuk okunan (geri dönen) değerler yine kayıp sayılmaz.',
+    'Ayarlar › Çerçeve sayacı › “Zaman sayaç değerinden başlasın”: zaman MATLAB’de frame_counter × periyot ile çizmekle aynı mutlak değerleri alır (varsayılan kapalı: kayıt 0 sn’den başlar).'
+  ]},
   {v: '2.54', d: 'Sayaç bit hataları, işlemci saati', items: [
     'Telemetri: çerçeve sayacı bozuk okunduğunda (tek bit hatası; ör. +4 ya da +32769 sıçrayıp geri dönme) sonraki çerçevelere bakılarak değer bozuk sayılır; zamana sahte boşluk eklenmez, kayıp sayılmaz. Önceden küçük bit hataları “kayıp çerçeve” sayılıp zaman eksenini uzatıyordu. MATView oturumu, birim / tek .mat t ve video eşlemesi düzeltilmiş zamanı kullanır (Ayarlar › Çerçeve sayacı › Sayaç bit hatası düzeltmesi, varsayılan açık).',
     'Zaman ekseni yapılan kanalda işaretsiz sayaç taşmaları (8 / 16 / 24 / 32 bit) açılır; ölçek önerisi yaygın saat frekanslarından (ör. 333,33 MHz işlemci zamanlayıcısı → 3e-9 s) seçilir.'
