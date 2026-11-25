@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.58', d: 'Sayaç zamanı: bozuk kesimlere dayanıklı', items: [
+    'Telemetri ve “Bu kanalı dosyanın zaman ekseni yap”: çerçeve sayacındaki bozulmalar yeniden ele alındı. Gerçek kayıtlarda bit hataları tek tek değil art arda gelebiliyor, bir bit uzun süre yarı yarıya düşük okunabiliyor ya da sayaç kısa süre anlamsız artıp eski diziye dönebiliyor; önceki sürümler bunları kayıp ya da sıfırlanma sayıp zamanı yüzlerce saniye (bazen 10⁸ s) kaydırıyor, kanallar parçalı görünüyordu.',
+    'Yeni yöntem: her çerçeve komşularının ortancasıyla karşılaştırılır (sayacın asıl hattı), tek bit hatasına benzeyen sapmalar ve sonradan eski diziye dönülen kesimler bozuk sayılıp komşu çerçeveler arasına yerleştirilir. Hattaki çerçevelerin zamanı sayacın kendisidir: kayıplar boşluk olarak kalır, iki olay arası süre frame_counter farkı × periyot ile aynıdır (MATLAB’de plot(frame_counter*0.01, x)). Aynı kod ana uygulamada da kullanılır.'
+  ]},
   {v: '2.57', d: 'Kayıt çerçeve uzunluğu denetimi', items: [
     'Telemetri: “Dikkate alınmayacak sütunlar” dosya çözümlemede açıkken kayıt atılmış sütunlarla yazılmışsa (ya da tersi) çerçeveler kayıyor, tüm değerler, sayaç ve zaman anlamsız çıkıyordu. Çözümden önce kayıttaki header aralığı ölçülür; ayar kayda uymuyorsa uyan çerçeve uzunluğu kullanılır ve günlükte uyarı verilir (dosya çözümleme, çerçeve aralığı seçimi ve dosyadan oynatma dizini).',
     'Telemetri: sayaçta doğrulanamayan dev sıçramalar (bozuk çerçeve) yine 1 çerçeve sayılır; zaman ekseni bozuk çerçeveler yüzünden binlerce saniyeye uzamaz. Sonraki çerçevelerle doğrulanan uzun kesintiler kayıp sayılmaya devam eder.'

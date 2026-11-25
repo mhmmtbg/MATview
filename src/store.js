@@ -31,47 +31,84 @@ const PYR_B = 32;
 /* Zaman eşlemesi: bir parametrenin değerleri (ölçek / ofsetle) dosyanın yeni zamanı olur. xs: kanalın kendi (eski) zamanı,
    ys: parametre değeri × ölçek + ofset; ikisi de artan tutulur (tekil bozuk değerler atılır, geri gitmede süreklilik korunur, ileri sıçrama boşluktur). Arada doğrusal,
    uçlarda son parçanın eğimiyle. fwd: eski → yeni, inv: yeni → eski. */
+/* Sayaç temizleme (telemetri modülündeki cntLane / cntClean ile aynı kod; test/t_tlmcnt.js eşliği denetler) */
+function cntLane(u, n, tol, W) {
+  // u: açılmış sayaç; dönen on[k] = 1: hatta
+  var r = new Float64Array(n), on = new Uint8Array(n), irr = new Uint8Array(n), k, j;
+  for (k = 0; k < n; k++) r[k] = u[k] - k;
+  for (k = 1; k < n; k++) if (Math.abs(r[k] - r[k - 1]) > tol) { irr[k] = 1; irr[k - 1] = 1; }
+  // düzensizliğe W'dan uzak çerçeveler doğrudan hattadır
+  var near = new Uint8Array(n), last = -1e9;
+  for (k = 0; k < n; k++) { if (irr[k]) last = k; if (k - last <= W) near[k] = 1; }
+  last = 1e18; for (k = n - 1; k >= 0; k--) { if (irr[k]) last = k; if (last - k <= W) near[k] = 1; }
+  var buf = new Float64Array(W);
+  function med(a, b) { var m = 0; for (var q = a; q < b; q++) buf[m++] = r[q]; if (m < 3) return NaN; var s = buf.subarray(0, m).sort(); return s[m >> 1]; }
+  for (k = 0; k < n; k++) {
+    if (!near[k]) { on[k] = 1; continue; }
+    var L = med(Math.max(0, k - W), k), R = med(k + 1, Math.min(n, k + 1 + W));
+    if (L !== L && R !== R) on[k] = 1;
+    else if ((L === L && Math.abs(r[k] - L) <= tol) || (R === R && Math.abs(r[k] - R) <= tol)) on[k] = 1;
+  }
+  return on;
+}
+function cntClean(u, maxGap) {
+  var n = u.length, k, q;
+  var ps = []; for (k = 1; k < n && ps.length < 200000; k++) { var q0 = u[k] - u[k - 1]; if (q0 > 0 && q0 <= maxGap) ps.push(q0); }
+  ps.sort(function (x, y) { return x - y; });
+  var P = ps.length ? ps[Math.floor(ps.length * 0.9)] : 1;
+  var on = cntLane(u, n, Math.max(0.5, P - 0.5) + (P - 1) * 6, 12), T = new Float64Array(n), glitch = 0, lost = 0, longGaps = 0, resets = 0, shift = 0, a = -1;
+  // hattaki çerçeve geri gidiyorsa ya da ileri sıçrıyorsa sonraki çerçeveler karar verir: geri gitme ancak neredeyse hepsi yeni
+  // değerden sürerse sıfırlanmadır; tek bit hatasına benzeyen sapmada 64 çerçeve içinde eski dizi 2 kez görülürse bozuk değerdir
+  // (yarı yarıya bozulan bitte iki hat da "hatta" görünebilir)
+  var accK = new Int32Array(n), accN = 0;   // güvenilen (kabul edilen) çerçeveler
+  function votes(k, ref, N) { var up = 0, all = 0; for (var j = k + 1; j < n && all < N; j++) { all++; if (u[j] + shift >= ref) up++; } return { up: up, all: all }; }
+  // tek bit hatası: beklenenden sapma 2'nin bir kuvvetine (≥ 8) yakın
+  function bitLike(x) { x = Math.abs(x); if (x < 6) return false; var p2 = Math.pow(2, Math.round(Math.log(x) / Math.LN2)); return Math.abs(x - p2) <= Math.max(2 * P + 2, x / 64); }
+  for (k = 0; k < n; k++) {
+    var v = u[k] + shift;
+    if (a >= 0) {
+      var d = v - T[a], g = k - a, dev = d - g;
+      // hat dışı görünse de önceki güvenilen değerden olağan adımla sürüyorsa kabul (bozuk değerler çoğunlukta olabilir)
+      if (!on[k] && !(d >= g && d <= g * P + 6)) { glitch++; continue; }
+      if (d < 0) {
+        var vb = votes(k, T[a], bitLike(dev) ? 64 : 12);
+        if (vb.all && (bitLike(dev) ? vb.up >= 2 : vb.up * 5 > vb.all)) { glitch++; continue; }   // eski dizi sürüyor: bozuk değer
+        // bozuk bir kesimden (ör. sayacın kısa süre anlamsız artması) sonra eski diziye dönüş: bu değer daha önce güvenilen bir
+        // çerçeveden olağan ilerlemeyle sürüyorsa aradaki kesim bozuktur, geri alınır
+        var rb = -1; for (var bi = accN - 1; bi >= 0 && k - accK[bi] <= 3000; bi--) { var b0 = accK[bi], dv0 = v - T[b0]; if (dv0 >= 0 && dv0 <= (k - b0) * Math.max(P, 2) + 10) { rb = b0; break; } }
+        if (rb >= 0) { while (accN && accK[accN - 1] > rb) accN--; glitch += k - rb - 1; a = rb; g = k - a; }
+        else { v = T[a] + g; shift = v - u[k]; resets++; }   // sıfırlanma / geri gitme: kesintisiz devam
+      } else if (dev > P) {
+        var vf = votes(k, v - P, 12);
+        if (vf.all && (vf.up * 2 < vf.all || (bitLike(dev) && vf.up < vf.all))) { glitch++; continue; }   // sonrakiler bu değerden sürmüyor: bozuk
+        lost += dev; if (dev > maxGap) longGaps++;
+      } else if (dev > 0) lost += dev;
+      for (var q = a + 1; q < k; q++) T[q] = T[a] + (q - a) * (v - T[a]) / g;   // aradaki bozuk çerçeveler
+    } else { if (!on[k]) { glitch++; continue; } for (q = 0; q < k; q++) T[q] = v - (k - q); }
+    T[k] = v; a = k; accK[accN++] = k;
+  }
+  if (a < 0) { for (k = 0; k < n; k++) T[k] = u[0] + k; } else for (q = a + 1; q < n; q++) T[q] = T[a] + (q - a);
+  return { T: T, glitch: glitch, lost: lost, longGaps: longGaps, resets: resets };
+}
 function makeTimeMap(xs0, ys0, info) {
   info = info || {};
   // geçerli noktalar (aynı x'te tekrarlar tek)
   const n0 = Math.min(xs0.length, ys0.length), X0 = [], Y0 = []; let bad = 0;
   for (let i = 0; i < n0; i++) { const x = xs0[i], y = ys0[i]; if (!isFinite(x) || !isFinite(y)) { bad++; continue; } if (X0.length && x <= X0[X0.length - 1]) { if (x < X0[X0.length - 1]) bad++; continue; } X0.push(x); Y0.push(y); }
   const n = X0.length; if (n < 2) throw new Error('Zaman parametresinde kullanılabilir değer yok');
-  // eğim: ardışık artan adımların medyanı (sıfırlanma / bozuk değerlerden etkilenmez)
-  const sl = [], dxs = []; for (let i = 1; i < n; i++) { const dx = X0[i] - X0[i - 1], dy = Y0[i] - Y0[i - 1]; dxs.push(dx); if (dy > 0) sl.push(dy / dx); }
+  // bir sayım: ardışık artan adımların ortancası; eğim: sayım / örnek aralığı
+  const sl = [], dys = [], dxs = []; for (let i = 1; i < n; i++) { const dx = X0[i] - X0[i - 1], dy = Y0[i] - Y0[i - 1]; dxs.push(dx); if (dy > 0) { sl.push(dy / dx); dys.push(dy); } }
   if (sl.length < n * 0.05) throw new Error('Zaman parametresi artmıyor (artan adım: ' + sl.length + ' / ' + (n - 1) + ')');
-  sl.sort((a, b) => a - b); dxs.sort((a, b) => a - b); const m = sl[sl.length >> 1], mdx = dxs[dxs.length >> 1];
-  // tekil bozuk değerler (bit hatası): beklenmeyen değerde sonraki 3 nokta eski diziden mi (B) yeni değerden mi (A) sürüyor.
-  // Pay: adımın olağan (%90) eğim oranının 2 katı, en az 4 (sık kayıplı kayıtta da çalışır)
-  const rs = []; for (let i = 1; i < n && rs.length < 200000; i++) { const q = (Y0[i] - Y0[i - 1]) / (m * (X0[i] - X0[i - 1])); if (q > 0 && q < 1e3) rs.push(q); }
-  rs.sort((a, b) => a - b); const Q = Math.max(4, 2 * (rs.length ? rs[Math.floor(rs.length * 0.9)] : 1));
-  const fits = (i, t) => { const dy = Y0[i] - Y0[t]; return dy > 0 && dy <= Q * m * (X0[i] - X0[t]); };
-  const keep = new Uint8Array(n); let out = 0, t = 0;
-  // başlangıç: sonraki 3 noktanın kendisinden sürdüğü ilk nokta (baştaki bozuk değerler atılır)
-  while (t < Math.min(n - 4, 50) && !(fits(t + 1, t) && fits(t + 2, t) && fits(t + 3, t))) t++;
-  if (t >= Math.min(n - 4, 50)) t = 0; out += t; keep[t] = 1;
-  for (let i = t + 1; i < n; i++) {
-    const R = (Y0[i] - Y0[t]) / (m * (X0[i] - X0[t]));
-    if (R >= 0.5 && R <= 1.5) { keep[i] = 1; t = i; continue; }
-    let A = 0, B = 0; for (let j = 1; j <= 3 && i + j < n; j++) { if (fits(i + j, i)) A++; if (fits(i + j, t)) B++; }
-    if (R > 0 ? B > A : (B > 0 && B >= A)) { out++; continue; }   // bozuk değer: atlanır (arası doğrusal)
-    keep[i] = 1; t = i;
-  }
-  // sürekli zaman: geri gitmede (sayaç sıfırlanması / taşma) değer önceki noktadan beklenen eğimle devam edecek biçimde kaydırılır.
-  // İleri sıçrama gerçek boşluktur (kayıp çerçeveler; MATLAB'de plot(sayaç, x) ile aynı) ve korunur.
-  const X = [], Y = []; let off = 0, resets = 0;
-  for (let i = 0; i < n; i++) {
-    if (!keep[i]) continue; const x = X0[i]; let y = Y0[i] + off;
-    if (X.length) { const L = X.length - 1, e = m * (x - X[L]), d = y - Y[L];
-      if (d < 0) { const y2 = Y[L] + e; off += y2 - y; y = y2; resets++; } }
-    X.push(x); Y.push(y);
-  }
-  if (X.length < 2) throw new Error('Zaman parametresinde kullanılabilir değer yok');
-  const Xa = Float64Array.from(X), Ya = Float64Array.from(Y), N = Xa.length;
+  sl.sort((a, b) => a - b); dys.sort((a, b) => a - b); const m = sl[sl.length >> 1], s0 = dys[dys.length >> 1];
+  // örnek başına sayaç: bozuk değerler (bit hataları, kısa süre anlamsız kesimler) ayıklanır, ileri sıçrama gerçek boşluktur
+  // (MATLAB'de plot(sayaç, x) ile aynı), geri gitmede (sıfırlanma) süreklilik korunur
+  const u = new Float64Array(n); for (let i = 0; i < n; i++) u[i] = Y0[i] / s0;
+  const cc = cntClean(u, 1000), Xa = Float64Array.from(X0), Ya = new Float64Array(n), N = n;
+  for (let i = 0; i < n; i++) Ya[i] = cc.T[i] * s0;
   if (info.zero) { const y0 = Ya[0]; for (let i = 0; i < N; i++) Ya[i] -= y0; info.off = -y0; }
   const seg = (A, v) => { let lo = 0, hi = N - 2; while (lo < hi) { const md = (lo + hi + 1) >> 1; if (A[md] <= v) lo = md; else hi = md - 1; } return lo; };
   const lerp = (A, B, v) => { const k = v <= A[0] ? 0 : v >= A[N - 1] ? N - 2 : seg(A, v), d = A[k + 1] - A[k]; return d > 0 ? B[k] + (B[k + 1] - B[k]) * (v - A[k]) / d : B[k]; };
-  return Object.assign({xs: Xa, ys: Ya, n: N, drop: bad + out, outliers: out, resets, slope: m, fwd: x => lerp(Xa, Ya, x), inv: y => lerp(Ya, Xa, y)}, info);
+  return Object.assign({xs: Xa, ys: Ya, n: N, drop: bad + cc.glitch, outliers: cc.glitch, resets: cc.resets, lost: cc.lost, slope: m, fwd: x => lerp(Xa, Ya, x), inv: y => lerp(Ya, Xa, y)}, info);
 }
 class Channel {
   constructor(o) {

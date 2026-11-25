@@ -45,7 +45,8 @@ async function rowT(b) {
     const o4 = cv4.map((_, k) => k), f4 = TP.cntGlitchFix(cv4, o4, M4, 1000, false), n4 = o4.map(f4.map);
     const want = (cv4[1999] - cv4[0]), got = n4[1999] - n4[0];
     console.log('sık kayıp:', got, 'beklenen', want, '·', f4.glitch, 'bozuk');
-    if (got !== want || f4.glitch !== 4) { console.log('HATA: sık kayıplı kayıtta zaman sayaç farkından sapıyor'); process.exit(1); } }
+    const gl = new Set([300, 800, 1500, 1700]); let fe = 0; for (let k = 0; k < 2000; k++) if (!gl.has(k) && n4[k] - n4[0] !== cv4[k] - cv4[0]) fe++;
+    if (got !== want || f4.glitch < 4 || f4.glitch > 8 || fe > 4) { console.log('HATA: sık kayıplı kayıtta zaman sayaç farkından sapıyor'); process.exit(1); } }
   // v2.57: "dikkate alınmayacak sütunlar" dosya için açık ama kayıt atılmış sütunlarla yazılmış (ya da tersi): header aralığından
   // gerçek çerçeve uzunluğu bulunur, uyan ayar kullanılır (aksi hâlde çerçeveler kayar, her şey anlamsız çıkar)
   { const S5 = Object.assign({}, S, { colDrop: { enabled: true, total: S.cols + 3, list: '2-4', file: true, sim: false, live: true, rec: true } });
@@ -53,5 +54,23 @@ async function rowT(b) {
     const S6 = Object.assign({}, S5, { colDrop: Object.assign({}, S5.colDrop, { file: false }) }), r2 = await TP.checkFrameLen(S6, new File([b0], 'k.bin'), 'file');
     console.log('çerçeve uzunluğu denetimi:', r1.S.colDrop.file, '·', r2.S === S6);
     if (r1.S.colDrop.file !== false || !r1.msg || r2.S !== S6) { console.log('HATA: çerçeve uzunluğu denetimi'); process.exit(1); } }
+  // v2.58: gerçek kayıtlarda görülen bozulmalar (sentetik): bir bit uzun süre yarı yarıya düşük, art arda bit hataları,
+  // sayacın kısa süre anlamsız artıp eski diziye dönmesi, gerçek kesinti — zaman = doğru sayaç farkı
+  { const M5 = 2 ** 32, tru = []; let c5 = 500000, sd = 7; const rnd = () => (sd = (sd * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let k = 0; k < 30000; k++) { tru.push(c5); c5 += 1 + (k === 20000 ? 1200 : 0) + (k > 25000 && rnd() < 0.05 ? Math.floor(rnd() * 6) : 0); }
+    const cv5 = tru.slice(), bad = new Set();
+    for (let k = 5000; k < 5400; k++) if (rnd() < 0.5) { cv5[k] -= 8192; bad.add(k); }   // 13. bit yarı yarıya düşük
+    for (let k = 9000; k < 9300; k++) if (rnd() < 0.4) { cv5[k] -= 256; bad.add(k); }
+    for (let k = 12000; k < 12120; k++) { cv5[k] = tru[12000] + (k - 12000) * 9; bad.add(k); }   // anlamsız artış, sonra eski diziye dönüş
+    for (let k = 100; k < 29900; k += 97) { cv5[k] ^= 1 << (3 + (k % 20)); cv5[k + 1] ^= 1 << (3 + (k % 20)); bad.add(k); bad.add(k + 1); }   // art arda bit hataları
+    const o5 = cv5.map((_, k) => k), f5 = TP.cntGlitchFix(cv5, o5, M5, 1000, true), n5 = o5.map(f5.map);
+    let e5 = 0, w5 = 0; for (let k = 0; k < 30000; k++) if (!bad.has(k)) { const e = Math.abs(n5[k] - tru[k]); if (e > 0) e5++; if (e > w5) w5 = e; }
+    console.log('gerçekçi bozulma:', n5[29999] - n5[0], 'beklenen', tru[29999] - tru[0], '· sağlam çerçevede hata', e5, 'en çok', w5, '·', f5.glitch, 'bozuk');
+    if (n5[29999] - n5[0] !== tru[29999] - tru[0] || w5 > 3 || e5 > 50) { console.log('HATA: gerçekçi bozulmada zaman sayaç farkından sapıyor'); process.exit(1); } }
   console.log('sayaç dayanıklılığı OK');
 })().catch(e => { console.error(e); process.exit(1); });
+// ana uygulamadaki kopya (store.js) telemetri modülündekiyle aynı olmalı
+{ const t = fs.readFileSync(path.join(__dirname, '../src/tlm/telemetri.html'), 'utf8'), s = fs.readFileSync(path.join(__dirname, '../src/store.js'), 'utf8');
+  const cut = (x, a, b) => x.slice(x.indexOf(a), x.indexOf(b, x.indexOf(a)));
+  const A = cut(t, 'function cntLane(', 'return on;') + cut(t, 'function cntClean(', 'function cntGlitchFix('), B = cut(s, 'function cntLane(', 'return on;') + cut(s, 'function cntClean(', 'function makeTimeMap(');
+  if (A.length < 500 || A !== B) { console.log('HATA: store.js sayaç temizleme kopyası telemetri modülünden farklı'); process.exit(1); } }
