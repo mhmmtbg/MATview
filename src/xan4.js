@@ -52,6 +52,9 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.50', d: 'Zaman tanılama: sayaç ayrıntıları', items: [
+    'Telemetri zaman tanılamasına sayaç tekrarları, makul olmayan sıçramalar, kayıp çerçeve boşluklarının boyut dağılımı ve en büyük boşluklar eklendi; iki imleç arasında çözülen ve kayıp sayılan çerçeve sayısı da yazılır. “Geri giden satır zamanı” yerine sayaç tekrarları ayrı gösterilir.'
+  ]},
   {v: '2.49', d: 'Telemetri kaydı için zaman tanılaması', items: [
     'Zaman tanılama raporu, Çöz ve MATView’de aç ile gelen telemetri kayıtlarında da çalışır (Ayarlar › Zaman tanılama raporu ya da kayda sağ tık). Kaydın tamamı taranır: çerçeve periyodu (tanımlı mı, varsayılan mı), sayaç, kayıp çerçeveler, çerçeve tipleri; her birimin satır sayısı, ilk / son çerçevesi ve boşlukları; her parametrenin zaman kaynağı ve çerçeve tanımından beklenen hız ile karşılaştırma. Eşit aralıkla yayılan (zamanı yanlış olabilecek) parametreler ! ile işaretlenir ve nedeni yazılır.',
     'İmleç noktalarında birim satırı, çerçeve no, çerçeve sayacı ve kendi zaman değerleri. Adlar gizlidir, ölçüm değeri yoktur.'

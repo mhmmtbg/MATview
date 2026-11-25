@@ -319,16 +319,27 @@ async function tlmDiagReport(f, opt) {
   L.push('== Kayıt ==', 'Çözülen çerçeve: ' + fmtCnt(ss.frames) + ' · zaman aralığı (kayıplar dahil): ' + fmtCnt(ss.span) + ' çerçeve = ' + sec(ss.span * T),
     'Çerçeve periyodu: ' + num(T * 1000) + ' ms (' + hz(1 / T) + ')' + (D.periodSet === false ? ' — Ayarlar’da tanımlı değil, VARSAYILAN 10 ms kullanıldı' : ''),
     'Çerçeve sayacı: ' + (D.counter ? D.counter + ' (kayıp çerçeveler sayaçtan hesaplanır)' : 'yok (çerçeveler art arda sayılır, kayıp çerçeve bilinemez)') + ' · kayıp çerçeve: ' + fmtCnt(D.lost || 0) + ' · atlanan bayt: ' + fmtCnt(D.skipped || 0) + (D.unknownId ? ' · tanınmayan çerçeve tipi: ' + fmtCnt(D.unknownId) : ''),
+    'Sayaç: ' + fmtCnt(D.cntDup || 0) + ' tekrar (zaman ilerlemedi) · ' + fmtCnt(D.cntJumps || 0) + ' makul olmayan sıçrama (kayıp sayılmadı) · kayıp kabul edilen en büyük boşluk ' + (D.cntMaxGap ? fmtCnt(D.cntMaxGap) + ' çerçeve = ' + sec(D.cntMaxGap * T) : '—'),
     'Çerçeve tipi: ' + (D.frameTypes || 1) + (D.types && D.types.length > 1 ? ' (' + D.types.map((t, i) => 'tip ' + (i + 1) + ': ' + fmtCnt(t.frames || 0)).join(', ') + ' çerçeve)' : '') + (D.packetsOk || D.packetsDropped ? ' · akış paketi: ' + fmtCnt(D.packetsOk || 0) + ' sağlam, ' + fmtCnt(D.packetsDropped || 0) + ' atılan' : ''), '');
   // birimler
   L.push('== Birimler (' + ss.units.length + ') ==');
   const rows = [];
   for (let ui = 0; ui < ss.units.length; ui++) {
     const u = ss.units[ui]; let g = null; try { g = await rowT(ui); } catch (_) {}
-    let gaps = 0, miss = 0, back = 0; if (g) for (let k = 1; k < g.length; k++) { const d = g[k] - g[k - 1]; if (d > 1) { gaps++; miss += d - 1; } else if (d <= 0) back++; }
+    let gaps = 0, miss = 0, back = 0, dup = 0; if (g) for (let k = 1; k < g.length; k++) { const d = g[k] - g[k - 1]; if (d > 1) { gaps++; miss += d - 1; } else if (d === 0) dup++; else if (d < 0) back++; }
     rows[ui] = g;
     L.push('- ' + an(u.name) + ' · satır ' + fmtCnt(g ? g.length : u.rows) + ' (' + (ss.frames ? fmtNum(100 * (g ? g.length : u.rows) / ss.frames, 4) : '—') + '% çerçevede) · ilk / son çerçeve ' + (g && g.length ? fmtCnt(g[0]) + ' / ' + fmtCnt(g[g.length - 1]) : '—') +
-      ' · süre ' + (g && g.length ? sec((g[g.length - 1] - g[0]) * T) : '—') + ' · boşluk ' + gaps + (miss ? ' (' + fmtCnt(miss) + ' çerçeve)' : '') + (back ? ' · GERİ GİDEN satır zamanı ' + back : '') + ' · ' + u.cols.length + ' sütun');
+      ' · süre ' + (g && g.length ? sec((g[g.length - 1] - g[0]) * T) : '—') + ' · boşluk ' + gaps + (miss ? ' (' + fmtCnt(miss) + ' çerçeve)' : '') + (dup ? ' · aynı çerçevede ' + dup + ' satır (sayaç tekrarı)' : '') + (back ? ' · GERİ GİDEN satır zamanı ' + back : '') + ' · ' + u.cols.length + ' sütun');
+  }
+  // kayıp çerçeve boşluklarının dağılımı (her çerçevede gelen ilk birimin satırlarından)
+  const gi = rows.findIndex(g => g && g.length && g.length === Math.max(...rows.map(x => (x && x.length) || 0)));
+  if (gi >= 0) {
+    const g = rows[gi], B = [[1, 1], [2, 9], [10, 99], [100, 999], [1000, Infinity]], cnt = B.map(() => [0, 0]), big = [];
+    for (let k = 1; k < g.length; k++) { const d = g[k] - g[k - 1] - 1; if (d < 1) continue; const b = B.findIndex(([a, z]) => d >= a && d <= z); cnt[b][0]++; cnt[b][1] += d; big.push([d, g[k - 1], k]); }
+    big.sort((a, b) => b[0] - a[0]);
+    L.push('', 'Kayıp çerçeve boşlukları (' + an(ss.units[gi].name) + ' satırlarına göre): ' + B.map(([a, z], i) => (z === Infinity ? '≥' + a : a === z ? a : a + '–' + z) + ' çerçeve: ' + cnt[i][0] + ' boşluk / ' + fmtCnt(cnt[i][1]) + ' çerçeve').join(' · '),
+      'En büyük boşluklar: ' + (big.slice(0, 8).map(([d, f0, k]) => fmtCnt(d) + ' çerçeve (' + sec(d * T) + ') çerçeve ' + fmtCnt(f0) + ' sonrası, satır ' + fmtCnt(k)).join(' · ') || '—'));
+    const dec = g.length, spanR = g[g.length - 1] - g[0] + 1; L.push('Satır no × periyot ile sayaç zamanı oranı: ' + fmtNum(spanR / Math.max(1, dec), 6) + ' (1 ise kayıp yok; büyükse sayaç zamanı çözülen çerçevelerden o kadar uzun)');
   }
   L.push('');
   // parametreler: MATView'in kullandığı zaman
@@ -375,7 +386,12 @@ async function tlmDiagReport(f, opt) {
         const v = cnt.get(key); if (v && v[row] != null) L.push('  çerçeve sayacı (frame_counter) bu satırda: ' + num(v[row])); }
       L.push('  eşit aralıklı yaymada olacak zaman: ' + sec(i * ss.span * T / ch.n) + ' · satır no × periyotta: ' + (row != null ? sec(row * T) : '—'));
     }
-    if (cs.length >= 2) { const a = cs[0][0], b = cs[cs.length - 1][0]; L.push('Fark (son − ilk imleç, MATView): ' + sec(b.tr.ch.t(b.i) - a.tr.ch.t(a.i))); }
+    if (cs.length >= 2) {
+      const a = cs[0][0], b = cs[cs.length - 1][0], ta = a.tr.ch.t(a.i), tb = b.tr.ch.t(b.i); L.push('Fark (son − ilk imleç, MATView, sayaç zamanıyla): ' + sec(tb - ta));
+      if (gi >= 0) { const g = rows[gi], lb = x => { let lo = 0, hi = g.length; while (lo < hi) { const m = (lo + hi) >> 1; if (g[m] < x) lo = m + 1; else hi = m; } return lo; };
+        const ra = lb(ta / T), rb = lb(tb / T);
+        L.push('Aynı aralıkta çözülen çerçeve: ' + fmtCnt(rb - ra) + ' → kayıplar sayılmasaydı fark ' + sec((rb - ra) * T) + ' · aradaki kayıp çerçeve: ' + fmtCnt(Math.round((tb - ta) / T) - (rb - ra))); }
+    }
   }
   return L.join('\n');
 }

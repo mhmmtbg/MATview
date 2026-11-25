@@ -4256,7 +4256,7 @@ async function runJob(job, post) {
         var expd = (prevCnt + 1) % cntMod;
         if (cv === expd) cntSuspect = null;
         if (cv !== expd) {
-          if (cv === prevCnt) { tStep = 0; log('UYARI', 'Çerçeve #' + stats.frames + ': sayaç tekrarı (' + cv + ')', 'cntdup'); }
+          if (cv === prevCnt) { tStep = 0; stats.cntDup = (stats.cntDup || 0) + 1; log('UYARI', 'Çerçeve #' + stats.frames + ': sayaç tekrarı (' + cv + ')', 'cntdup'); }
           else {
             var gap = (((cv - prevCnt - 1) % cntMod) + cntMod) % cntMod;
             // makul olmayan sıçrama (bozuk çerçevede sayaç bozulması, sayaç sıfırlanması ya da geri gitmesi): zaman ve kayıp
@@ -4339,7 +4339,7 @@ async function runJob(job, post) {
     stats.elapsed = Date.now() - T0;
     log('BİLGİ', 'Tamamlandı. ' + outUnits.length + ' etiket MATView\'e aktarılmaya hazır' + (vids.length ? ', ' + vids.length + ' video' : '') + '. Toplam süre ' + (stats.elapsed / 1000).toFixed(1) + ' sn.');
     flushLogs();
-    var dinfo = { periodMs: Tper * 1000, periodSet: +S.framePeriodMs > 0, counter: S.counterEnabled ? (S.counterType || 'uint16') : null, frameTypes: fts.length, lost: stats.lost, skipped: stats.skipped, unknownId: stats.unknownId, packetsOk: stats.packetsOk, packetsDropped: stats.packetsDropped,
+    var dinfo = { periodMs: Tper * 1000, periodSet: +S.framePeriodMs > 0, counter: S.counterEnabled ? (S.counterType || 'uint16') : null, frameTypes: fts.length, lost: stats.lost, cntJumps: stats.cntJumps || 0, cntDup: stats.cntDup || 0, cntMaxGap: cntMaxGap, skipped: stats.skipped, unknownId: stats.unknownId, packetsOk: stats.packetsOk, packetsDropped: stats.packetsDropped,
       types: (stats.types || []).map(function (t) { return { frames: t.count }; }) };   // zaman tanılama raporu için (ad içermez)
     return { stats: stats, files: [], folder: job.folderName, session: { id: sid, name: recName, label: job.label || recName, T: Tper, frames: stats.frames, span: tF + 1, units: describeUnits(outUnits), diag: dinfo }, videos: vids };
   }
