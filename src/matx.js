@@ -7,8 +7,8 @@
 function mxAnon() {
   const KEEP = new Set(['t', 'time', 'zaman', 's', 'sec', 'ts', 'tvec', 'frame', 'counter', 'cnt', 'timestamp', 'timestamps', 'sure', 'bayt', 'no']);
   const map = new Map(); let k = 0;
-  return name => String(name).split(/([._(){}[\]×*|\s]+)/).map(p => {
-    if (!p || /^[._(){}[\]×*|\s]+$/.test(p) || /^\d+$/.test(p) || KEEP.has(p.toLowerCase())) return p;
+  return name => String(name).split(/([._/(){}[\]×*|\s]+)/).map(p => {
+    if (!p || /^[._/(){}[\]×*|\s]+$/.test(p) || /^\d+$/.test(p) || KEEP.has(p.toLowerCase())) return p;
     if (!map.has(p)) map.set(p, 'A' + (++k)); return map.get(p);
   }).join('');
 }
@@ -112,7 +112,7 @@ async function diagCursors(f, an, L, tcand) {
 function timeDiagDlg(f, withCur) {
   if (withCur == null) withCur = true;
   busy('Zaman tanılaması…', async () => {
-    let txt = await timeDiagReport(f, {cursors: withCur}); const pre = h('pre', {class: 'mx-rep'}, txt);
+    let txt = await (f.tlm ? tlmDiagReport(f, {cursors: withCur}) : timeDiagReport(f, {cursors: withCur})); const pre = h('pre', {class: 'mx-rep'}, txt);
     const cb = h('input', {type: 'checkbox', checked: withCur ? '' : null}); cb.onchange = () => timeDiagDlg(f, cb.checked);
     const nC = (S.plot.cursors || []).filter(c => c.tr && c.tr.ch && c.tr.ch.file === f).length;
     modal('Zaman tanılama raporu (anonim)', h('div', null, h('div', {class: 'note', style: 'margin-bottom:6px'}, 'Adlar gizlenmiştir; ölçüm değeri içermez. Sorun bildirirken bu metni paylaşabilirsiniz.'),
@@ -296,13 +296,86 @@ function matSaveEdited(f) {
 }
 
 // Ayarlar menüsü: açık .mat dosyalarından birini seç (birden fazlaysa sorar; imleçli dosya önce)
-function matPick(fn) {
-  const ms = S.files.filter(f => f.mat); if (!ms.length) return toast('Önce bir .mat dosyası açın');
-  const cf = (S.plot.cursors || []).map(c => c.tr && c.tr.ch && c.tr.ch.file).find(f => f && f.mat);
+function matPick(fn, tlmOk) {
+  const ok = f => f.mat || (tlmOk && f.tlm), ms = S.files.filter(ok); if (!ms.length) return toast(tlmOk ? 'Önce bir .mat dosyası açın ya da telemetri kaydını MATView’de açın' : 'Önce bir .mat dosyası açın');
+  const cf = (S.plot.cursors || []).map(c => c.tr && c.tr.ch && c.tr.ch.file).find(f => f && ok(f));
   if (ms.length === 1) return fn(ms[0]);
   const box = h('div', null, h('div', {class: 'note', style: 'margin-bottom:6px'}, 'Dosya seçin:'));
   for (const f of ms.sort((a, b) => (b === cf) - (a === cf))) box.append(h('div', null, btn(f.name + (f === cf ? '  (imleçler bunda)' : ''), () => { $('#modal').classList.add('hidden'); fn(f); })));
   modal('Dosya seç', box, [{t: 'Vazgeç'}]);
 }
 (() => { const a = document.getElementById('btnTdiag'), b = document.getElementById('btnMatx');
-  if (a) a.onclick = () => matPick(f => timeDiagDlg(f)); if (b) b.onclick = () => matPick(f => matContentDlg(f)); })();
+  if (a) a.onclick = () => matPick(f => timeDiagDlg(f), true); if (b) b.onclick = () => matPick(f => matContentDlg(f)); })();
+
+/* ---------- Telemetri oturumu (Çöz ve MATView'de aç) için zaman tanılaması ----------
+   Çerçeve tanımındaki örnek sayısı / bağlam ile MATView'in her parametreye verdiği zamanı karşılaştırır. */
+async function tlmDiagReport(f, opt) {
+  opt = opt || {};
+  const ss = f.tlm.ss, cl = f.tlm.client, an = mxAnon(), L = [], T = ss.T, D = ss.diag || {}, num = x => x == null || !isFinite(x) ? '—' : fmtNum(Number(x), 10);
+  const sec = x => num(x) + ' s', hz = x => x > 0 && isFinite(x) ? fmtNum(x, 6) + ' Hz' : '—';
+  L.push('MATView zaman tanılama raporu (anonim) · telemetri oturumu', 'Sürüm ' + APP_VER + ' · ' + new Date().toISOString().slice(0, 16).replace('T', ' '),
+    'Birim ve parametre adları gizlidir (A1, A2 …). Ölçüm değeri yoktur' + (opt.cursors ? '; imleç noktalarında yalnız çerçeve no / sayaç / zaman değerleri vardır.' : '.'), '');
+  const rowT = ui => { let p = f.tlm.rowT.get(ui); if (!p) { p = cl.request('rowt', {sid: ss.id, u: ui}).then(r => r.v); f.tlm.rowT.set(ui, p); } return p; };
+  L.push('== Kayıt ==', 'Çözülen çerçeve: ' + fmtCnt(ss.frames) + ' · zaman aralığı (kayıplar dahil): ' + fmtCnt(ss.span) + ' çerçeve = ' + sec(ss.span * T),
+    'Çerçeve periyodu: ' + num(T * 1000) + ' ms (' + hz(1 / T) + ')' + (D.periodSet === false ? ' — Ayarlar’da tanımlı değil, VARSAYILAN 10 ms kullanıldı' : ''),
+    'Çerçeve sayacı: ' + (D.counter ? D.counter + ' (kayıp çerçeveler sayaçtan hesaplanır)' : 'yok (çerçeveler art arda sayılır, kayıp çerçeve bilinemez)') + ' · kayıp çerçeve: ' + fmtCnt(D.lost || 0) + ' · atlanan bayt: ' + fmtCnt(D.skipped || 0) + (D.unknownId ? ' · tanınmayan çerçeve tipi: ' + fmtCnt(D.unknownId) : ''),
+    'Çerçeve tipi: ' + (D.frameTypes || 1) + (D.types && D.types.length > 1 ? ' (' + D.types.map((t, i) => 'tip ' + (i + 1) + ': ' + fmtCnt(t.frames || 0)).join(', ') + ' çerçeve)' : '') + (D.packetsOk || D.packetsDropped ? ' · akış paketi: ' + fmtCnt(D.packetsOk || 0) + ' sağlam, ' + fmtCnt(D.packetsDropped || 0) + ' atılan' : ''), '');
+  // birimler
+  L.push('== Birimler (' + ss.units.length + ') ==');
+  const rows = [];
+  for (let ui = 0; ui < ss.units.length; ui++) {
+    const u = ss.units[ui]; let g = null; try { g = await rowT(ui); } catch (_) {}
+    let gaps = 0, miss = 0, back = 0; if (g) for (let k = 1; k < g.length; k++) { const d = g[k] - g[k - 1]; if (d > 1) { gaps++; miss += d - 1; } else if (d <= 0) back++; }
+    rows[ui] = g;
+    L.push('- ' + an(u.name) + ' · satır ' + fmtCnt(g ? g.length : u.rows) + ' (' + (ss.frames ? fmtNum(100 * (g ? g.length : u.rows) / ss.frames, 4) : '—') + '% çerçevede) · ilk / son çerçeve ' + (g && g.length ? fmtCnt(g[0]) + ' / ' + fmtCnt(g[g.length - 1]) : '—') +
+      ' · süre ' + (g && g.length ? sec((g[g.length - 1] - g[0]) * T) : '—') + ' · boşluk ' + gaps + (miss ? ' (' + fmtCnt(miss) + ' çerçeve)' : '') + (back ? ' · GERİ GİDEN satır zamanı ' + back : '') + ' · ' + u.cols.length + ' sütun');
+  }
+  L.push('');
+  // parametreler: MATView'in kullandığı zaman
+  const modes = new Map(), lines = [];
+  for (let ui = 0; ui < ss.units.length; ui++) {
+    const u = ss.units[ui], g = rows[ui] || [];
+    for (const col of u.cols) {
+      if (col.kind === 'bytes' || !col.n) continue;
+      const spp = Math.max(1, col.perFrame | 0), expN = g.length * spp; let mode, t0 = null, t1 = null, why = '';
+      let tc = null; if (col.ownT) { try { tc = (await cl.request('colt', {sid: ss.id, u: ui, c: col.i})).t; } catch (_) {} }
+      if (col.ownT && tc && tc.length === col.n) { mode = 'kendi zamanı (koşullu / akış)'; t0 = tc[0] * T; t1 = tc[tc.length - 1] * T; }
+      else if (col.ctx === 'frame' && !col.timeBad && !col.conditional && expN === col.n) { mode = 'birim satır zamanı' + (spp > 1 ? ' ×' + spp : ''); t0 = g[0] * T; t1 = (g[g.length - 1] + (spp - 1) / spp) * T; }
+      else {
+        mode = 'EŞİT ARALIKLA YAYILMIŞ (tüm kayıt süresine)'; t0 = 0; t1 = (col.n - 1) * ss.span * T / col.n;
+        why = col.ownT ? 'kendi zamanı var ama uzunluğu farklı (' + (tc ? tc.length : '?') + ')' : col.timeBad ? 'zaman sütunu bozuk işaretli' : col.conditional ? 'koşullu, kendi zamanı yok' : col.ctx !== 'frame' ? col.ctx + ' bağlamı, kendi zamanı yok' : 'örnek sayısı satır × çerçeve başına örnek değil (' + fmtCnt(col.n) + ' ≠ ' + fmtCnt(g.length) + ' × ' + spp + ' = ' + fmtCnt(expN) + ')';
+      }
+      const dur = t1 - t0, rate = dur > 0 ? (col.n - 1) / dur : NaN, expRate = col.ctx === 'frame' && !col.conditional ? spp / T : NaN;
+      modes.set(mode, (modes.get(mode) || 0) + 1);
+      lines.push([mode.startsWith('EŞİT') ? 0 : 1, (mode.startsWith('EŞİT') ? '! ' : '  ') + an(u.name + '/' + col.name) + ' · ' + col.ctx + (col.conditional ? ' koşullu' : '') + ' · çerçeve başına ' + spp + ' · n=' + fmtCnt(col.n) + (col.ctx === 'frame' && !col.conditional ? ' (beklenen ' + fmtCnt(expN) + ')' : '') +
+        '\n      zaman: ' + mode + (why ? ' — neden: ' + why : '') + ' · ' + sec(t0) + ' → ' + sec(t1) + ' · hız ' + hz(rate) + (isFinite(expRate) ? ' (çerçeveden beklenen ' + hz(expRate) + ')' : '')]);
+    }
+  }
+  L.push('== Parametrelerin zamanı ==');
+  for (const [k, n] of [...modes].sort((a, b) => (b[0].startsWith('EŞİT') ? 1 : 0) - (a[0].startsWith('EŞİT') ? 1 : 0))) L.push((k.startsWith('EŞİT') ? '! ' : '  ') + k + ': ' + n + ' parametre');
+  if ([...modes.keys()].some(k => k.startsWith('EŞİT'))) L.push('  ! işaretliler kaydın tamamına eşit aralıkla yayılır: parametre kaydın yalnız bir bölümünde geliyorsa zamanı yanlış görünür.');
+  L.push('');
+  lines.sort((a, b) => a[0] - b[0]); const lim = 800;
+  for (const [, s] of lines.slice(0, lim)) L.push(s);
+  if (lines.length > lim) L.push('… ' + (lines.length - lim) + ' parametre daha');
+  if (opt.cursors) {
+    const P = S.plot, cs = (P.cursors || []).map((c, k) => [c, k]).filter(([c]) => c.tr && c.tr.ch && c.tr.ch.file === f);
+    L.push('', '== İmleç noktaları (' + cs.length + ') ==');
+    if (!cs.length) L.push('(bu kaydın kanallarında imleç yok)');
+    const cnt = new Map();
+    for (const [c, k] of cs) {
+      const ch = c.tr.ch, col = ch.tlmCol, ui = ss.units.findIndex(u => u.cols.includes(col)), u = ss.units[ui], g = rows[ui] || [];
+      const i = Math.max(0, Math.min(ch.n - 1, c.i != null ? c.i : Math.round(ch.timeIdx(c.x)))), spp = Math.max(1, col.perFrame | 0);
+      L.push(P.cursorName(k) + ' · ' + an(ch.name) + ' (n=' + fmtCnt(ch.n) + ') · örnek ' + (i + 1) + ' (1 tabanlı) · MATView zamanı ' + sec(ch.t(i)) + ' · zaman kaynağı: ' + (ch.g ? (ch.g === g ? 'birim satır zamanı' : 'kendi zamanı') : 'eşit aralıkla yayılmış'));
+      if (col.ownT) { try { const tc = (await cl.request('colt', {sid: ss.id, u: ui, c: col.i})).t; if (tc && tc[i] != null) L.push('  kendi zamanı: çerçeve ' + num(tc[i]) + ' → ' + sec(tc[i] * T)); } catch (_) {} }
+      const row = col.ctx === 'frame' && !col.conditional ? Math.floor(i / spp) : null;
+      if (row != null && g[row] != null) L.push('  birim satırı ' + (row + 1) + ': çerçeve ' + fmtCnt(g[row]) + ' → ' + sec(g[row] * T));
+      const ci = u ? u.cols.findIndex(x => x.counter) : -1;
+      if (ci >= 0 && row != null) { const key = ui + '/' + ci; if (!cnt.has(key)) { try { cnt.set(key, (await cl.request('col', {sid: ss.id, u: ui, c: ci})).v); } catch (_) { cnt.set(key, null); } }
+        const v = cnt.get(key); if (v && v[row] != null) L.push('  çerçeve sayacı (frame_counter) bu satırda: ' + num(v[row])); }
+      L.push('  eşit aralıklı yaymada olacak zaman: ' + sec(i * ss.span * T / ch.n) + ' · satır no × periyotta: ' + (row != null ? sec(row * T) : '—'));
+    }
+    if (cs.length >= 2) { const a = cs[0][0], b = cs[cs.length - 1][0]; L.push('Fark (son − ilk imleç, MATView): ' + sec(b.tr.ch.t(b.i) - a.tr.ch.t(a.i))); }
+  }
+  return L.join('\n');
+}

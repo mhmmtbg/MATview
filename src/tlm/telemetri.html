@@ -3510,6 +3510,11 @@ async function sessionCmd(msg, prog) {
   if (msg.cmd === 'sclose') { if (ss) { SESSIONS.delete(msg.sid); await ss.store.close(); } return { ok: true }; }
   if (!ss) throw new Error('Çözüm oturumu kapanmış (kayıt yeniden çözülmeli)');
   if (msg.cmd === 'rowt') { var u0 = ss.units[msg.u]; return { v: u0.tCol ? await readColumn(u0.tCol) : new Float64Array(0) }; }
+  if (msg.cmd === 'colt') {   // yalnız zaman: kendi zaman sütunu (çerçeve no) ve uzunluk (tanılama raporu)
+    var uu = ss.units[msg.u], cc = uu && uu.cols[msg.c];
+    if (!cc) throw new Error('Sütun bulunamadı');
+    return { n: cc.n, t: cc.tc ? await readColumn(cc.tc) : null };
+  }
   if (msg.cmd === 'col') {
     var u = ss.units[msg.u], c = u && u.cols[msg.c];
     if (!c) throw new Error('Sütun bulunamadı');
@@ -4334,7 +4339,9 @@ async function runJob(job, post) {
     stats.elapsed = Date.now() - T0;
     log('BİLGİ', 'Tamamlandı. ' + outUnits.length + ' etiket MATView\'e aktarılmaya hazır' + (vids.length ? ', ' + vids.length + ' video' : '') + '. Toplam süre ' + (stats.elapsed / 1000).toFixed(1) + ' sn.');
     flushLogs();
-    return { stats: stats, files: [], folder: job.folderName, session: { id: sid, name: recName, label: job.label || recName, T: Tper, frames: stats.frames, span: tF + 1, units: describeUnits(outUnits) }, videos: vids };
+    var dinfo = { periodMs: Tper * 1000, periodSet: +S.framePeriodMs > 0, counter: S.counterEnabled ? (S.counterType || 'uint16') : null, frameTypes: fts.length, lost: stats.lost, skipped: stats.skipped, unknownId: stats.unknownId, packetsOk: stats.packetsOk, packetsDropped: stats.packetsDropped,
+      types: (stats.types || []).map(function (t) { return { frames: t.count }; }) };   // zaman tanılama raporu için (ad içermez)
+    return { stats: stats, files: [], folder: job.folderName, session: { id: sid, name: recName, label: job.label || recName, T: Tper, frames: stats.frames, span: tF + 1, units: describeUnits(outUnits), diag: dinfo }, videos: vids };
   }
   var sink;
   if (job.sink) sink = job.sink;

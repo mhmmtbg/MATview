@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.49', d: 'Telemetri kaydı için zaman tanılaması', items: [
+    'Zaman tanılama raporu, Çöz ve MATView’de aç ile gelen telemetri kayıtlarında da çalışır (Ayarlar › Zaman tanılama raporu ya da kayda sağ tık). Kaydın tamamı taranır: çerçeve periyodu (tanımlı mı, varsayılan mı), sayaç, kayıp çerçeveler, çerçeve tipleri; her birimin satır sayısı, ilk / son çerçevesi ve boşlukları; her parametrenin zaman kaynağı ve çerçeve tanımından beklenen hız ile karşılaştırma. Eşit aralıkla yayılan (zamanı yanlış olabilecek) parametreler ! ile işaretlenir ve nedeni yazılır.',
+    'İmleç noktalarında birim satırı, çerçeve no, çerçeve sayacı ve kendi zaman değerleri. Adlar gizlidir, ölçüm değeri yoktur.'
+  ]},
   {v: '2.48', d: 'Zaman tanılama: imleç noktaları', items: [
     'Zaman tanılama raporuna “İmleç noktaları” bölümü: her imlecin örnek numarası (MATLAB indeksi), MATView zamanı, bağlı zaman vektörünün dosyadaki değeri ve komşuları, MATView ile dosya zamanı arasındaki en büyük fark, aynı uzunluktaki diğer zaman / sayaç vektörlerinin o örnekteki değeri. Ölçüm değeri ve ad içermez; pencereden kapatılabilir.'
   ]},

@@ -102,6 +102,7 @@ function fileMenu(f, x, y) {
   const k = chsFromSel().length; items.push({t: 'Seçili kanalları .mat olarak kaydet' + (k ? ' (' + k + ')' : '') + '…', ic: 'download', fn: () => matSelExport(chsFromSel())});
   if (typeof tlmSessionMenu === 'function') tlmSessionMenu(f, items);
   if (f.mat && typeof matContentDlg === 'function') items.push('-', {t: 'İçeriği görüntüle / düzenle…', ic: 'table', fn: () => matContentDlg(f)}, {t: 'Zaman tanılama raporu (anonim)…', ic: 'report', fn: () => timeDiagDlg(f)});
+  else if (f.tlm && typeof timeDiagDlg === 'function') items.push('-', {t: 'Zaman tanılama raporu (anonim)…', ic: 'report', fn: () => timeDiagDlg(f)});
   if (!f.derived) items.push('-', {t: 'Dosyayı kapat', ic: 'close', fn: () => closeFile(f)});
   else if (f.channels.length) items.push('-', {t: 'Tüm türetilmiş kanalları sil (' + f.channels.length + ')', ic: 'close', fn: () => deleteDerived(f.channels.slice())});
   ctxMenu(x, y, items);
