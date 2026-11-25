@@ -27,7 +27,8 @@ async function timeDiagReport(f, opt) {
   L.push('== Dosya ==', 'Ad: D1' + ext + ' · ' + (f.mat && f.mat.file ? sz(f.mat.file.size) : f.mat && f.mat.u8 ? sz(f.mat.u8.length) : '?'),
     'Biçim: ' + (m.h5 ? 'MAT v7.3 (HDF5)' : 'MAT v5') + (m.lazy ? ' · büyük dosya (parça parça okunuyor)' : '') + (vars.some(v => v.compressed) ? ' · sıkıştırılmış öğeler var' : ''),
     'Değişken: ' + vars.length + ' (sayısal ' + vars.filter(v => v.numeric).length + ', yapı/hücre ' + vars.filter(v => !v.numeric && v.top == null).length + ', yapı içi alan ' + vars.filter(v => v.top != null).length + ')',
-    'Kanal: ' + f.channels.length + ' · varsayılan hız ' + fmtNum(f.baseFs, 6) + ' Hz · temel uzunluk ' + (f.baseN || '—'), '');
+    'Kanal: ' + f.channels.length + ' · varsayılan hız ' + fmtNum(f.baseFs, 6) + ' Hz · temel uzunluk ' + (f.baseN || '—'),
+    f.tmap ? 'ZAMAN EKSENİ: kanal ' + an(f.tmap.src) + ' × ' + f.tmap.scale + (f.tmap.off ? ' (ilk değer 0)' : '') + ' · ' + f.tmap.n + ' eşleme noktası, ' + f.tmap.drop + ' atlanan değer' : 'Zaman ekseni: dosyanın kendi zamanı', '');
   // zaman vektörleri: ada göre zaman olan ya da bir kanala bağlanan
   const used = new Map(); for (const c of f.channels) if (c.tvi != null) { const k = String(c.tvi).split('*')[0]; used.set(+k, (used.get(+k) || 0) + 1); }
   const leaf = v => v.top ? v.name.slice(v.top.length + 1) : v.name;
@@ -317,6 +318,7 @@ async function tlmDiagReport(f, opt) {
     'Birim ve parametre adları gizlidir (A1, A2 …). Ölçüm değeri yoktur' + (opt.cursors ? '; imleç noktalarında yalnız çerçeve no / sayaç / zaman değerleri vardır.' : '.'), '');
   const rowT = ui => { let p = f.tlm.rowT.get(ui); if (!p) { p = cl.request('rowt', {sid: ss.id, u: ui}).then(r => r.v); f.tlm.rowT.set(ui, p); } return p; };
   L.push('== Kayıt ==', 'Çözülen çerçeve: ' + fmtCnt(ss.frames) + ' · zaman aralığı (kayıplar dahil): ' + fmtCnt(ss.span) + ' çerçeve = ' + sec(ss.span * T),
+    (f.tmap ? 'ZAMAN EKSENİ: parametre ' + an(f.tmap.src) + ' × ' + f.tmap.scale + (f.tmap.off ? ' (ilk değer 0)' : '') + ' · ' + f.tmap.n + ' eşleme noktası, ' + f.tmap.drop + ' atlanan değer (aşağıdaki süre / zamanlar sayaç zamanıdır; imleç noktalarındaki MATView zamanı eşlenmiş zamandır)\n' : '') +
     'Çerçeve periyodu: ' + num(T * 1000) + ' ms (' + hz(1 / T) + ')' + (D.periodSet === false ? ' — Ayarlar’da tanımlı değil, VARSAYILAN 10 ms kullanıldı' : ''),
     'Çerçeve sayacı: ' + (D.counter ? D.counter + ' (kayıp çerçeveler sayaçtan hesaplanır)' : 'yok (çerçeveler art arda sayılır, kayıp çerçeve bilinemez)') + ' · kayıp çerçeve: ' + fmtCnt(D.lost || 0) + ' · atlanan bayt: ' + fmtCnt(D.skipped || 0) + (D.unknownId ? ' · tanınmayan çerçeve tipi: ' + fmtCnt(D.unknownId) : ''),
     'Sayaç: ' + fmtCnt(D.cntDup || 0) + ' tekrar (zaman ilerlemedi) · ' + fmtCnt(D.cntJumps || 0) + ' makul olmayan sıçrama (kayıp sayılmadı) · kayıp kabul edilen en büyük boşluk ' + (D.cntMaxGap ? fmtCnt(D.cntMaxGap) + ' çerçeve = ' + sec(D.cntMaxGap * T) : '—'),
@@ -432,3 +434,37 @@ async function tlmDiagReport(f, opt) {
   }
   return L.join('\n');
 }
+
+/* ---------- Bir parametreyi dosyanın zaman ekseni yapmak ----------
+   Ör. telemetrideki tick sayacı (×0,01 s) ya da saniye cinsinden saat alanı: dosyanın tüm kanalları bu parametrenin
+   aynı andaki değerine göre zamanlanır (MATLAB'de plot(saat, x) ile aynı). Eşleme kanalın kendi (sayaç / t) zamanı
+   üzerinden doğrusal yapılır; geri giden ya da sıçrayan değerler atılır. */
+async function timeFromChannel(ch, scale, offMode) {
+  await ensureLoaded(ch); const n = ch.n, d = ch.data, xs = new Float64Array(n), ys = new Float64Array(n);
+  for (let i = 0; i < n; i++) { xs[i] = ch.tRaw(i); ys[i] = (ch.del && ch.del[i]) ? NaN : Number(d[i]) * scale; }
+  let off = 0; if (offMode === 'zero') { for (let i = 0; i < n; i++) if (isFinite(ys[i])) { off = -ys[i]; break; } for (let i = 0; i < n; i++) ys[i] += off; }
+  return makeTimeMap(xs, ys, {src: ch.name, scale, off, chan: ch});
+}
+function timeAxisDlg(ch) {
+  const f = ch.file; if (!f) return;
+  busy('Parametre inceleniyor…', async () => {
+    await ensureLoaded(ch); const n = ch.n, d = ch.data, sl = [], st = Math.max(1, Math.floor(n / 5000));
+    for (let i = st; i < n; i += st) { const dx = ch.tRaw(i) - ch.tRaw(i - st), dy = Number(d[i]) - Number(d[i - st]); if (dx > 0 && isFinite(dy)) sl.push(dy / dx); }
+    sl.sort((a, b) => a - b); const m = sl.length ? sl[sl.length >> 1] : NaN;
+    const C = [1, 1e-3, 1e-6, 0.01, 0.005, 0.1, 1 / 60]; const sug = m > 0 ? C.map(c => [Math.abs(Math.log10(m * c)), c]).sort((a, b) => a[0] - b[0])[0][1] : 1;
+    const sc = h('input', {type: 'number', step: 'any', value: sug, style: 'width:10em'}), om = selIn('taOff', [['raw', 'Değerin kendisi (ör. açılıştan beri geçen süre)'], ['zero', 'İlk değer 0 olsun']], 'raw');
+    const body = h('div', null,
+      h('div', {class: 'note'}, `“${ch.name}” dosyanın zaman ekseni olur: ${f.name} içindeki tüm kanallar bu parametrenin aynı andaki değerine göre zamanlanır (MATLAB’de bu parametreyle çizmek gibi).`),
+      h('div', {class: 'note'}, isFinite(m) ? `Değer, şimdiki zamana göre saniyede ${fmtNum(m, 6)} artıyor; önerilen ölçek ${sug} (zaman = değer × ölçek).` : 'Parametrenin değeri artmıyor; zaman olarak kullanılamayabilir.'),
+      fr('Ölçek (s / birim)', sc), fr('Başlangıç', om));
+    modal('Zaman ekseni olarak kullan', body, [{t: 'Uygula', primary: true, fn: () => {
+      const k = parseFloat(String(sc.value).replace(',', '.')); if (!(k > 0)) { toast('Ölçek pozitif olmalı'); return false; }
+      busy('Zaman ekseni kuruluyor…', async () => {
+        const M = await timeFromChannel(ch, k, sv('taOff')); f.tmap = M;
+        S.plot.fitAll(true); refreshAll(); renderTree();
+        toast(`${f.name}: zaman ekseni “${ch.name}” × ${k} (${fmtCnt(M.n)} nokta${M.drop ? ', ' + fmtCnt(M.drop) + ' bozuk / geri giden değer atlandı' : ''})`, 9000, {t: 'Geri al', fn: () => timeAxisReset(f)});
+      });
+    }}, {t: 'Vazgeç'}]);
+  });
+}
+function timeAxisReset(f) { if (!f || !f.tmap) return; f.tmap = null; S.plot.fitAll(true); refreshAll(); renderTree(); toast(f.name + ': dosyanın kendi zamanına dönüldü'); }

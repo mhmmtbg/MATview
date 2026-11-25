@@ -103,6 +103,7 @@ function fileMenu(f, x, y) {
   if (typeof tlmSessionMenu === 'function') tlmSessionMenu(f, items);
   if (f.mat && typeof matContentDlg === 'function') items.push('-', {t: 'İçeriği görüntüle / düzenle…', ic: 'table', fn: () => matContentDlg(f)}, {t: 'Zaman tanılama raporu (anonim)…', ic: 'report', fn: () => timeDiagDlg(f)});
   else if (f.tlm && typeof timeDiagDlg === 'function') items.push('-', {t: 'Zaman tanılama raporu (anonim)…', ic: 'report', fn: () => timeDiagDlg(f)});
+  if (f.tmap) items.push('-', {t: 'Dosyanın kendi zamanına dön (şimdi: ' + f.tmap.src + ')', ic: 'undo', fn: () => timeAxisReset(f)});
   if (!f.derived) items.push('-', {t: 'Dosyayı kapat', ic: 'close', fn: () => closeFile(f)});
   else if (f.channels.length) items.push('-', {t: 'Tüm türetilmiş kanalları sil (' + f.channels.length + ')', ic: 'close', fn: () => deleteDerived(f.channels.slice())});
   ctxMenu(x, y, items);
@@ -116,7 +117,8 @@ function devMenu(f, dev, x, y) {
 }
 function chMenu(c, x, y) {
   const sel = chsFromSel(), dsel = sel.filter(x => x.derived), dx = c.derived ? [{t: 'Formülü düzenle / güncelle…', ic: 'fx', fn: () => editDerivedFormula(c)}, {t: 'Türetilmiş kanalı sil' + (dsel.length > 1 ? ' (' + dsel.length + ')' : ''), ic: 'close', fn: () => deleteDerived(dsel.length ? dsel : [c])}, '-'] : [];
-  ctxMenu(x, y, [...dx, {t: 'Seçili ' + sel.length + ' kanalı .mat olarak kaydet…', ic: 'download', fn: () => matSelExport(sel)}, '-', {t: 'Mevcut grafiği kaldırıp bunu çiz', ic: 'swap', fn: () => replacePlot(sel, sel.length > 1)}, {t: 'Yeni alt grafiğe ekle', ic: 'plus', fn: () => addToNewAxes(sel.length > 1 ? sel : [c], false)}, {t: 'Aktif grafiğe aynı eksende ekle', ic: 'layers', fn: () => addToAxes(activeAxes(), sel.length > 1 ? sel : [c])}]);
+  const tx = c.derived || !c.file ? [] : [{t: 'Bu kanalı dosyanın zaman ekseni yap…', ic: 'time', fn: () => timeAxisDlg(c)}].concat(c.file.tmap ? [{t: 'Dosyanın kendi zamanına dön (şimdi: ' + c.file.tmap.src + ')', ic: 'undo', fn: () => timeAxisReset(c.file)}] : []);
+  ctxMenu(x, y, [...dx, ...tx, ...(tx.length ? ['-'] : []), {t: 'Seçili ' + sel.length + ' kanalı .mat olarak kaydet…', ic: 'download', fn: () => matSelExport(sel)}, '-', {t: 'Mevcut grafiği kaldırıp bunu çiz', ic: 'swap', fn: () => replacePlot(sel, sel.length > 1)}, {t: 'Yeni alt grafiğe ekle', ic: 'plus', fn: () => addToNewAxes(sel.length > 1 ? sel : [c], false)}, {t: 'Aktif grafiğe aynı eksende ekle', ic: 'layers', fn: () => addToAxes(activeAxes(), sel.length > 1 ? sel : [c])}]);
 }
 /* ---- Çıktı sekmesi kartı ---- */
 function buildMatCard() {

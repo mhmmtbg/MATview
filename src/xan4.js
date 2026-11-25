@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.52', d: 'Parametreyi zaman ekseni yapmak', items: [
+    'Kanala sağ tık › Bu kanalı dosyanın zaman ekseni yap: telemetrideki bir tick sayacı ya da saniye cinsinden saat alanı dosyanın zamanı olur; dosyadaki tüm kanallar bu parametrenin aynı andaki değerine göre zamanlanır (MATLAB’de o parametreyle çizmekle aynı). Ölçek önerilir (ör. 10 ms tick → 0,01), geri giden / sıçrayan saat değerleri atlanır, “ilk değer 0” seçilebilir. Geri almak için kanal ya da dosya menüsünden “Dosyanın kendi zamanına dön”.',
+    'Çizim, imleçler, .mat / CSV dışa aktarma ve türetilmiş kanallar eşlenmiş zamanı kullanır; zaman tanılama raporu kullanılan zaman eksenini yazar.'
+  ]},
   {v: '2.51', d: 'Zaman tanılama: saat parametresi arama', items: [
     'Telemetri zaman tanılaması kayıtta zaman taşıyan (düzenli artan) parametreleri arar: her aday için birim / s, ms, µs tahmini, sayaç zamanına ve çözülen satırlara göre eğim ve sapma; imleç noktalarında adayların o anki değeri. MATLAB’de x ekseni olarak kullanılan zamanla karşılaştırmak ve çerçeve periyodu ya da sayaç boşluklarının doğruluğunu görmek için.'
   ]},

@@ -28,19 +28,44 @@ function kindOf(full, rest) {
 }
 
 const PYR_B = 32;
+/* Zaman eşlemesi: bir parametrenin değerleri (ölçek / ofsetle) dosyanın yeni zamanı olur. xs: kanalın kendi (eski) zamanı,
+   ys: parametre değeri × ölçek + ofset; ikisi de artan tutulur (bozuk / geri giden değerler atılır). Arada doğrusal,
+   uçlarda son parçanın eğimiyle. fwd: eski → yeni, inv: yeni → eski. */
+function makeTimeMap(xs0, ys0, info) {
+  const n = Math.min(xs0.length, ys0.length), xs = [], ys = [];
+  // medyan eğim: bozuk sıçramaları ayıklamak için
+  const sl = []; const st = Math.max(1, Math.floor(n / 5000)); for (let i = st; i < n; i += st) { const dx = xs0[i] - xs0[i - st], dy = ys0[i] - ys0[i - st]; if (dx > 0 && isFinite(dy)) sl.push(dy / dx); }
+  sl.sort((a, b) => a - b); const m = sl.length ? sl[sl.length >> 1] : 1; let drop = 0;
+  for (let i = 0; i < n; i++) {
+    const x = xs0[i], y = ys0[i]; if (!isFinite(x) || !isFinite(y)) { drop++; continue; }
+    const L = xs.length;
+    if (L) { const dx = x - xs[L - 1], dy = y - ys[L - 1]; if (dx <= 0) { if (dx === 0 && dy === 0) continue; drop++; continue; }
+      if (dy < 0 || (m > 0 && dy > 50 * m * dx + 1e-9 && dy > 1e-6)) { drop++; continue; } }   // geri giden ya da sıçrayan değer
+    xs.push(x); ys.push(y);
+  }
+  if (xs.length < 2) throw new Error('Zaman parametresi artan değil (kullanılabilir değer: ' + xs.length + ')');
+  const X = Float64Array.from(xs), Y = Float64Array.from(ys), N = X.length;
+  const seg = (A, v) => { let lo = 0, hi = N - 2; while (lo < hi) { const md = (lo + hi + 1) >> 1; if (A[md] <= v) lo = md; else hi = md - 1; } return lo; };
+  const lerp = (A, B, v) => { const k = v <= A[0] ? 0 : v >= A[N - 1] ? N - 2 : seg(A, v), d = A[k + 1] - A[k]; return d > 0 ? B[k] + (B[k + 1] - B[k]) * (v - A[k]) / d : B[k]; };
+  return Object.assign({xs: X, ys: Y, n: N, drop, slope: m, fwd: x => lerp(X, Y, x), inv: y => lerp(Y, X, y)}, info || {});
+}
 class Channel {
   constructor(o) {
     Object.assign(this, {t0: 0, data: null, del: null, delCount: 0, pyr: null, derived: false, g: null, spp: 1, Tpkt: 1, dtS: 1, loading: null, uid: Channel.seq++}, o);
   }
   get fs() { return this.g ? this.spp / this.Tpkt : 1 / this.dtS; }
   setFs(fs) { if (this.g) this.Tpkt = this.spp / fs; else this.dtS = 1 / fs; }
-  copyTiming(o) { this.t0 = o.t0; this.g = o.g; this.spp = o.spp; this.Tpkt = o.Tpkt; this.dtS = o.dtS; }
-  t(i) {
+  copyTiming(o) { this.t0 = o.t0; this.g = o.g; this.spp = o.spp; this.Tpkt = o.Tpkt; this.dtS = o.dtS; this.tmap = o.tmapOf(); }
+  tmapOf() { return this.tmap || (this.file && this.file.tmap) || null; }
+  // dosyaya "zaman ekseni olarak kullan" ile bir parametrenin zamanı verildiyse (file.tmap): eski zaman → yeni zaman
+  t(i) { const M = this.tmap || (this.file && this.file.tmap); return M ? M.fwd(this.tRaw(i)) : this.tRaw(i); }
+  tRaw(i) {
     if (!this.g) return this.t0 + i * this.dtS;
     let k = Math.floor(i / this.spp); const L = this.g.length; if (k >= L) k = L - 1; if (k < 0) k = 0;
     return this.t0 + (this.g[k] + (i - k * this.spp) / this.spp) * this.Tpkt;
   }
   timeIdx(t) {
+    const M = this.tmap || (this.file && this.file.tmap); if (M) t = M.inv(t);
     t -= this.t0; if (!this.g) return t / this.dtS;
     const g = this.g, pp = t / this.Tpkt; if (pp <= g[0]) return pp * this.spp;
     let lo = 0, hi = g.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (g[m] <= pp) lo = m; else hi = m - 1; }
