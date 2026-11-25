@@ -2636,11 +2636,22 @@ Col.prototype.chunk = async function (k) {
 };
 /* Sayaç bit hatası düzeltmesi. cv: her çözülen çerçevenin sayaç değeri, old: çözüm sırasında verilen çerçeve zamanı (tF).
    Beklenmeyen değerde sonraki 3 çerçeveye bakılır: eski diziden (güvenilen + 1, + 2 …) sürüyorlarsa değer bozuktur → 1 çerçeve;
-   yeni değerden sürüyorlarsa gerçek kayıp (≤ en büyük boşluk) ya da sıfırlanmadır. Dönen map(x): eski tF → yeni tF
+   yeni değerden sürüyorlarsa (ya da hiçbirinden sürmüyorsa) ileri sıçrama gerçek kayıp, geri gitme sıfırlanmadır. Dönen map(x): eski tF → yeni tF
    (çerçeve içi kesirler korunur). */
 function cntGlitchFix(cv, old, M, maxGap, abs) {
   var n = cv.length, sd = function (a) { a = ((a % M) + M) % M; return a >= M / 2 ? a - M : a; };
+  // olağan adım: pozitif adımların %90'lık değeri (sık kayıplı kayıtta da devam testleri tutsun diye tam eşitlik yerine pay)
+  var ps = []; for (var i = 1; i < n && ps.length < 200000; i++) { var q0 = sd(cv[i] - cv[i - 1]); if (q0 > 0 && q0 <= maxGap) ps.push(q0); }
+  ps.sort(function (x, y) { return x - y; });
+  var Q = Math.max(4, 2 * (ps.length ? ps[Math.floor(ps.length * 0.9)] : 1));
+  // x tabanından j çerçeve sonra beklenen aralık: 1 … j·Q
+  function fits(v, x, j) { var e = sd(v - x); return e >= 1 && e <= j * Q; }
   var nw = new Float64Array(n), trusted = cv[0], glitch = 0, lost = 0, longGaps = 0, resets = 0;
+  // baştaki bozuk değerler: sonraki 3 çerçevenin kendisinden sürdüğü ilk çerçeveden geriye doğru sayılır
+  var k0 = 0, lim = Math.min(n - 4, 50);
+  while (k0 < lim && !(fits(cv[k0 + 1], cv[k0], 1) && fits(cv[k0 + 2], cv[k0], 2) && fits(cv[k0 + 3], cv[k0], 3))) k0++;
+  if (k0 >= lim) k0 = 0;
+  if (k0 > 0) { trusted = ((cv[k0] - k0) % M + M) % M; if (cv[0] !== trusted) glitch++; }
   for (var k = 1; k < n; k++) {
     var c = cv[k], d = sd(c - trusted), st;
     if (d === 1) { st = 1; trusted = c; }
@@ -2648,11 +2659,18 @@ function cntGlitchFix(cv, old, M, maxGap, abs) {
       var Bd = 0; for (var j0 = 1; j0 <= 3 && k + j0 < n; j0++) if (sd(cv[k + j0] - (trusted + 1)) === j0) Bd++;
       if (Bd >= 2) { st = 1; trusted = (trusted + 1) % M; glitch++; } else st = 0;
     } else {
-      var A = 0, B = 0;
-      for (var j = 1; j <= 3 && k + j < n; j++) { var a = sd(cv[k + j] - c), b = sd(cv[k + j] - (trusted + 1)); if (a === j) A++; if (b === j) B++; }   // tam devam: yeni değerden mi, eski diziden mi
+      // sonraki 3 çerçeve yeni değerden mi (A), eski diziden mi (B) sürüyor
+      // önce tam devam (+1, +2 …); karar çıkmazsa (sık kayıplı kayıt) paylı devam
+      var A = 0, B = 0, At = 0, Bt = 0;
+      for (var j = 1; j <= 3 && k + j < n; j++) {
+        var v = cv[k + j]; if (sd(v - c) === j) A++; if (sd(v - trusted) === j + 1) B++;
+        if (fits(v, c, j)) At++; if (fits(v, trusted, j + 1)) Bt++;
+      }
+      if (A === B) { A = At; B = Bt; }
       if (B > A) { st = 1; trusted = (trusted + 1) % M; glitch++; }
-      else if (d > 1 && (d - 1 <= maxGap || A >= 2)) { st = d; trusted = c; lost += d - 1; if (d - 1 > maxGap) longGaps++; }   // sonraki çerçeveler yeni değerden sürüyorsa uzun kesinti de gerçek kayıptır
-      else { st = 1; trusted = c; if (d < 0) resets++; }   // sayaç geri gitti (sıfırlanma) ya da doğrulanamayan sıçrama
+      // ileri sıçrama: eski diziye dönmüyorsa gerçek kayıptır (boyutu ne olursa olsun; zaman = sayaç, MATLAB'de plot(frame_counter, x) ile aynı)
+      else if (d > 1) { st = d; trusted = c; lost += d - 1; if (d - 1 > maxGap) longGaps++; }
+      else { st = 1; trusted = c; resets++; }   // sayaç geri gitti (sıfırlanma): zaman 1 çerçeve ilerler
     }
     nw[k] = nw[k - 1] + st;
   }

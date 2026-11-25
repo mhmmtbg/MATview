@@ -29,7 +29,7 @@ function kindOf(full, rest) {
 
 const PYR_B = 32;
 /* Zaman eşlemesi: bir parametrenin değerleri (ölçek / ofsetle) dosyanın yeni zamanı olur. xs: kanalın kendi (eski) zamanı,
-   ys: parametre değeri × ölçek + ofset; ikisi de artan tutulur (bozuk / geri giden değerler atılır). Arada doğrusal,
+   ys: parametre değeri × ölçek + ofset; ikisi de artan tutulur (tekil bozuk değerler atılır, geri gitmede süreklilik korunur, ileri sıçrama boşluktur). Arada doğrusal,
    uçlarda son parçanın eğimiyle. fwd: eski → yeni, inv: yeni → eski. */
 function makeTimeMap(xs0, ys0, info) {
   info = info || {};
@@ -41,18 +41,29 @@ function makeTimeMap(xs0, ys0, info) {
   const sl = [], dxs = []; for (let i = 1; i < n; i++) { const dx = X0[i] - X0[i - 1], dy = Y0[i] - Y0[i - 1]; dxs.push(dx); if (dy > 0) sl.push(dy / dx); }
   if (sl.length < n * 0.05) throw new Error('Zaman parametresi artmıyor (artan adım: ' + sl.length + ' / ' + (n - 1) + ')');
   sl.sort((a, b) => a - b); dxs.sort((a, b) => a - b); const m = sl[sl.length >> 1], mdx = dxs[dxs.length >> 1];
-  // tekil bozuk değerler: y − m·x'in kayan medyanından sapanlar
-  const W = 7, tol = Math.max(5 * m * mdx, 1e-12), r = new Float64Array(n), keep = new Uint8Array(n); let out = 0;
-  for (let i = 0; i < n; i++) r[i] = Y0[i] - m * X0[i];
-  const win = new Float64Array(2 * W + 1);
-  for (let i = 0; i < n; i++) { const a = Math.max(0, i - W), b = Math.min(n - 1, i + W); let k = 0; for (let j = a; j <= b; j++) win[k++] = r[j]; const w = win.subarray(0, k).sort(); if (Math.abs(r[i] - w[k >> 1]) <= tol) keep[i] = 1; else out++; }
-  // sürekli zaman: sıfırlanma / taşma ya da beklenmeyen sıçramada (geri giden ya da beklenenin çok üstünde) değer, önceki noktadan
-  // beklenen eğimle devam edecek biçimde kaydırılır
+  // tekil bozuk değerler (bit hatası): beklenmeyen değerde sonraki 3 nokta eski diziden mi (B) yeni değerden mi (A) sürüyor.
+  // Pay: adımın olağan (%90) eğim oranının 2 katı, en az 4 (sık kayıplı kayıtta da çalışır)
+  const rs = []; for (let i = 1; i < n && rs.length < 200000; i++) { const q = (Y0[i] - Y0[i - 1]) / (m * (X0[i] - X0[i - 1])); if (q > 0 && q < 1e3) rs.push(q); }
+  rs.sort((a, b) => a - b); const Q = Math.max(4, 2 * (rs.length ? rs[Math.floor(rs.length * 0.9)] : 1));
+  const fits = (i, t) => { const dy = Y0[i] - Y0[t]; return dy > 0 && dy <= Q * m * (X0[i] - X0[t]); };
+  const keep = new Uint8Array(n); let out = 0, t = 0;
+  // başlangıç: sonraki 3 noktanın kendisinden sürdüğü ilk nokta (baştaki bozuk değerler atılır)
+  while (t < Math.min(n - 4, 50) && !(fits(t + 1, t) && fits(t + 2, t) && fits(t + 3, t))) t++;
+  if (t >= Math.min(n - 4, 50)) t = 0; out += t; keep[t] = 1;
+  for (let i = t + 1; i < n; i++) {
+    const R = (Y0[i] - Y0[t]) / (m * (X0[i] - X0[t]));
+    if (R >= 0.5 && R <= 1.5) { keep[i] = 1; t = i; continue; }
+    let A = 0, B = 0; for (let j = 1; j <= 3 && i + j < n; j++) { if (fits(i + j, i)) A++; if (fits(i + j, t)) B++; }
+    if (R > 0 ? B > A : (B > 0 && B >= A)) { out++; continue; }   // bozuk değer: atlanır (arası doğrusal)
+    keep[i] = 1; t = i;
+  }
+  // sürekli zaman: geri gitmede (sayaç sıfırlanması / taşma) değer önceki noktadan beklenen eğimle devam edecek biçimde kaydırılır.
+  // İleri sıçrama gerçek boşluktur (kayıp çerçeveler; MATLAB'de plot(sayaç, x) ile aynı) ve korunur.
   const X = [], Y = []; let off = 0, resets = 0;
   for (let i = 0; i < n; i++) {
     if (!keep[i]) continue; const x = X0[i]; let y = Y0[i] + off;
     if (X.length) { const L = X.length - 1, e = m * (x - X[L]), d = y - Y[L];
-      if (d < 0 || d > 20 * e + 5 * m * mdx) { const y2 = Y[L] + e; off += y2 - y; y = y2; resets++; } }
+      if (d < 0) { const y2 = Y[L] + e; off += y2 - y; y = y2; resets++; } }
     X.push(x); Y.push(y);
   }
   if (X.length < 2) throw new Error('Zaman parametresinde kullanılabilir değer yok');

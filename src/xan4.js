@@ -52,6 +52,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.56', d: 'Çözüm telemetryParser ile aynı, sayaç zamanı sık kayıpta doğru', items: [
+    'Çerçeve çözümü telemetryParser 4.8 ile karşılaştırıldı: header sonda, header öncesi atılan byte’lar, atılan sütunlar, transpoz, çerçeve tipi belirteci ve 32 bit sayaçlı sentetik kayıtta tüm .mat değişkenleri byte byte aynı (Node ve tarayıcı OPFS yolu).',
+    'Telemetri: sık kayıplı kayıtta (çerçeveler 1–2 atlayarak gelirken) sayaç bit hatası testi tam +1 devam aradığı için karar veremiyor, uzun kesintiler sıkıştırılıyor ya da bit hataları kayıp sayılıyordu. Devam testi artık olağan adıma göre paylı; ileri sıçramalar (eski diziye dönmüyorsa) boyutu ne olursa olsun gerçek kayıp → iki olay arası süre frame_counter farkı × periyot ile aynı.',
+    '“Bu kanalı dosyanın zaman ekseni yap”: sayaçtaki ileri sıçramalar (kayıp çerçeveler) artık köprülenmiyor, gerçek boşluk olarak kalıyor (MATLAB’de plot(frame_counter*0.01, x) ile aynı); yalnız geri dönen tekil bozuk değerler atlanır, geri gitmede (sıfırlanma) süreklilik korunur. Baştaki bozuk değerler de atılır.'
+  ]},
   {v: '2.55', d: 'Sayaç: uzun kesintiler, mutlak zaman', items: [
     'Telemetri: sayaç 10 sn’den (en büyük boşluk) uzun atlayıp sonraki çerçevelerde yeni değerden sürüyorsa bu gerçek bir kesintidir ve artık kayıp sayılır; önceden “makul olmayan sıçrama” sayılıp 1 çerçeveye sıkıştırılıyor, uzun kesintili kayıtlarda iki olay arası süre kısa çıkıyordu. Bozuk okunan (geri dönen) değerler yine kayıp sayılmaz.',
     'Ayarlar › Çerçeve sayacı › “Zaman sayaç değerinden başlasın”: zaman MATLAB’de frame_counter × periyot ile çizmekle aynı mutlak değerleri alır (varsayılan kapalı: kayıt 0 sn’den başlar).'

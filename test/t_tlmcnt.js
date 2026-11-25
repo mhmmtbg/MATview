@@ -39,5 +39,12 @@ async function rowT(b) {
     const n2 = o2.map(f2.map), n3 = o2.map(f3.map);
     console.log('uzun kesinti:', n2[100] - n2[99], 'son', n2[299], '· mutlak ilk', n3[0], 'son', n3[299], '·', f2.longGaps, 'uzun,', f2.glitch, 'bozuk');
     if (n2[100] - n2[99] !== 5001 || n2[299] !== 299 + 5000 || f2.glitch !== 1 || f2.longGaps !== 1 || n3[0] !== 70000 % M || n3[299] - n3[0] !== n2[299]) { console.log('HATA: uzun kesinti / mutlak zaman'); process.exit(1); } }
+  // v2.56: sık kayıplı kayıt — uzun kesintiden hemen sonra yeni kayıplar gelse de (doğrulama çerçevesi azken) zaman = sayaç farkı
+  { const M4 = 2 ** 32, cv4 = []; let c4 = 1000; for (let k = 0; k < 2000; k++) { cv4.push(c4 % M4); c4 += (k % 2 ? 2 : 1) + (k === 500 ? 40000 : 0) + (k === 1200 ? 9000 : 0); }
+    cv4[800] ^= 1 << 15; cv4[1500] ^= 1 << 13; cv4[300] ^= 1 << 2; cv4[1700] ^= 1 << 22;   // bit hataları (dönüyor)
+    const o4 = cv4.map((_, k) => k), f4 = TP.cntGlitchFix(cv4, o4, M4, 1000, false), n4 = o4.map(f4.map);
+    const want = (cv4[1999] - cv4[0]), got = n4[1999] - n4[0];
+    console.log('sık kayıp:', got, 'beklenen', want, '·', f4.glitch, 'bozuk');
+    if (got !== want || f4.glitch !== 4) { console.log('HATA: sık kayıplı kayıtta zaman sayaç farkından sapıyor'); process.exit(1); } }
   console.log('sayaç dayanıklılığı OK');
 })().catch(e => { console.error(e); process.exit(1); });
