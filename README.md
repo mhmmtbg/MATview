@@ -123,7 +123,7 @@ Telemetri görünümü tek panel: **üst çubukta** dosyadan canlı oynatma (▶
 - **Temizle › Otomatik temizle:** NaN/Inf, verinin gövdesinden binlerce kat kopuk dev değerler (ör. ±1e155; art arda kümeler hâlinde gelseler de) ve kalan sıçramalar tek tıkla bulunup silinir. Hassasiyet: Düşük (yalnız bozuk değerler) / Orta / Yüksek; aktif iz, alt grafik ya da tüm izler; Önizle ile önce kırmızı seçilir. Seviye değişimleri korunur, Ctrl+Z ile geri alınır.
 - **Temizle › Hampel:** basamaklı / kuantalı veride de çalışır (MAD yerine en az veri adımı), gerçek seviye değişimlerinin kenarını seçmez; *En az sapma* ile küçük dalgalanmalar korunur.
 - **Akustik:** WebAudio saati durursa `<audio>` ile oynatma; otomatik temizlemeden sonra *Temizlenmiş* oynatma sonucu yeniden hesaplamaz; analiz ve tık temizleme arka planda.
-- **.mat:** zaman vektörü (`t`, `zaman_s`, `ad_t`, yapı içi `t`) kendiliğinden bulunur; kayıp çerçeve ve düzensiz örnekleme korunur.
+- **.mat:** zaman vektörü (`t`, `zaman_s`, `ad_t`, `ad_zaman_s`, yapı içi `t`, düz değişkenlerde `<birim>_t`) kendiliğinden bulunur; her örneğin zamanı dosyadakiyle aynıdır (kayıp çerçeve, düzensiz / kayan örnekleme, yinelenen zamanlar, çerçeve başına k örnek, yarım son çerçeve). Zamanı bulunamayan kanallar açılışta bildirilir.
 - **Kod:** çalışma klasöründeki `.m` dosyaları alt klasörler dahil, büyük/küçük harf duyarsız bulunur; `eig`, `svd`, `lu/qr/chol`, `fminsearch`, `lsqcurvefit`, `interp2/griddata`, `datetime/duration`, `table` ve CSV okuma/yazma eklendi.
 
 ## Testler hakkında

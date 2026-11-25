@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.46', d: '.mat açarken zaman', items: [
+    '.mat açarken kanalların zamanı her durumda dosyadaki zaman vektöründen alınır: büyük birimlerin yapı yerine düz değişken (<birim>_t, <birim>_<alan>) yazıldığı dosyalar, uzunluğu zamanın tam katı olmayan alanlar (yarım son çerçeve), kayan / düzensiz örnekleme ve yinelenen zaman damgaları. Önceden bu dosyalarda kanallar varsayılan 200 Hz ile açılıp imleç farkları yanlış çıkabiliyordu.',
+    'Dosyada eşleşen zaman vektörü bulunamayan kanallar varsa açılışta bildirilir (varsayılan hız, Zaman ayarlarından değiştirilebilir).'
+  ]},
   {v: '2.45', d: '.mat zamanı, imleç düzenleme', items: [
     '.mat kaydet: “Seçili kanalları .mat olarak kaydet”, binary “Tüm alanlar” ve Çıktı › .mat dosyalarında farklı hızdaki kanalların zamanı açarken yanlış eşleniyordu; artık her kanal kendi zamanıyla açılır (önceden kaydedilmiş dosyalar da).',
     'İmleçler: ada çift tıklayarak (ya da ✎ / F2) yeniden adlandırma, ↑ / ↓ ile sıralama, seçili imleci 🗑 ya da Delete ile silme. Taşınan imleç adını korur.',

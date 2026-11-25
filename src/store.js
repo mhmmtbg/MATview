@@ -165,9 +165,11 @@ function analyzeTime(t, vi, name) {
   const n = t.length; if (n < 2) return null;
   const d = new Float64Array(Math.min(n - 1, 200000)), st = Math.max(1, Math.floor((n - 1) / d.length));
   for (let k = 0; k < d.length; k++) { const i = k * st; d[k] = t[i + 1] - t[i]; }
-  const ds = Float64Array.from(d).sort(), dt = ds[ds.length >> 1]; if (!(dt > 0) || !isFinite(dt)) return null;
-  // tekdüze artmalı; büyük sıçramalar = kayıp paketler
-  const gaps = []; let bad = 0; for (let i = 1; i < n; i++) { const q = t[i] - t[i - 1]; if (!(q > 0)) { if (++bad > n * 0.001) return null; } else if (q > 1.5 * dt) gaps.push(i); }
+  const ds = Float64Array.from(d).sort(); let dt = ds[ds.length >> 1];
+  if (!(dt > 0)) { let j = 0; while (j < ds.length && !(ds[j] > 0)) j++; dt = ds[(j + ds.length) >> 1]; }   // çok sayıda yinelenen zaman: artan adımların medyanı
+  if (!(dt > 0) || !isFinite(dt)) return null;
+  // artmalı (yinelenen zamanlar olabilir); büyük sıçramalar = kayıp paketler
+  const gaps = []; let bad = 0, dup = 0; for (let i = 1; i < n; i++) { const q = t[i] - t[i - 1]; if (q === 0) dup++; else if (!(q > 0)) { if (++bad > n * 0.001) return null; } else if (q > 1.5 * dt) gaps.push(i); }
   const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a; };
   let spp = 0; for (const i of gaps) spp = gcd(spp, i); if (!(gaps.length && spp >= 2)) spp = 0;   // boşluk konumlarının ortak böleni = çerçeve başına örnek
   const tv = {vi, n, t0: t[0], dt, name};
@@ -177,7 +179,9 @@ function analyzeTime(t, vi, name) {
     let ok = true; for (let i = 0; i < n && ok; i++) { const k = Math.floor(i / spp); if (Math.abs(t[0] + (g[k] + (i - k * spp) / spp) * Tp - t[i]) > dt * 0.02) ok = false; }
     if (ok) { tv.g = g; tv.spp = spp; tv.Tpkt = Tp; tv.lost = countLost(g); } else spp = 0;
   }
-  if (!tv.g && gaps.length) {   // düzensiz boşluklar: örnek başına harita
+  // boşluksuz model (t0 + i·dt) de her örnekte doğrulanır: kayan / düzensiz örneklemede yaklaşık zaman gösterilmez
+  if (!tv.g && !gaps.length) { const tol = dt * 0.02; for (let i = 0; i < n; i++) if (!(Math.abs(t[0] + i * dt - t[i]) <= tol)) { gaps.push(i); break; } }
+  if (!tv.g && (gaps.length || dup || bad)) {   // düzensiz boşluklar: örnek başına harita
     // g kesirli olabilir: t(i) = t0 + g[i]·dt her örnekte kayıttaki zamanın aynısı (düzensiz örneklemede de)
     const g = new Float64Array(n); for (let k = 0; k < n; k++) g[k] = (t[k] - t[0]) / dt; tv.g = g; tv.spp = 1; tv.Tpkt = dt; tv.lost = countLost(g.map(Math.round));
   }
@@ -203,9 +207,18 @@ async function detectTimeVec(f) {
     if (tv.g && tv.spp === 1) { m.g = tv.g; m.spp = k; m.Tpkt = tv.Tpkt; }
     tvs.set(key, m); multi.set(key, m); return m;
   };
+  // düz değişkenler (MAT v5 yapı sınırını aşan birimler "<birim>_<alan>" + "<birim>_t" olarak yazılır): en uzun öneki olan zaman
+  const TSUF = ['_t', '_time', '_zaman_s', '_zaman'], pref = new Map();
+  const prefT = v => {
+    if (v.top) return undefined; if (pref.has(v.name)) return pref.get(v.name);
+    let r; for (let j = v.name.lastIndexOf('_'); j > 0 && r === undefined; j = v.name.lastIndexOf('_', j - 1)) {
+      const P = v.name.slice(0, j); for (const sf of TSUF) { const ti = byName.get(P + sf); if (ti != null && isVec(vars[ti]) && vars[ti].name !== v.name) { r = ti; break; } }
+    }
+    pref.set(v.name, r); return r;
+  };
   for (const ch of f.channels) {
     const v = vars[ch.varIdx]; if (!v) continue;
-    const st = v.top ? structT.get(v.top) : undefined;
+    const st = v.top ? structT.get(v.top) : prefT(v);
     const cand = [byName.get(v.name + '_t'), byName.get(v.name + '_zaman_s'), byName.get(v.name + '_time'), st, glob >= 0 ? glob : undefined];   // MATView seçim/binary .mat'i: <ad>_zaman_s
     let done = false;
     for (const ti of cand) {
@@ -213,22 +226,25 @@ async function detectTimeVec(f) {
       const tv = await tvOf(ti); if (!tv) continue;
       ch.tvi = ti; used.add(ti); done = true; break;
     }
-    if (!done) for (const ti of [st, glob >= 0 ? glob : undefined]) {   // n = k × (zaman uzunluğu)
-      if (ti == null || ti === ch.varIdx) continue; const nt = vars[ti].count, k = ch.n / nt;
-      if (!(k >= 2 && Number.isInteger(k))) continue;
+    if (!done) for (const ti of [byName.get(v.name + '_t'), byName.get(v.name + '_zaman_s'), st, glob >= 0 ? glob : undefined]) {   // n = k × (zaman uzunluğu); son çerçeve yarım olabilir (± bir çerçeve)
+      if (ti == null || ti === ch.varIdx) continue; const nt = vars[ti].count, k = Math.round(ch.n / nt);
+      if (!(k >= 1 && Math.abs(ch.n - k * nt) <= k && nt >= 8)) continue;
       const tv = await tvOf(ti); if (!tv) continue;
-      multiOf(ti, tv, k); ch.tvi = ti + '*' + k; used.add(ti); break;
+      if (k === 1) ch.tvi = ti; else { multiOf(ti, tv, k); ch.tvi = ti + '*' + k; }
+      used.add(ti); break;
     }
   }
   // "<ad>_t" / "<ad>_zaman_s" zaman alanları (ad kanal olarak açılamasa da, ör. bayt dizisi) ve yapı zamanları listelenmez
   const allNames = new Set(vars.map(v => v.name));
   vars.forEach((v, i) => { const m = /(_t|_zaman_s|_time)$/.exec(v.name); if (m && isVec(v) && allNames.has(v.name.slice(0, -m[1].length))) used.add(i); });
   for (const i of structT.values()) used.add(i);
+  for (const i of pref.values()) if (i != null) used.add(i);
   f.tvecs = tvs;
   if (glob >= 0 && tvs.get(glob)) f.tvec = tvs.get(glob);
   // zaman eksenleri kanal olarak listelenmez (dosya düzeyindeki zaman, eşleşen kanal olmasa da)
   if (glob >= 0 && tvs.get(glob)) used.add(glob);
   f.channels = f.channels.filter(c => !used.has(c.varIdx));
+  f.noTime = f.channels.filter(c => c.tvi == null && !(c.devKey && f.cnts[c.devKey] != null) && !(f.tvec && f.tvec.n === c.n)).length;   // varsayılan örnekleme hızıyla açılanlar
 }
 importFile.seq = 1;
 function countLost(g) { let c = 0; for (let k = 1; k < g.length; k++) if (g[k] - g[k - 1] > 1) c += g[k] - g[k - 1] - 1; return c; }

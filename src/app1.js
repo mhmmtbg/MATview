@@ -341,7 +341,10 @@ async function openFiles(files) {
       toast(file.name + ': ' + f.channels.length + ' kanal');
     });
   }
-  renderChips(); renderTree(); if (typeof qualAuto === 'function') qualAuto(S.files.filter(f => !_seenFiles.has(f)));
+  renderChips(); renderTree(); const fresh = S.files.filter(f => !_seenFiles.has(f)); if (typeof qualAuto === 'function') qualAuto(fresh);
+  // dosyada zamanı bulunamayan kanallar: varsayılan hızla açıldı (kalite bildiriminden sonra da görünsün)
+  const nt = fresh.filter(f => f.noTime); if (nt.length) { const msg = nt.map(f => `${f.name}: ${f.noTime} kanalda dosyada eşleşen zaman vektörü yok, ${fmtNum(f.baseFs, 4)} Hz varsayıldı`).join(' · ') + ' (Zaman ayarlarından değiştirilebilir)';
+    S.timeWarn = msg; toast(msg, 9000); setTimeout(() => { if (S.timeWarn === msg) toast(msg, 9000); }, 3800); }
   S.files.forEach(f => _seenFiles.add(f));
 }
 const _seenFiles = new Set();
