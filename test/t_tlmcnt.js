@@ -46,5 +46,12 @@ async function rowT(b) {
     const want = (cv4[1999] - cv4[0]), got = n4[1999] - n4[0];
     console.log('sık kayıp:', got, 'beklenen', want, '·', f4.glitch, 'bozuk');
     if (got !== want || f4.glitch !== 4) { console.log('HATA: sık kayıplı kayıtta zaman sayaç farkından sapıyor'); process.exit(1); } }
+  // v2.57: "dikkate alınmayacak sütunlar" dosya için açık ama kayıt atılmış sütunlarla yazılmış (ya da tersi): header aralığından
+  // gerçek çerçeve uzunluğu bulunur, uyan ayar kullanılır (aksi hâlde çerçeveler kayar, her şey anlamsız çıkar)
+  { const S5 = Object.assign({}, S, { colDrop: { enabled: true, total: S.cols + 3, list: '2-4', file: true, sim: false, live: true, rec: true } });
+    const r1 = await TP.checkFrameLen(S5, new File([b0], 'k.bin'), 'file');
+    const S6 = Object.assign({}, S5, { colDrop: Object.assign({}, S5.colDrop, { file: false }) }), r2 = await TP.checkFrameLen(S6, new File([b0], 'k.bin'), 'file');
+    console.log('çerçeve uzunluğu denetimi:', r1.S.colDrop.file, '·', r2.S === S6);
+    if (r1.S.colDrop.file !== false || !r1.msg || r2.S !== S6) { console.log('HATA: çerçeve uzunluğu denetimi'); process.exit(1); } }
   console.log('sayaç dayanıklılığı OK');
 })().catch(e => { console.error(e); process.exit(1); });

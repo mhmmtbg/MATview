@@ -2636,7 +2636,7 @@ Col.prototype.chunk = async function (k) {
 };
 /* Sayaç bit hatası düzeltmesi. cv: her çözülen çerçevenin sayaç değeri, old: çözüm sırasında verilen çerçeve zamanı (tF).
    Beklenmeyen değerde sonraki 3 çerçeveye bakılır: eski diziden (güvenilen + 1, + 2 …) sürüyorlarsa değer bozuktur → 1 çerçeve;
-   yeni değerden sürüyorlarsa (ya da hiçbirinden sürmüyorsa) ileri sıçrama gerçek kayıp, geri gitme sıfırlanmadır. Dönen map(x): eski tF → yeni tF
+   yeni değerden sürüyorlarsa ileri sıçrama gerçek kayıp, geri gitme sıfırlanmadır. Dönen map(x): eski tF → yeni tF
    (çerçeve içi kesirler korunur). */
 function cntGlitchFix(cv, old, M, maxGap, abs) {
   var n = cv.length, sd = function (a) { a = ((a % M) + M) % M; return a >= M / 2 ? a - M : a; };
@@ -2668,9 +2668,10 @@ function cntGlitchFix(cv, old, M, maxGap, abs) {
       }
       if (A === B) { A = At; B = Bt; }
       if (B > A) { st = 1; trusted = (trusted + 1) % M; glitch++; }
-      // ileri sıçrama: eski diziye dönmüyorsa gerçek kayıptır (boyutu ne olursa olsun; zaman = sayaç, MATLAB'de plot(frame_counter, x) ile aynı)
-      else if (d > 1) { st = d; trusted = c; lost += d - 1; if (d - 1 > maxGap) longGaps++; }
-      else { st = 1; trusted = c; resets++; }   // sayaç geri gitti (sıfırlanma): zaman 1 çerçeve ilerler
+      // ileri sıçrama: en büyük boşluğa kadar ya da sonraki çerçeveler yeni değerden sürüyorsa (A ≥ 2) gerçek kayıp
+      // (zaman = sayaç, MATLAB'de plot(frame_counter, x) ile aynı); doğrulanamayan dev sıçrama (bozuk çerçeve) 1 çerçeve
+      else if (d > 1 && (d - 1 <= maxGap || A >= 2)) { st = d; trusted = c; lost += d - 1; if (d - 1 > maxGap) longGaps++; }
+      else { st = 1; trusted = c; resets++; }   // sayaç geri gitti (sıfırlanma) ya da doğrulanamayan sıçrama: zaman 1 çerçeve ilerler
     }
     nw[k] = nw[k - 1] + st;
   }
@@ -3798,6 +3799,25 @@ TP.makeColDrop = function (S, where) {
   };
 };
 
+/* Kayıttaki çerçeve uzunluğu ayarla uyuşuyor mu: dosyanın başındaki header'lar arası en sık uzaklık, atılan sütunlu
+   (toplam sütun × satır) ve atılmasız (sütun × satır) uzunlukla karşılaştırılır. Ayar dosyaya uymuyorsa (ör. kayıt
+   125 sütunluyken "dikkate alınmayacak sütunlar" dosya için de açık) uyan uzunluk kullanılır ve bildirilir; aksi
+   hâlde çerçeveler kayar, tüm değerler ve sayaç anlamsız çıkar. Dönen: { S, msg } (S değişmediyse aynı nesne). */
+TP.checkFrameLen = async function (S, f, where) {
+  var cd = S.colDrop, hp = parseHexBytes(S.header), h = hp.bytes ? hp.bytes.length : 0;
+  if (!f || !h || !cd || !cd.enabled || colDropError(S)) return { S: S };
+  var D = S.discardEnabled ? Math.max(0, parseInt(S.discardCount, 10) || 0) : 0, R = S.rows | 0;
+  var Lno = (S.cols | 0) * R + D, Lcd = (parseInt(cd.total, 10) | 0) * R + D, on = !!cd[where];
+  var n = Math.min(f.size, Math.max(Lno, Lcd) * 40), u8 = new Uint8Array(await f.slice(0, n).arrayBuffer());
+  var pos = [], p = 0; while ((p = findSeq(u8, hp.bytes, p, u8.length)) >= 0 && pos.length < 60) { pos.push(p); p += h; }
+  var cno = 0, ccd = 0;
+  for (var i = 1; i < pos.length; i++) { var d = pos[i] - pos[i - 1]; if (d === Lno) cno++; else if (d === Lcd) ccd++; }
+  if (cno + ccd < 3) return { S: S };
+  var want = ccd > cno;
+  if (want === on) return { S: S };
+  var c2 = Object.assign({}, cd); c2[where] = want;
+  return { S: Object.assign({}, S, { colDrop: c2 }), msg: 'Kayıttaki header aralığı ' + (want ? Lcd : Lno) + ' byte: kayıt ' + (want ? cd.total : S.cols) + ' sütunlu. "Dikkate alınmayacak sütunlar" bu dosya için ' + (want ? 'uygulandı' : 'uygulanmadı') + ' (ayarda ' + (on ? 'açık' : 'kapalı') + '; ayar dosyaya uymuyor).' };
+};
 /* Header'dan önce/sonra gelen, dikkate alınmayacak byte'lar. Akıştaki çerçeve FL + D byte'tır;
    D byte'lık blok header'ın hemen önünde ('before') veya hemen arkasında ('after') durur ve çözümden önce çıkarılır.
    J: bloğun akıştaki çerçeve içindeki konumu, hOff: header'ın konumu, WFL: akıştaki çerçeve uzunluğu. */
@@ -3977,7 +3997,8 @@ var LOG_CAT_LIMIT = 300;
 function tsStr() { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2); }
 
 async function runJob(job, post) {
-  var S = job.settings, T0 = Date.now();
+  var S = job.settings, T0 = Date.now(), fl0 = await TP.checkFrameLen(S, (job.files || [])[0], 'file');
+  S = fl0.S;
   var logs = [], logCounts = {}, allLogCount = 0;
   function log(level, msg, cat) {
     if (cat) {
@@ -3989,6 +4010,7 @@ async function runJob(job, post) {
     logs.push(tsStr() + ' [' + level + '] ' + msg);
   }
   function flushLogs() { if (logs.length) post({ t: 'log', lines: logs.splice(0) }); }
+  if (fl0.msg) log('UYARI', fl0.msg);
 
   var C = S.cols | 0, R = S.rows | 0, FL = C * R;
   if (C < 1 || R < 1) throw new Error('Sütun ve satır sayısı 1 veya daha büyük olmalı');
@@ -4482,6 +4504,7 @@ TP.runJob = runJob;
 function baseName(n) { return String(n).replace(/\.[^.\\/]*$/, ''); }
 /* Dosyadaki çerçevelerin sayaç değerleri ve dosya içindeki ofsetleri (ham, atılan sütunlar dahil). */
 async function indexFrames(S, f, onProgress) {
+  S = (await TP.checkFrameLen(S, f, 'file')).S;
   var colDrop = TP.makeColDrop(S, 'file'), C = S.cols | 0, R = S.rows | 0, T = colDrop ? colDrop.total : C;
   var ctp = parseType(S.counterType), nb = ctp.bits / 8, rd = makeReader(ctp, S.counterEndian !== 'big', true, true);
   var tmp = new Uint8Array(8), tdv = new DataView(tmp.buffer), at = [];
@@ -4512,6 +4535,7 @@ async function indexFrames(S, f, onProgress) {
    (ham, atılan sütunlar dahil) döner. where: atılacak sütun ayarının yeri ('file' | 'sim').
    Dosya çözümlemede çerçeve aralığı seçimi ve canlı dosyadan oynatmada çerçeveye gitmek için kullanılır. */
 async function scanFrames(S, files, where, onProgress) {
+  S = (await TP.checkFrameLen(S, files[0], where)).S;
   var colDrop = TP.makeColDrop(S, where), T = colDrop ? colDrop.total : S.cols | 0;
   var off = new Float64Array(4096), n = 0, starts = [], total = 0;
   files.forEach(function (f) { starts.push(total); total += f.size; });

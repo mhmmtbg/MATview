@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.57', d: 'Kayıt çerçeve uzunluğu denetimi', items: [
+    'Telemetri: “Dikkate alınmayacak sütunlar” dosya çözümlemede açıkken kayıt atılmış sütunlarla yazılmışsa (ya da tersi) çerçeveler kayıyor, tüm değerler, sayaç ve zaman anlamsız çıkıyordu. Çözümden önce kayıttaki header aralığı ölçülür; ayar kayda uymuyorsa uyan çerçeve uzunluğu kullanılır ve günlükte uyarı verilir (dosya çözümleme, çerçeve aralığı seçimi ve dosyadan oynatma dizini).',
+    'Telemetri: sayaçta doğrulanamayan dev sıçramalar (bozuk çerçeve) yine 1 çerçeve sayılır; zaman ekseni bozuk çerçeveler yüzünden binlerce saniyeye uzamaz. Sonraki çerçevelerle doğrulanan uzun kesintiler kayıp sayılmaya devam eder.'
+  ]},
   {v: '2.56', d: 'Çözüm telemetryParser ile aynı, sayaç zamanı sık kayıpta doğru', items: [
     'Çerçeve çözümü telemetryParser 4.8 ile karşılaştırıldı: header sonda, header öncesi atılan byte’lar, atılan sütunlar, transpoz, çerçeve tipi belirteci ve 32 bit sayaçlı sentetik kayıtta tüm .mat değişkenleri byte byte aynı (Node ve tarayıcı OPFS yolu).',
     'Telemetri: sık kayıplı kayıtta (çerçeveler 1–2 atlayarak gelirken) sayaç bit hatası testi tam +1 devam aradığı için karar veremiyor, uzun kesintiler sıkıştırılıyor ya da bit hataları kayıp sayılıyordu. Devam testi artık olağan adıma göre paylı; ileri sıçramalar (eski diziye dönmüyorsa) boyutu ne olursa olsun gerçek kayıp → iki olay arası süre frame_counter farkı × periyot ile aynı.',
