@@ -493,6 +493,8 @@ body.dragging,body.dragging *{cursor:col-resize!important;user-select:none!impor
     <div class="dd"><button id="btnSet" data-ic="settings" aria-haspopup="true" title="Ayarlar"><span class="lbl">Ayarlar</span><span class="car">▾</span></button>
       <div class="ddm right hidden" id="mSet">
         <button id="btnTime" data-ic="time" title="Dosya başına paket süresi ve temel örnekleme frekansı">Zaman ayarları…</button>
+        <button id="btnTdiag" data-ic="report" title="Açık .mat dosyasında kanalların zamanının nereden geldiğini anlatan, adları gizli rapor (imleç noktaları dahil)">Zaman tanılama raporu…</button>
+        <button id="btnMatx" data-ic="table" title="Açık .mat dosyasının değişkenlerini ve değerlerini göster; düzenlenmiş kopya kaydet">.mat içeriği…</button>
         <button id="btnFree" data-ic="mem" title="Grafikte kullanılmayan kanalları bellekten at">Belleği boşalt</button>
         <button id="btnDbl" data-ic="layers" title="Ağaçta bir kanala çift tıklayınca ne olsun">Çift tık: yeni alt grafik</button>
         <button id="btnKeys" data-ic="kbd" title="Klavye kısayolları (?)">Klavye kısayolları</button>
@@ -7966,7 +7968,7 @@ function fileMenu(f, x, y) {
   const items = []; if (f.binary) items.push({t: 'Tüm binary dosyayı .mat olarak kaydet…', ic: 'download', fn: () => matDlg(f, {t: 'all'})}, {t: 'Alt sistemleri ayrı .mat olarak kaydet (zip)…', ic: 'download', fn: () => matDlg(f, {t: 'all'})});
   const k = chsFromSel().length; items.push({t: 'Seçili kanalları .mat olarak kaydet' + (k ? ' (' + k + ')' : '') + '…', ic: 'download', fn: () => matSelExport(chsFromSel())});
   if (typeof tlmSessionMenu === 'function') tlmSessionMenu(f, items);
-  if (f.mat && typeof matContentDlg === 'function') items.push('-', {t: 'İçeriği görüntüle / düzenle…', ic: 'table', fn: () => matContentDlg(f)}, {t: 'Zaman tanılama raporu (anonim)…', ic: 'info', fn: () => timeDiagDlg(f)});
+  if (f.mat && typeof matContentDlg === 'function') items.push('-', {t: 'İçeriği görüntüle / düzenle…', ic: 'table', fn: () => matContentDlg(f)}, {t: 'Zaman tanılama raporu (anonim)…', ic: 'report', fn: () => timeDiagDlg(f)});
   if (!f.derived) items.push('-', {t: 'Dosyayı kapat', ic: 'close', fn: () => closeFile(f)});
   else if (f.channels.length) items.push('-', {t: 'Tüm türetilmiş kanalları sil (' + f.channels.length + ')', ic: 'close', fn: () => deleteDerived(f.channels.slice())});
   ctxMenu(x, y, items);
@@ -15535,6 +15537,18 @@ function matSaveEdited(f) {
     if (ok !== false) toast(nm + ' kaydedildi', 7000, {t: 'MATView\'de aç', fn: () => openFiles([new File([blob], nm)])});
   });
 }
+
+// Ayarlar menüsü: açık .mat dosyalarından birini seç (birden fazlaysa sorar; imleçli dosya önce)
+function matPick(fn) {
+  const ms = S.files.filter(f => f.mat); if (!ms.length) return toast('Önce bir .mat dosyası açın');
+  const cf = (S.plot.cursors || []).map(c => c.tr && c.tr.ch && c.tr.ch.file).find(f => f && f.mat);
+  if (ms.length === 1) return fn(ms[0]);
+  const box = h('div', null, h('div', {class: 'note', style: 'margin-bottom:6px'}, 'Dosya seçin:'));
+  for (const f of ms.sort((a, b) => (b === cf) - (a === cf))) box.append(h('div', null, btn(f.name + (f === cf ? '  (imleçler bunda)' : ''), () => { $('#modal').classList.add('hidden'); fn(f); })));
+  modal('Dosya seç', box, [{t: 'Vazgeç'}]);
+}
+(() => { const a = document.getElementById('btnTdiag'), b = document.getElementById('btnMatx');
+  if (a) a.onclick = () => matPick(f => timeDiagDlg(f)); if (b) b.onclick = () => matPick(f => matContentDlg(f)); })();
 
 </script>
 </body>

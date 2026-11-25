@@ -294,3 +294,15 @@ function matSaveEdited(f) {
     if (ok !== false) toast(nm + ' kaydedildi', 7000, {t: 'MATView\'de aç', fn: () => openFiles([new File([blob], nm)])});
   });
 }
+
+// Ayarlar menüsü: açık .mat dosyalarından birini seç (birden fazlaysa sorar; imleçli dosya önce)
+function matPick(fn) {
+  const ms = S.files.filter(f => f.mat); if (!ms.length) return toast('Önce bir .mat dosyası açın');
+  const cf = (S.plot.cursors || []).map(c => c.tr && c.tr.ch && c.tr.ch.file).find(f => f && f.mat);
+  if (ms.length === 1) return fn(ms[0]);
+  const box = h('div', null, h('div', {class: 'note', style: 'margin-bottom:6px'}, 'Dosya seçin:'));
+  for (const f of ms.sort((a, b) => (b === cf) - (a === cf))) box.append(h('div', null, btn(f.name + (f === cf ? '  (imleçler bunda)' : ''), () => { $('#modal').classList.add('hidden'); fn(f); })));
+  modal('Dosya seç', box, [{t: 'Vazgeç'}]);
+}
+(() => { const a = document.getElementById('btnTdiag'), b = document.getElementById('btnMatx');
+  if (a) a.onclick = () => matPick(f => timeDiagDlg(f)); if (b) b.onclick = () => matPick(f => matContentDlg(f)); })();
