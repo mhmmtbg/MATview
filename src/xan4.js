@@ -52,6 +52,9 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.48', d: 'Zaman tanılama: imleç noktaları', items: [
+    'Zaman tanılama raporuna “İmleç noktaları” bölümü: her imlecin örnek numarası (MATLAB indeksi), MATView zamanı, bağlı zaman vektörünün dosyadaki değeri ve komşuları, MATView ile dosya zamanı arasındaki en büyük fark, aynı uzunluktaki diğer zaman / sayaç vektörlerinin o örnekteki değeri. Ölçüm değeri ve ad içermez; pencereden kapatılabilir.'
+  ]},
   {v: '2.47', d: '.mat içeriği, tanılama, seçili parametre çözme', items: [
     '.mat içerik görüntüleyici: sol panelde dosyaya sağ tık › İçeriği görüntüle / düzenle. Değişkenler (yapı alanları dahil), boyut / tip, sayfalı değer tablosu; hücreye çift tıklayarak değer değiştirme, değişken silme ve yeniden adlandırma. Değişiklikler yeni bir …_duzenlenmis.mat dosyasına yazılır (asıl dosya değişmez; değişmeyen değişkenler bayt bayt kopyalanır).',
     'Zaman tanılama raporu (anonim): dosyaya sağ tık. Değişken adları gizlenir (A1, A2 …), veri değeri içermez; her kanalın zamanının nereden geldiğini ve bulunamadıysa nedenini yazar. Panoya kopyalanır ya da .txt kaydedilir.',

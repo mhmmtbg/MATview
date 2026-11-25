@@ -57,13 +57,20 @@ async def main():
         # zaman tanılama raporu (anonim)
         n1 = 30000
         rep = await pg.evaluate("""(async () => { const n = 30000, t = Float64Array.from({length: n}, (_, i) => i * 0.01 + (i >= 15000 ? 300 : 0));
-          await openFiles([new File([matWrite([{name: 'GIZLI_BIRIM_t', data: t}, {name: 'GIZLI_BIRIM_sicaklik', data: new Float64Array(n)}, {name: 'YALNIZ_kanal', data: new Float64Array(777)}])], 'gizli_kayit.mat')]);
-          await sleep(200); return timeDiagReport(S.files.find(f => f.name === 'gizli_kayit.mat')); })()""")
+          await openFiles([new File([matWrite([{name: 'GIZLI_BIRIM_t', data: t}, {name: 'GIZLI_BIRIM_frame_counter', data: Float64Array.from({length: n}, (_, i) => 1000 + i)}, {name: 'GIZLI_BIRIM_sicaklik', data: new Float64Array(n)}, {name: 'YALNIZ_kanal', data: new Float64Array(777)}])], 'gizli_kayit.mat')]);
+          await sleep(200); const f = S.files.find(f => f.name === 'gizli_kayit.mat'), ch = f.channels.find(c => /sicaklik/.test(c.name));
+          clearPlot(); await addToNewAxes([ch], false); const tr = S.plot.axes[0].traces[0];
+          S.plot.cursors = [{axes: S.plot.axes[0], tr, x: ch.t(100), y: 0, i: 100, name: 'C1'}, {axes: S.plot.axes[0], tr, x: ch.t(15000), y: 0, i: 15000, name: 'C2'}];
+          return timeDiagReport(f, {cursors: true}); })()""")
         print(rep[:1600])
         leak = [w for w in ['GIZLI', 'BIRIM', 'sicaklik', 'YALNIZ', 'gizli_kayit'] if w in rep]; ok(not leak, 'raporda ad kalmamalı %s' % leak)
         ok('A1_A2_t' in rep and 'A1_A2_A3' in rep and 'önek t' in rep, 'önek zamanı ilişkisi görünmeli')
         ok('YOK' in rep and 'n=777' in rep, 'zamansız kanal')
         ok('boşluk (>1,5×adım) 1' in rep and '300.01 s' in rep, 'boşluk bilgisi')
+        ok('İmleç noktaları (2)' in rep and 'örnek 15001' in rep and 'A1_A2_t(15001) = 450' in rep, 'imleç noktası: bağlı zamanın dosyadaki değeri')
+        ok('(aynı)' in rep, 'model ↔ dosya kontrolü')
+        ok('A1_A2_frame_counter(15001) = 16000' in rep, 'diğer sayaç vektörü aynı örnekte')
+        ok('Fark (son − ilk imleç, MATView): 449' in rep, 'imleç farkı')
         ok(not errs, 'sayfa hatası ' + str(errs)); await b.close()
     print('faz29:', 'OK' if not fail else f'{len(fail)} HATA'); sys.exit(1 if fail else 0)
 asyncio.run(main())

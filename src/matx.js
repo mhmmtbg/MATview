@@ -14,13 +14,15 @@ function mxAnon() {
 }
 
 /* ---------- Zaman tanılama raporu ---------- */
-async function timeDiagReport(f) {
+async function timeDiagReport(f, opt) {
+  opt = opt || {};
   const an = mxAnon(), L = [], vars = f.vars || [], m = f.mat || {};
   const isVec = v => v && v.numeric && v.dims && v.dims.length === 2 && Math.min(v.dims[0], v.dims[1]) === 1 && v.count >= 2;
   const dims = v => (v.dims || []).join('×'), sec = x => (x == null || !isFinite(x)) ? '—' : fmtNum(x, 6) + ' s';
   const sz = n => n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' kB';
   L.push('MATView zaman tanılama raporu (anonim)', 'Sürüm ' + APP_VER + ' · ' + new Date().toISOString().slice(0, 16).replace('T', ' '),
-    'Değişken ve dosya adları gizlidir (A1, A2 …); yalnız t / time / zaman / frame_counter gibi genel sözcükler korunur. Veri değerleri ve başlangıç zamanı yoktur.', '');
+    'Değişken ve dosya adları gizlidir (A1, A2 …); yalnız t / time / zaman / frame_counter gibi genel sözcükler korunur. Ölçüm değerleri yoktur' +
+    (opt.cursors ? '; "İmleç noktaları" bölümünde yalnız zaman / sayaç vektörlerinin o noktalardaki değerleri vardır.' : ', başlangıç zamanı da yoktur.'), '');
   const ext = (f.name.match(/\.[^.]+$/) || [''])[0];
   L.push('== Dosya ==', 'Ad: D1' + ext + ' · ' + (f.mat && f.mat.file ? sz(f.mat.file.size) : f.mat && f.mat.u8 ? sz(f.mat.u8.length) : '?'),
     'Biçim: ' + (m.h5 ? 'MAT v7.3 (HDF5)' : 'MAT v5') + (m.lazy ? ' · büyük dosya (parça parça okunuyor)' : '') + (vars.some(v => v.compressed) ? ' · sıkıştırılmış öğeler var' : ''),
@@ -68,12 +70,53 @@ async function timeDiagReport(f) {
     }
     if (a.length > lim) L.push('  … ' + (a.length - lim) + ' kanal daha');
   }
+  if (opt.cursors) await diagCursors(f, an, L, tcand);
   return L.join('\n');
 }
-function timeDiagDlg(f) {
+// İmleç noktaları: her imlecin örneği için MATView'in zamanı, bağlı zaman vektörünün dosyadaki değeri (ve komşuları),
+// aynı uzunluktaki (ya da tam katı) diğer zaman / sayaç vektörlerinin o örnekteki değeri. MATLAB'de aynı indeksle karşılaştırılabilir.
+async function diagCursors(f, an, L, tcand) {
+  const P = S.plot, vars = f.vars, m = f.mat, num = x => x == null ? '—' : fmtNum(Number(x), 10);
+  const cs = (P.cursors || []).map((c, k) => [c, k]).filter(([c]) => c.tr && c.tr.ch && c.tr.ch.file === f);
+  L.push('', '== İmleç noktaları (' + cs.length + ') ==');
+  if (!cs.length) { L.push('(bu dosyanın kanallarında imleç yok: grafikte imleç koyup raporu yeniden oluşturun)'); return; }
+  const cache = new Map(), raw = async vi => { if (!cache.has(vi)) { try { cache.set(vi, await MAT.load(m, vars[vi])); } catch (e) { cache.set(vi, null); } } return cache.get(vi); };
+  const isVec = v => v && v.numeric && v.dims.length === 2 && Math.min(v.dims[0], v.dims[1]) === 1 && v.count >= 2;
+  const leaf = v => v.top ? v.name.slice(v.top.length + 1) : v.name;
+  const other = []; vars.forEach((v, i) => { if (isVec(v) && (tcand.includes(i) || /(^|_)(frame_?counter|cnt|counter|sayac|timestamp)s?$/i.test(leaf(v)))) other.push(i); });
+  for (const [c, k] of cs) {
+    const ch = c.tr.ch, i = Math.max(0, Math.min(ch.n - 1, c.i != null ? c.i : Math.round(ch.timeIdx(c.x))));
+    L.push(P.cursorName(k) + ' · kanal ' + an(ch.name) + ' (n=' + ch.n + ') · örnek ' + (i + 1) + ' (MATLAB indeksi, 1 tabanlı) · MATView zamanı ' + num(ch.t(i)) + ' s');
+    if (ch.tvi != null) {
+      const [vi0, kk0] = String(ch.tvi).split('*'), vi = +vi0, kk = +(kk0 || 1), j = Math.floor(i / kk), r = await raw(vi);
+      if (r) {
+        L.push('  bağlı zaman: ' + an(vars[vi].name) + '(' + (j + 1) + ') = ' + num(r[j]) + (kk > 1 ? ' · çerçeve başına ' + kk + ' örnek, bu örnek ' + (i - j * kk + 1) + '. sırada' : '') + ' · kaynak: ' + (ch.tsrc || '—'));
+        const nb = []; for (let q = Math.max(0, j - 2); q <= Math.min(r.length - 1, j + 2); q++) nb.push('(' + (q + 1) + ')=' + num(r[q])); L.push('  komşular: ' + nb.join('  '));
+        // model ↔ dosya: kanalın her (çerçeve başı) örneğinde
+        let mx = 0, at = -1; for (let q = 0; q < Math.min(r.length, Math.ceil(ch.n / kk)); q++) { const e = Math.abs(ch.t(q * kk) - r[q]); if (e > mx || e !== e) { mx = e; at = q; } }
+        L.push('  MATView zamanı ile dosyadaki zaman arasındaki en büyük fark: ' + num(mx) + ' s' + (mx > 1e-6 ? ' (örnek ' + (at * kk + 1) + ': MATView ' + num(ch.t(at * kk)) + ', dosya ' + num(r[at]) + ')' : ' (aynı)'));
+      } else L.push('  bağlı zaman ' + an(vars[vi].name) + ' okunamadı');
+    } else L.push('  bağlı zaman yok: varsayılan hız (' + fmtNum(f.baseFs, 6) + ' Hz) kullanılıyor');
+    const rows = [];
+    for (const vi of other) {
+      const v = vars[vi]; if (ch.tvi != null && +String(ch.tvi).split('*')[0] === vi) continue;
+      const kk = Math.round(ch.n / v.count); if (!(kk >= 1 && Math.abs(ch.n - kk * v.count) <= kk)) continue;
+      const r = await raw(vi); if (!r) continue; const j = Math.min(r.length - 1, Math.floor(i / kk));
+      rows.push('    ' + an(v.name) + '(' + (j + 1) + ') = ' + num(r[j]) + ' · n=' + v.count + (kk > 1 ? ' (×' + kk + ')' : '') + ' · ilk ' + num(r[0]) + ' · son ' + num(r[r.length - 1]));
+      if (rows.length >= 20) break;
+    }
+    L.push(rows.length ? '  aynı uzunluktaki diğer zaman / sayaç vektörleri (aynı örnekte):\n' + rows.join('\n') : '  aynı uzunlukta başka zaman / sayaç vektörü yok');
+  }
+  if (cs.length >= 2) { const [a] = cs[0], [b] = cs[cs.length - 1]; L.push('Fark (son − ilk imleç, MATView): ' + num(b.tr.ch.t(Math.max(0, Math.min(b.tr.ch.n - 1, b.i))) - a.tr.ch.t(Math.max(0, Math.min(a.tr.ch.n - 1, a.i)))) + ' s'); }
+}
+function timeDiagDlg(f, withCur) {
+  if (withCur == null) withCur = true;
   busy('Zaman tanılaması…', async () => {
-    const txt = await timeDiagReport(f), pre = h('pre', {class: 'mx-rep'}, txt);
-    modal('Zaman tanılama raporu (anonim)', h('div', null, h('div', {class: 'note', style: 'margin-bottom:6px'}, 'Adlar gizlenmiştir; veri değeri içermez. Sorun bildirirken bu metni paylaşabilirsiniz.'), pre),
+    let txt = await timeDiagReport(f, {cursors: withCur}); const pre = h('pre', {class: 'mx-rep'}, txt);
+    const cb = h('input', {type: 'checkbox', checked: withCur ? '' : null}); cb.onchange = () => timeDiagDlg(f, cb.checked);
+    const nC = (S.plot.cursors || []).filter(c => c.tr && c.tr.ch && c.tr.ch.file === f).length;
+    modal('Zaman tanılama raporu (anonim)', h('div', null, h('div', {class: 'note', style: 'margin-bottom:6px'}, 'Adlar gizlenmiştir; ölçüm değeri içermez. Sorun bildirirken bu metni paylaşabilirsiniz.'),
+      h('label', {class: 'chk', style: 'display:block;margin-bottom:6px'}, cb, ' İmleç noktalarındaki zaman / sayaç değerlerini ekle (' + nC + ' imleç; yanlış zaman şüphesinde MATLAB\'deki aynı indeksle karşılaştırmak için)'), pre),
       [{t: 'Panoya kopyala', fn: () => { navigator.clipboard.writeText(txt).then(() => toast('Rapor panoya kopyalandı'), () => toast('Kopyalanamadı')); return false; }},
        {t: '.txt kaydet', fn: () => { saveBlob(new Blob([txt.replace(/\n/g, '\r\n')], {type: 'text/plain'}), 'MATView_zaman_tanilama.txt'); return false; }}, {t: 'Kapat'}]);
   });
