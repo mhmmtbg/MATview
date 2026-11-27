@@ -24,7 +24,7 @@ const MAT = (() => {
     const w = dv.getUint32(o, le);
     if ((w >>> 16) !== 0) return {type: w & 0xFFFF, size: w >>> 16, data: o + 4, next: o + 8};
     const size = dv.getUint32(o + 4, le);
-    const pad = (w === 15) ? size : ((size + 7) & ~7); // miCOMPRESSED doldurulmaz
+    const pad = (w === 15) ? size : Math.ceil(size / 8) * 8; // miCOMPRESSED doldurulmaz. Bitsel (& ~7) değil: 2 GB üstü boyutlarda 32 bit taşar, negatif çıkar
     return {type: w, size, data: o + 8, next: o + 8 + pad};
   }
 

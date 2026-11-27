@@ -9,7 +9,7 @@ PY
 run sozdizimi node --check /tmp/_bundle.js
 python3 test/make_h5.py >/dev/null 2>&1; python3 test/make_tdms.py >/dev/null 2>&1; python3 test/make_nest.py >/dev/null 2>&1; python3 test/make_unvb.py >/dev/null 2>&1; python3 test/make_tdms_daq.py >/dev/null 2>&1; python3 test/make_mdf.py >/dev/null 2>&1; python3 test/make_frame.py >/dev/null 2>&1; python3 test/make_tree.py >/dev/null 2>&1; python3 test/make_mdf3.py >/dev/null 2>&1
 node test/make_tlm.js /tmp/_mv_tlm >/dev/null 2>&1
-for t in t_dsp t_val t_auto t_an t_bin t_unv t_tdms t_h5 t_mat t_store t_nest t_unvb t_tdmsq t_mdf t_frm t_cset t_txt t_hampel t_spike t_tlmsel t_pyr t_mlab t_mlab2 t_mlab3 t_tree t_mdf3 t_gui t_tlm t_vid t_tlmcnt t_mlab5 t_mlab6 t_tlmdisc t_matstream t_matlazy t_hampel; do [ -f test/$t.js ] && run $t node test/$t.js; done
+for t in t_dsp t_val t_auto t_an t_bin t_unv t_tdms t_h5 t_mat t_store t_nest t_unvb t_tdmsq t_mdf t_frm t_cset t_txt t_hampel t_spike t_tlmsel t_pyr t_mlab t_mlab2 t_mlab3 t_tree t_mdf3 t_gui t_tlm t_vid t_tlmcnt t_mlab5 t_mlab6 t_tlmdisc t_matstream t_matlazy t_hampel t_bigstruct; do [ -f test/$t.js ] && run $t node test/$t.js; done
 run val_scipy python3 test/val_scipy.py
 run val_mlab python3 test/val_mlab.py
 run val_tlm python3 test/val_tlm.py

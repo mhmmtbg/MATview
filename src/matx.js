@@ -179,7 +179,7 @@ function timeDiagDlg(f, withCur) {
 
 /* ---------- MAT v5 kodlayıcı (MAT.readAll ağacından, sıkıştırmasız) ---------- */
 const MXE = (() => {
-  const pad8 = n => (n + 7) & ~7;
+  const pad8 = n => Math.ceil(n / 8) * 8;   // bitsel değil: 2 GB üstünde taşmasın
   const TY = {d: [6, 9, Float64Array], s: [7, 7, Float32Array], i8: [8, 1, Int8Array], u8: [9, 2, Uint8Array], i16: [10, 3, Int16Array], u16: [11, 4, Uint16Array], i32: [12, 5, Int32Array], u32: [13, 6, Uint32Array], i64: [14, 12, BigInt64Array], u64: [15, 13, BigUint64Array], c: [4, 4, Uint16Array], l: [9, 2, Uint8Array]};
   const LIM = {i8: [-128, 127], u8: [0, 255], i16: [-32768, 32767], u16: [0, 65535], i32: [-2147483648, 2147483647], u32: [0, 4294967295], c: [0, 65535], l: [0, 1]};
   const enc8 = s => { const b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 0xFF; return b; };
@@ -318,11 +318,11 @@ async function matBuildEdited(f) {
   const parts = [await rd(0, 128)], seen = new Set(); let o = 128, nEnc = 0;
   while (o + 8 <= file.size) {
     const tb = await rd(o, 8), dv = new DataView(tb.buffer), type = dv.getUint32(0, true), size = dv.getUint32(4, true);
-    const next = o + 8 + (type === 15 ? size : ((size + 7) & ~7)); if (next <= o || next > file.size + 8) break;
+    const next = o + 8 + (type === 15 ? size : Math.ceil(size / 8) * 8); if (next <= o || next > file.size + 8) break;
     let name = '';
     if (type === 14 || type === 15) {
       let hb = type === 14 ? await rd(o, 1024) : await MAT.inflate(file.slice(o + 8, o + 8 + size), 1024);
-      const hv = new DataView(hb.buffer, hb.byteOffset, hb.byteLength); let p = 8; const step = q => { const t = hv.getUint32(q, true), small = t >>> 16; return small ? q + 8 : q + 8 + ((hv.getUint32(q + 4, true) + 7) & ~7); };
+      const hv = new DataView(hb.buffer, hb.byteOffset, hb.byteLength); let p = 8; const step = q => { const t = hv.getUint32(q, true), small = t >>> 16; return small ? q + 8 : q + 8 + Math.ceil(hv.getUint32(q + 4, true) / 8) * 8; };
       p = step(p); p = step(p); const nt = hv.getUint32(p, true), small = nt >>> 16, ln = small ? small : hv.getUint32(p + 4, true), d0 = small ? p + 4 : p + 8;
       for (let i = 0; i < ln && d0 + i < hb.length; i++) name += String.fromCharCode(hb[d0 + i]);
     }

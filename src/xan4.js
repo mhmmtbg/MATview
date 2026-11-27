@@ -52,6 +52,10 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.64', d: '2 GB\'ı aşan .mat yapıları: kanallar eksik açılıyordu', items: [
+    '.mat okuyucu 2 GB\'tan büyük bir yapıda (ör. büyük telemetri kaydının tek .mat\'inde bir birim) yapının boyutunu yanlış hesaplıyor (32 bit taşma), o yapıyı ve dosyada ondan sonra gelen tüm değişkenleri atlıyordu; kanalların bir kısmı açılmıyordu. Düzeltildi: mevcut dosyalar yeniden kaydetmeden eksiksiz açılır. Aynı düzeltme .mat içeriği düzenleyicisinde de.',
+    'Tek .mat / birim .mat yazıcısı: MATLAB MAT v5\'te 2 GB\'tan büyük değişkeni yükleyemediği için 2 GB\'ı aşan birimler artık yapı yerine Birim_ad düz değişkenleri olarak yazılır (önceden sınır 4 GB idi).'
+  ]},
   {v: '2.63', d: 'Silinen noktaları seçerek geri getirme', items: [
     'Temizle › Seçim ve silme: “Silinenleri göster” silinen noktaları grafikte soluk gri gösterir. Kutu / kement seçimi silinmiş noktaları da yakalar (yeşil çerçeveli); “Seçilenleri geri getir” (Shift+Delete) yalnız onları geri getirir. “Görünen aralıktakileri geri getir”: aktif iz ya da “tüm izlere uygula” açıksa grafikteki tüm izler.',
     'Silme geçmişi (Çıktı › Silme geçmişi…): her silme bölgesi için “Göster” (grafikte o aralığa gider, silinenleri gösterir) ve “Geri getir”.',

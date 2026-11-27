@@ -18,7 +18,7 @@ const H5 = (() => {
   const rdN = (dv, o, n) => n === 8 ? Number(dv.getBigUint64(o, true)) : n === 4 ? dv.getUint32(o, true) : n === 2 ? dv.getUint16(o, true) : dv.getUint8(o);
   const UNDEF = (dv, o, n) => { for (let i = 0; i < n; i++) if (dv.getUint8(o + i) !== 0xff) return false; return true; };
   const cstr = (u8, o) => { let s = ''; while (u8[o] !== 0 && o < u8.length) s += String.fromCharCode(u8[o++]); return s; };
-  const pad8 = n => (n + 7) & ~7;
+  const pad8 = n => Math.ceil(n / 8) * 8;
 
   async function open(file, u8) {
     const r = new R(file, u8);
