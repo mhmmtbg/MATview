@@ -136,9 +136,12 @@ function buildClean() {
   r.append(card('Seçim ve silme',
     h('div', {class: 'btns', style: 'margin-top:0'}, btn('Kutu seç', () => setMode('box')), btn('Kement seç', () => setMode('lasso'))),
     h('div', {class: 'note'}, 'Grafikte nokta seçin (kırmızı görünür), sonra "Seçilenleri sil" (Delete). Silme orijinal dosyayı değiştirmez, geri alınabilir.'),
+    chkIn('showDel', 'Silinenleri göster (soluk gri)', false),
     chkIn('applyAll', 'Seçimi grafikteki tüm izlere uygula', false),
     h('div', {id: 'selInfo', class: 'note'}, 'Seçim yok'),
-    h('div', {class: 'btns'}, btn('Seçilenleri sil', deleteSelection, 'danger', 'btnDel'), btn('Seçimi kaldır', () => S.plot.clearSelection()), btn('Geri al', undo), btn('Yinele', redo))));
+    h('div', {class: 'btns'}, btn('Seçilenleri sil', deleteSelection, 'danger', 'btnDel'), btn('Seçimi kaldır', () => S.plot.clearSelection()), btn('Geri al', undo), btn('Yinele', redo)),
+    h('div', {class: 'btns'}, btn('Seçilenleri geri getir', restoreSelection, '', 'btnRst'), btn('Görünen aralıktakileri geri getir', restoreVisible)),
+    h('div', {class: 'note'}, 'Geri getirme: "Silinenleri göster"i açın, silinen noktaları kutu / kement ile seçin (yeşil çerçeveli görünür) ve "Seçilenleri geri getir" (Shift+Delete). Görünen aralıktakiler: aktif iz ya da "tüm izlere uygula" açıksa grafikteki tüm izler. Ctrl+Z ile yeniden silinir.')));
   r.append(card('Eşik ile bul',
     fr('Koşul', selIn('thMode', [['abs', '|y| > a'], ['gt', 'y > a'], ['lt', 'y < a'], ['out', 'y, [a, b] dışında']], 'abs')),
     fr('a / b', numIn('thA', 1), numIn('thB', 1)),
@@ -162,7 +165,9 @@ function refreshCleanInfo() {
 }
 function onSelect(sel) {
   const n = selCount(), el = $('#selInfo');
-  if (el) el.textContent = sel ? `Seçili: ${fmtCnt(n)} nokta (${selectionHits().length} iz)` : 'Seçim yok';
+  const nd = sel && sel.delHits ? sel.delHits.reduce((a, h) => a + h.idx.length, 0) : 0;
+  if (el) el.textContent = sel ? `Seçili: ${fmtCnt(n)} nokta (${selectionHits().length} iz)` + (nd ? ` · ${fmtCnt(nd)} silinmiş nokta (geri getirilebilir)` : '') : 'Seçim yok';
+  const br = $('#btnRst'); if (br) br.disabled = !nd;
   $('#st3').textContent = sel ? `Seçili: ${fmtCnt(n)} nokta` : ''; $('#tb-del').disabled = !n;
 }
 async function findOutliers(kind) {
@@ -297,6 +302,7 @@ async function computeSpectrogram() {
 function applyClim() { const v = S.specView; v.cmap = sv('sgMap'); v.slices = ck('sgSl'); v.logF = ck('sgLog'); const lo = num('sgLo'), hi = num('sgHi'); if (isFinite(lo) && isFinite(hi) && hi > lo) v.clim = [lo, hi]; if (v.spec && v.logF && v.ylim[0] < v.fMin()) v.ylim[0] = v.fMin(); v.rebuild(); v.invalidate(); }
 function sgCursorInfo(c) { const e = $('#sgCur'); if (!e) return; e.textContent = c ? `İmleç: t = ${fmtNum(c.t, 6)} s · f = ${fmtNum(c.f, 6)} Hz · ${c.v.toFixed(2)} dB` : 'Spektrogram üzerine tıklayın: imleç (t, f, dB) ve kesitler.'; }
 document.addEventListener('change', e => { if (e.target && ['sgMap', 'sgLog', 'sgSl'].includes(e.target.id) && S.specView) applyClim(); });
+document.addEventListener('change', e => { if (e.target && e.target.id === 'showDel') toggleShowDel(e.target.checked); });
 function addDerived(name, data, src, i0, full) {
   if (!S.derived) S.derived = {id: 'derived', name: 'Türetilmiş kanallar', derived: true, channels: [], mcache: new Map()};
   const c = new Channel({name, rest: name, base: name, comp: '', dev: 'türetilmiş', kind: src ? src.kind : 'calc', n: data.length, file: S.derived, label: name, derived: true, data, varIdx: -1});
@@ -992,6 +998,7 @@ function init() {
     const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range')) return;
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); undo(); } else if ((e.ctrlKey || e.metaKey) && (k === 'y' || (e.shiftKey && k === 'z'))) { e.preventDefault(); redo(); }
+    else if ((k === 'delete' || k === 'backspace') && e.shiftKey) { if (S.plot.sel && S.plot.sel.delHits && S.plot.sel.delHits.length) { e.preventDefault(); restoreSelection(); } }
     else if (k === 'delete' || k === 'backspace') { if (selCount()) { e.preventDefault(); deleteSelection(); } }
     else if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); viewHist(e.key === 'ArrowLeft' ? -1 : 1); }
     else if (k === 'x' && !e.ctrlKey && !e.metaKey && !e.altKey) toggleCrosshair();

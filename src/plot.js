@@ -16,8 +16,8 @@ function distinctColors(ax) {
   }
 }
 const THEMES = {
-  light: {bg: '#ffffff', fg: '#1b1f24', axis: '#3a3f45', grid: '#e3e6ea', minor: '#f0f2f4', muted: '#6b7280', box: '#ffffff', sel: '#d62728', acc: '#0072BD'},
-  dark: {bg: '#16191d', fg: '#e6e8eb', axis: '#aab0b8', grid: '#2c3137', minor: '#22262b', muted: '#8b929b', box: '#1e2227', sel: '#ff6b6b', acc: '#3b9ae1'}
+  light: {bg: '#ffffff', fg: '#1b1f24', axis: '#3a3f45', grid: '#e3e6ea', minor: '#f0f2f4', muted: '#6b7280', box: '#ffffff', sel: '#d62728', acc: '#0072BD', del: '#9aa0a6', rst: '#2e7d32'},
+  dark: {bg: '#16191d', fg: '#e6e8eb', axis: '#aab0b8', grid: '#2c3137', minor: '#22262b', muted: '#8b929b', box: '#1e2227', sel: '#ff6b6b', acc: '#3b9ae1', del: '#6b7280', rst: '#4caf50'}
 };
 function curTheme() { return document.documentElement.dataset.theme === 'dark' ? THEMES.dark : THEMES.light; }
 
@@ -294,6 +294,7 @@ class Plot {
     ax._lab = [];
     distinctColors(ax);
     for (let k = 0; k < ax.traces.length; k++) { const tr = ax.traces[k]; if (!tr.visible) continue; ctx.setLineDash(tr.dash || []); if (tr.yr) this._r(ax, () => drawTrace(ctx, tr, ax, this, T)); else drawTrace(ctx, tr, ax, this, T); ctx.setLineDash([]); }
+    if (this.showDel) for (const tr of ax.traces) { if (!tr.visible || tr.kind !== 'ts' || !tr.ch || !tr.ch.del || !tr.ch.delCount || !tr.ch.data) continue; if (tr.yr) this._r(ax, () => drawDeleted(ctx, tr, ax, this, T)); else drawDeleted(ctx, tr, ax, this, T); }
     ctx.restore(); ctx.save();
     // çerçeve ve tikler
     ctx.strokeStyle = T.axis; ctx.strokeRect(r.x + .5, r.y + .5, r.w, r.h);
@@ -389,6 +390,12 @@ class Plot {
         const ch = h.tr.ch, idx = h.idx, step = Math.max(1, Math.floor(idx.length / 20000));
         const yp = h.tr.yr ? v => this._r(ax, () => this.yPx(ax, v)) : v => this.yPx(ax, v);
         for (let k = 0; k < idx.length; k += step) { const i = idx[k]; const x = this.xPx(ax, ch.t(i)), y = yp(ch.data[i]); ctx.fillRect(x - 2.5, y - 2.5, 5, 5); }
+      }
+      ctx.strokeStyle = T.rst || '#2e7d32';   // seçimdeki silinmiş noktalar (geri getirilebilir): içi boş yeşil kare
+      for (const h of sel.delHits || []) {
+        const ch = h.tr.ch, idx = h.idx, step = Math.max(1, Math.floor(idx.length / 20000));
+        const yp = h.tr.yr ? v => this._r(ax, () => this.yPx(ax, v)) : v => this.yPx(ax, v);
+        for (let k = 0; k < idx.length; k += step) { const i = idx[k], v = ch.data[i]; if (!isFinite(v)) continue; const x = this.xPx(ax, ch.t(i)), y = yp(v); ctx.strokeRect(x - 2.5, y - 2.5, 5, 5); }
       }
       ctx.restore();
     }
@@ -626,13 +633,14 @@ class Plot {
   makeSelection(sel) {
     // seçim kapsamındaki noktalar (yalnızca zaman izleri)
     const targets = this.selectionTargets ? this.selectionTargets(sel.axes) : sel.axes.traces.filter(t => t.visible);
-    sel.hits = [];
+    sel.hits = []; sel.delHits = [];
     let sel2 = null;
     for (const tr of targets) {
       if (tr.kind !== 'ts' || !tr.ch.data) continue;
       let s = sel;
       if (tr.yr) { if (!sel2) { const ax = sel.axes, cv = v => this.leftToRight(ax, v); sel2 = sel.type === 'box' ? Object.assign({}, sel, {y0: Math.min(cv(sel.y0), cv(sel.y1)), y1: Math.max(cv(sel.y0), cv(sel.y1))}) : Object.assign({}, sel, {poly: sel.poly.map(p => [p[0], cv(p[1])])}); } s = sel2; }
       const idx = pointsIn(tr, s); if (idx.length) sel.hits.push({tr, idx});
+      if (tr.ch.del && tr.ch.delCount) { const di = pointsIn(tr, s, true); if (di.length) sel.delHits.push({tr, idx: di}); }
     }
     this.sel = sel; this.onSelect(sel); this.invalidate();
   }
@@ -789,15 +797,30 @@ function nearest(P, ax, tr, px, py) {
   for (let k = Math.max(0, i - 40); k < Math.min(x.length, i + 40); k++) { if (!isFinite(y[k])) continue; const d = Math.hypot(P.xPx(ax, x[k]) - px, P.yPx(ax, y[k]) - py); if (!best || d < best.d) best = {tr, d, x: x[k], y: y[k], i: k}; }
   return best;
 }
-function pointsIn(tr, sel) {
-  const ch = tr.ch, data = ch.data, del = ch.del;
+// Silinen noktalar (Silinenleri göster): görünen aralıkta soluk gri küçük kareler; piksel başına bir işaret (milyonlarca noktada da hızlı)
+function drawDeleted(ctx, tr, ax, P, T) {
+  const ch = tr.ch, del = ch.del, d = ch.data, r = ax.rect;
+  const a = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))), b = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1);
+  const W = Math.ceil(r.w) + 2, H = Math.ceil(r.h) + 2, seen = new Uint8Array(W * H);
+  ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); ctx.fillStyle = T.del || '#9aa0a6'; ctx.globalAlpha = 0.85;
+  for (let i = a; i < b; i++) {
+    if (!del[i]) continue; const v = d[i]; if (!isFinite(v) || (ax.ylog && v <= 0)) continue;
+    const x = P.xPx(ax, ch.t(i)), y = P.yPx(ax, v), cx = Math.round(x - r.x), cy = Math.round(y - r.y);
+    if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue; const k = cy * W + cx; if (seen[k]) continue; seen[k] = 1;
+    ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+  }
+  ctx.restore();
+}
+// seçim içindeki noktalar; wantDel: yalnız silinmiş (maskelenmiş) noktalar — geri getirme için
+function pointsIn(tr, sel, wantDel) {
+  const ch = tr.ch, data = ch.data, del = ch.del; if (wantDel && !del) return new Uint32Array(0);
   let xa, xb, ya, yb;
   if (sel.type === 'box') { xa = sel.x0; xb = sel.x1; ya = sel.y0; yb = sel.y1; }
   else { xa = Infinity; xb = -Infinity; ya = Infinity; yb = -Infinity; for (const p of sel.poly) { xa = Math.min(xa, p[0]); xb = Math.max(xb, p[0]); ya = Math.min(ya, p[1]); yb = Math.max(yb, p[1]); } }
   const i0 = Math.max(0, Math.floor(ch.timeIdx(xa)) - 1), i1 = Math.min(ch.n - 1, Math.ceil(ch.timeIdx(xb)) + 1);
   const out = [];
   for (let i = i0; i <= i1; i++) {
-    if (del && del[i]) continue; const v = data[i]; if (!(v >= ya && v <= yb)) continue;
+    if (!!(del && del[i]) !== !!wantDel) continue; const v = data[i]; if (!(v >= ya && v <= yb)) continue;
     const t = ch.t(i); if (t < xa || t > xb) continue;
     if (sel.type === 'lasso' && !inPoly(t, v, sel.poly)) continue;
     out.push(i);

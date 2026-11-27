@@ -52,6 +52,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.63', d: 'Silinen noktaları seçerek geri getirme', items: [
+    'Temizle › Seçim ve silme: “Silinenleri göster” silinen noktaları grafikte soluk gri gösterir. Kutu / kement seçimi silinmiş noktaları da yakalar (yeşil çerçeveli); “Seçilenleri geri getir” (Shift+Delete) yalnız onları geri getirir. “Görünen aralıktakileri geri getir”: aktif iz ya da “tüm izlere uygula” açıksa grafikteki tüm izler.',
+    'Silme geçmişi (Çıktı › Silme geçmişi…): her silme bölgesi için “Göster” (grafikte o aralığa gider, silinenleri gösterir) ve “Geri getir”.',
+    'Her geri getirme tek adımdır: Ctrl+Z yeniden siler, Ctrl+Y yeniden getirir; işlem günlüğüne yazılır. Ham veri görünümünde düzenleme kapalıdır.'
+  ]},
   {v: '2.62', d: 'Tek .mat ve birim .mat: 2 GB\'ı aşan parametreler artık yazılıyor', items: [
     'Uzun kayıtlarda (ör. 9 GB) çok elemanlı bir parametre MAT v5\'in değişken başına 2 GB sınırını aşınca .mat\'e hiç yazılmıyor, yalnız işlem kaydına uyarı düşüyordu; tek .mat\'te parametreler eksik kalıyordu. Artık bölünerek yazılır: sayısal matrisin her sütunu ayrı değişken (Birim_ad_1, Birim_ad_2 …; birim .mat\'inde ad_1 …), byte dizileri sütun blokları (ad_b1, ad_b2 …). MATView bunları kanal olarak açar, zaman Birim_t\'den alınır. Bölünen alanlar işlem kaydında listelenir.',
     'Tek sütunu bile 2 GB\'ı aşan alan (yaklaşık 268 milyon örnek) hâlâ yazılamaz; bu durumda işlem kaydına HATA düşer.'

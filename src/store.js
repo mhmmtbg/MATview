@@ -181,10 +181,11 @@ class Channel {
     for (let k = 0; k < idx.length; k++) { const i = idx[k]; if (!del[i]) { del[i] = 1; out.push(i); blocks.add((i / PYR_B) | 0); } }
     this.delCount += out.length; this._fixBlocks(blocks); return Uint32Array.from(out);
   }
+  // maskeyi kaldır; gerçekten geri getirilenleri döndürür
   restore(idx) {
-    const del = this.del; if (!del) return; const blocks = new Set(); let c = 0;
-    for (let k = 0; k < idx.length; k++) { const i = idx[k]; if (del[i]) { del[i] = 0; c++; blocks.add((i / PYR_B) | 0); } }
-    this.delCount -= c; this._fixBlocks(blocks);
+    const del = this.del; if (!del) return new Uint32Array(0); const blocks = new Set(), out = [];
+    for (let k = 0; k < idx.length; k++) { const i = idx[k]; if (del[i]) { del[i] = 0; out.push(i); blocks.add((i / PYR_B) | 0); } }
+    this.delCount -= out.length; this._fixBlocks(blocks); return Uint32Array.from(out);
   }
   _fixBlocks(blocks) { if (!this.pyr) return; const qs = new Set(); for (const b of blocks) { this._blk(b, this.pyr.mn, this.pyr.mx); qs.add((b / PYR_B) | 0); } for (const q of qs) this._blk2(q); }
 }

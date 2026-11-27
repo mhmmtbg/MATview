@@ -10,7 +10,7 @@ MATLAB `.mat` dosyalarını okuyan, MATLAB benzeri grafik çizen; yakınlaştır
 - MATLAB v5 (sıkıştırılmış) ve v7.3 (HDF5) okuma; yalnızca seçilen değişken yüklenir, 1,5 GB üstü dosyalar parça parça okunur. MDF 3.x / 4.x, TDMS, UNV, CSV/XLSX, WAV, MP4.
 - Zaman ekseni dosyadaki zaman vektöründen (`t`, `zaman_s`, `ad_t` …) ya da `cnt` paket sayacından türetilir (varsayılan 10 ms/paket, "Zaman ayarları"ndan değiştirilebilir); kayıp paketler boşluk olarak görünür.
 - Büyük veri (14 M+ örnek) için min/max inceltme; kutu/tekerlek zoom, pan, veri imleci.
-- Kutu/kement ile nokta silme, tek tıkla otomatik gürültü temizleme, eşik ve Hampel sıçrama tespiti, geri al/yinele (orijinal dosya değişmez).
+- Kutu/kement ile nokta silme, tek tıkla otomatik gürültü temizleme, eşik ve Hampel sıçrama tespiti, geri al/yinele (orijinal dosya değişmez). Silinen noktalar grafikte gösterilip seçerek (kutu/kement, görünen aralık, silme geçmişinde bölge bölge) geri getirilir.
 - **Telemetri:** çerçeve tipleri ve template'lerle binary çözme, seri port / UDP canlı bağlantı, dosyadan canlı oynatma, H.264 kamera (kanal zamanıyla eşli kamera penceresi), canlı akustik dinleme.
 - Spektrum, spektrogram, Butterworth süzgeçler, MATLAB tarzı ifade satırı.
 - Akustik: OM-LSA gürültü azaltma (değişen gürültüyü izler), olay koruma (darbe / kopma / çarpma bastırılmaz), çıtırtı bastırma, konuşma ve olay bulucu (grafikte işaretler, ⇤ ⇥ gezinme), konuşma odaklı ön ayar, seviye dengeleme ve perdeyi koruyarak yavaşlatma; dinleme (ileri/geri sarma, duraklatma, konum çubuğu — çalan grafiğin altında da; Shift+←/→/Boşluk), tık/notch/HP/LP/spektral gürültü azaltma, WAV kaydı (dinleme için 16-bit normalize ya da kalibre 32-bit float — Pa değerleri korunur).

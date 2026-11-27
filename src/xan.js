@@ -96,9 +96,24 @@ function delRuns(ch) { const out = [], d = ch.del; if (!d) return out; let i = 0
 function delHistoryDialog() {
   const body = h('div', {style: 'max-height:60vh;overflow:auto;min-width:520px'}); let any = false;
   for (const f of allFiles()) for (const c of f.channels) { if (!c.delCount) continue; any = true; const rs = delRuns(c);
-    body.append(h('h4', null, `${c.name} — ${c.delCount} nokta, ${rs.length} bölge`), tblEl(['#', 'Başlangıç (s)', 'Bitiş (s)', 'Nokta'], rs.slice(0, 200).map((r, i) => [i + 1, fmtNum(c.t(r[0]), 7), fmtNum(c.t(r[1] - 1), 7), r[1] - r[0]])), rs.length > 200 ? h('div', {class: 'note'}, '… ilk 200 bölge gösterildi') : '',
-      h('div', {class: 'btns'}, btn('Bu kanaldaki tüm silmeleri geri al', () => { const idx = []; for (const r of rs) for (let i = r[0]; i < r[1]; i++) idx.push(i); c.restore(idx); S.undo.push([{ch: c, idx: Uint32Array.from(idx), inverse: true}]); logOp('restore-all', {ch: c.name, n: idx.length}); afterEdit(); toast(c.name + ': silmeler geri alındı'); document.getElementById('modal').classList.add('hidden'); }))); }
+    // bölge başına: Göster (grafikte o aralığa git, silinenleri göster açılır) ve Geri getir
+    const rowBtns = (r, tr) => { const box = h('span', {style: 'white-space:nowrap'});
+      box.append(btn('Göster', () => delShowRegion(c, r)), ' ', btn('Geri getir', e => { const idx = new Uint32Array(r[1] - r[0]); for (let i = 0; i < idx.length; i++) idx[i] = r[0] + i; restoreGroup([{ch: c, idx}], 'bölge'); tr.style.opacity = '.4'; e.target.disabled = true; })); return box; };
+    const rows = rs.slice(0, 200).map((r, i) => { const row = {cells: [i + 1, fmtNum(c.t(r[0]), 7), fmtNum(c.t(r[1] - 1), 7), r[1] - r[0]]}; return row; });
+    const tb = tblEl(['#', 'Başlangıç (s)', 'Bitiş (s)', 'Nokta', ''], rows.map(r => r.cells.concat(['']))); 
+    [...tb.querySelectorAll('tbody tr')].forEach((tr, i) => { tr.lastChild.replaceChildren(rowBtns(rs[i], tr)); });
+    body.append(h('h4', null, `${c.name} — ${c.delCount} nokta, ${rs.length} bölge`), tb, rs.length > 200 ? h('div', {class: 'note'}, '… ilk 200 bölge gösterildi') : '',
+      h('div', {class: 'btns'}, btn('Bu kanaldaki tüm silmeleri geri al', () => { restoreChannel(c); document.getElementById('modal').classList.add('hidden'); }))); }
   if (!any) body.append(h('div', {class: 'note'}, 'Silinmiş nokta yok.')); modal('Silme geçmişi (maskelenen noktalar)', body, [{t: 'Kapat', primary: true}]);
+}
+// silme bölgesini grafikte göster: kanal grafikteyse o alt grafiğin X aralığı bölgeye (kenar paylı) getirilir, silinenler görünür olur
+function delShowRegion(c, r) {
+  const ax = S.plot.axes.find(a => a.traces.some(t => t.ch === c));
+  if (!ax) return toast(c.name + ' grafikte açık değil — önce kanalı grafiğe ekleyin');
+  const t0 = c.t(r[0]), t1 = c.t(Math.max(r[0], r[1] - 1)), pad = Math.max((t1 - t0) * 2, 20 * (c.dtS || 1e-3));
+  S.plot.pushView();
+  for (const a of S.plot.axes) if (S.plot.linkX || a === ax) a.xlim = [t0 - pad, t1 + pad];
+  toggleShowDel(true); document.getElementById('modal').classList.add('hidden'); switchView('time'); S.plot.invalidate();
 }
 function rawView(on) {
   if (on === S.rawOn) return; S.rawOn = on; for (const f of allFiles()) for (const c of f.channels) { if (on) { if (c.del && c.delCount) { c._delStash = c.del; c.del = null; c.pyr = null; } } else if (c._delStash) { c.del = c._delStash; c._delStash = null; c.pyr = null; } }

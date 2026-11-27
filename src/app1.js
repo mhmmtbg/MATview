@@ -419,9 +419,35 @@ function deleteSelection() {
 }
 function undo() { const g = S.undo.pop(); if (!g) return toast('Geri alınacak işlem yok'); for (const e of g) e.inverse ? e.ch.applyDelete(e.idx) : e.ch.restore(e.idx); S.redo.push(g); afterEdit(); }
 function redo() { const g = S.redo.pop(); if (!g) return toast('Yinelenecek işlem yok'); for (const e of g) e.inverse ? e.ch.restore(e.idx) : e.ch.applyDelete(e.idx); S.undo.push(g); afterEdit(); }
+// Geri getirme: maskelenen noktaların maskesi kaldırılır; her işlem tek adımda Ctrl+Z ile yeniden silinir (inverse kayıt)
+function restoreGroup(parts, what) {
+  if (S.rawOn) { toast('Ham veri görünümünde düzenleme kapalı — önce “İşlenmiş görünüme dön”'); return 0; }
+  const group = [];
+  for (const {ch, idx} of parts) { const done = ch.restore(idx); if (done.length) { group.push({ch, idx: done, inverse: true}); logOp('restore', {ch: ch.name, n: done.length, what}); } }
+  const n = group.reduce((a, g) => a + g.idx.length, 0);
+  if (group.length) { S.undo.push(group); S.redo = []; }
+  toast(n ? fmtCnt(n) + ' silinmiş nokta geri getirildi (Ctrl+Z ile yeniden silinir)' : 'Geri getirilecek silinmiş nokta yok'); afterEdit(); return n;
+}
+function restoreSelection() {
+  const hits = S.plot.sel && S.plot.sel.delHits || []; if (!hits.length) return toast('Seçimde silinmiş nokta yok — “Silinenleri göster”i açıp silinen noktaları kutu / kement ile seçin');
+  S.plot.clearSelection(); restoreGroup(hits.map(h => ({ch: h.tr.ch, idx: h.idx})), 'seçim');
+}
+// görünen aralıktaki silmeler: aktif iz ya da ("tüm izlere uygula" açıksa) grafikteki tüm zaman izleri
+function restoreVisible() {
+  const all = $('#applyAll') && $('#applyAll').checked, parts = [];
+  const trs = all ? S.plot.axes.flatMap(ax => ax.traces.filter(t => t.visible && t.kind === 'ts').map(t => [t, ax])) : (activeTrace() ? [[activeTrace(), activeAxes()]] : []);
+  if (!trs.length) return toast('Önce bir iz seçin');
+  for (const [tr, ax] of trs) { const ch = tr.ch; if (!ch.del || !ch.delCount) continue; const [a, b] = visRange(tr, ax), [x0, x1] = ax.xlim, idx = []; for (let i = a; i < b; i++) if (ch.del[i]) { const t = ch.t(i); if (t >= x0 && t <= x1) idx.push(i); } if (idx.length) parts.push({ch, idx}); }
+  restoreGroup(parts, 'görünen aralık');
+}
+function toggleShowDel(on) {
+  S.plot.showDel = on == null ? !S.plot.showDel : !!on; S.plot.invalidate();
+  const c = $('#showDel'); if (c) c.checked = S.plot.showDel;
+  if (S.plot.showDel && !allFiles().some(f => f.channels.some(c => c.delCount))) toast('Silinmiş nokta yok');
+}
 function restoreChannel(ch) {
   if (!ch.delCount) return; const idx = []; for (let i = 0; i < ch.n; i++) if (ch.del[i]) idx.push(i);
-  const u = Uint32Array.from(idx); ch.restore(u); S.undo.push([{ch, idx: u, inverse: true}]); afterEdit();
+  restoreGroup([{ch, idx: Uint32Array.from(idx)}], 'tüm kanal');
 }
 function afterEdit() { S.plot.invalidate(); updateStats(); refreshCleanInfo(); }
 

@@ -3726,8 +3726,8 @@ function distinctColors(ax) {
   }
 }
 const THEMES = {
-  light: {bg: '#ffffff', fg: '#1b1f24', axis: '#3a3f45', grid: '#e3e6ea', minor: '#f0f2f4', muted: '#6b7280', box: '#ffffff', sel: '#d62728', acc: '#0072BD'},
-  dark: {bg: '#16191d', fg: '#e6e8eb', axis: '#aab0b8', grid: '#2c3137', minor: '#22262b', muted: '#8b929b', box: '#1e2227', sel: '#ff6b6b', acc: '#3b9ae1'}
+  light: {bg: '#ffffff', fg: '#1b1f24', axis: '#3a3f45', grid: '#e3e6ea', minor: '#f0f2f4', muted: '#6b7280', box: '#ffffff', sel: '#d62728', acc: '#0072BD', del: '#9aa0a6', rst: '#2e7d32'},
+  dark: {bg: '#16191d', fg: '#e6e8eb', axis: '#aab0b8', grid: '#2c3137', minor: '#22262b', muted: '#8b929b', box: '#1e2227', sel: '#ff6b6b', acc: '#3b9ae1', del: '#6b7280', rst: '#4caf50'}
 };
 function curTheme() { return document.documentElement.dataset.theme === 'dark' ? THEMES.dark : THEMES.light; }
 
@@ -4004,6 +4004,7 @@ class Plot {
     ax._lab = [];
     distinctColors(ax);
     for (let k = 0; k < ax.traces.length; k++) { const tr = ax.traces[k]; if (!tr.visible) continue; ctx.setLineDash(tr.dash || []); if (tr.yr) this._r(ax, () => drawTrace(ctx, tr, ax, this, T)); else drawTrace(ctx, tr, ax, this, T); ctx.setLineDash([]); }
+    if (this.showDel) for (const tr of ax.traces) { if (!tr.visible || tr.kind !== 'ts' || !tr.ch || !tr.ch.del || !tr.ch.delCount || !tr.ch.data) continue; if (tr.yr) this._r(ax, () => drawDeleted(ctx, tr, ax, this, T)); else drawDeleted(ctx, tr, ax, this, T); }
     ctx.restore(); ctx.save();
     // çerçeve ve tikler
     ctx.strokeStyle = T.axis; ctx.strokeRect(r.x + .5, r.y + .5, r.w, r.h);
@@ -4099,6 +4100,12 @@ class Plot {
         const ch = h.tr.ch, idx = h.idx, step = Math.max(1, Math.floor(idx.length / 20000));
         const yp = h.tr.yr ? v => this._r(ax, () => this.yPx(ax, v)) : v => this.yPx(ax, v);
         for (let k = 0; k < idx.length; k += step) { const i = idx[k]; const x = this.xPx(ax, ch.t(i)), y = yp(ch.data[i]); ctx.fillRect(x - 2.5, y - 2.5, 5, 5); }
+      }
+      ctx.strokeStyle = T.rst || '#2e7d32';   // seçimdeki silinmiş noktalar (geri getirilebilir): içi boş yeşil kare
+      for (const h of sel.delHits || []) {
+        const ch = h.tr.ch, idx = h.idx, step = Math.max(1, Math.floor(idx.length / 20000));
+        const yp = h.tr.yr ? v => this._r(ax, () => this.yPx(ax, v)) : v => this.yPx(ax, v);
+        for (let k = 0; k < idx.length; k += step) { const i = idx[k], v = ch.data[i]; if (!isFinite(v)) continue; const x = this.xPx(ax, ch.t(i)), y = yp(v); ctx.strokeRect(x - 2.5, y - 2.5, 5, 5); }
       }
       ctx.restore();
     }
@@ -4336,13 +4343,14 @@ class Plot {
   makeSelection(sel) {
     // seçim kapsamındaki noktalar (yalnızca zaman izleri)
     const targets = this.selectionTargets ? this.selectionTargets(sel.axes) : sel.axes.traces.filter(t => t.visible);
-    sel.hits = [];
+    sel.hits = []; sel.delHits = [];
     let sel2 = null;
     for (const tr of targets) {
       if (tr.kind !== 'ts' || !tr.ch.data) continue;
       let s = sel;
       if (tr.yr) { if (!sel2) { const ax = sel.axes, cv = v => this.leftToRight(ax, v); sel2 = sel.type === 'box' ? Object.assign({}, sel, {y0: Math.min(cv(sel.y0), cv(sel.y1)), y1: Math.max(cv(sel.y0), cv(sel.y1))}) : Object.assign({}, sel, {poly: sel.poly.map(p => [p[0], cv(p[1])])}); } s = sel2; }
       const idx = pointsIn(tr, s); if (idx.length) sel.hits.push({tr, idx});
+      if (tr.ch.del && tr.ch.delCount) { const di = pointsIn(tr, s, true); if (di.length) sel.delHits.push({tr, idx: di}); }
     }
     this.sel = sel; this.onSelect(sel); this.invalidate();
   }
@@ -4499,15 +4507,30 @@ function nearest(P, ax, tr, px, py) {
   for (let k = Math.max(0, i - 40); k < Math.min(x.length, i + 40); k++) { if (!isFinite(y[k])) continue; const d = Math.hypot(P.xPx(ax, x[k]) - px, P.yPx(ax, y[k]) - py); if (!best || d < best.d) best = {tr, d, x: x[k], y: y[k], i: k}; }
   return best;
 }
-function pointsIn(tr, sel) {
-  const ch = tr.ch, data = ch.data, del = ch.del;
+// Silinen noktalar (Silinenleri göster): görünen aralıkta soluk gri küçük kareler; piksel başına bir işaret (milyonlarca noktada da hızlı)
+function drawDeleted(ctx, tr, ax, P, T) {
+  const ch = tr.ch, del = ch.del, d = ch.data, r = ax.rect;
+  const a = Math.max(0, Math.floor(ch.timeIdx(ax.xlim[0]))), b = Math.min(ch.n, Math.ceil(ch.timeIdx(ax.xlim[1])) + 1);
+  const W = Math.ceil(r.w) + 2, H = Math.ceil(r.h) + 2, seen = new Uint8Array(W * H);
+  ctx.save(); ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); ctx.fillStyle = T.del || '#9aa0a6'; ctx.globalAlpha = 0.85;
+  for (let i = a; i < b; i++) {
+    if (!del[i]) continue; const v = d[i]; if (!isFinite(v) || (ax.ylog && v <= 0)) continue;
+    const x = P.xPx(ax, ch.t(i)), y = P.yPx(ax, v), cx = Math.round(x - r.x), cy = Math.round(y - r.y);
+    if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue; const k = cy * W + cx; if (seen[k]) continue; seen[k] = 1;
+    ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+  }
+  ctx.restore();
+}
+// seçim içindeki noktalar; wantDel: yalnız silinmiş (maskelenmiş) noktalar — geri getirme için
+function pointsIn(tr, sel, wantDel) {
+  const ch = tr.ch, data = ch.data, del = ch.del; if (wantDel && !del) return new Uint32Array(0);
   let xa, xb, ya, yb;
   if (sel.type === 'box') { xa = sel.x0; xb = sel.x1; ya = sel.y0; yb = sel.y1; }
   else { xa = Infinity; xb = -Infinity; ya = Infinity; yb = -Infinity; for (const p of sel.poly) { xa = Math.min(xa, p[0]); xb = Math.max(xb, p[0]); ya = Math.min(ya, p[1]); yb = Math.max(yb, p[1]); } }
   const i0 = Math.max(0, Math.floor(ch.timeIdx(xa)) - 1), i1 = Math.min(ch.n - 1, Math.ceil(ch.timeIdx(xb)) + 1);
   const out = [];
   for (let i = i0; i <= i1; i++) {
-    if (del && del[i]) continue; const v = data[i]; if (!(v >= ya && v <= yb)) continue;
+    if (!!(del && del[i]) !== !!wantDel) continue; const v = data[i]; if (!(v >= ya && v <= yb)) continue;
     const t = ch.t(i); if (t < xa || t > xb) continue;
     if (sel.type === 'lasso' && !inPoly(t, v, sel.poly)) continue;
     out.push(i);
@@ -4877,10 +4900,11 @@ class Channel {
     for (let k = 0; k < idx.length; k++) { const i = idx[k]; if (!del[i]) { del[i] = 1; out.push(i); blocks.add((i / PYR_B) | 0); } }
     this.delCount += out.length; this._fixBlocks(blocks); return Uint32Array.from(out);
   }
+  // maskeyi kaldır; gerçekten geri getirilenleri döndürür
   restore(idx) {
-    const del = this.del; if (!del) return; const blocks = new Set(); let c = 0;
-    for (let k = 0; k < idx.length; k++) { const i = idx[k]; if (del[i]) { del[i] = 0; c++; blocks.add((i / PYR_B) | 0); } }
-    this.delCount -= c; this._fixBlocks(blocks);
+    const del = this.del; if (!del) return new Uint32Array(0); const blocks = new Set(), out = [];
+    for (let k = 0; k < idx.length; k++) { const i = idx[k]; if (del[i]) { del[i] = 0; out.push(i); blocks.add((i / PYR_B) | 0); } }
+    this.delCount -= out.length; this._fixBlocks(blocks); return Uint32Array.from(out);
   }
   _fixBlocks(blocks) { if (!this.pyr) return; const qs = new Set(); for (const b of blocks) { this._blk(b, this.pyr.mn, this.pyr.mx); qs.add((b / PYR_B) | 0); } for (const q of qs) this._blk2(q); }
 }
@@ -5492,9 +5516,35 @@ function deleteSelection() {
 }
 function undo() { const g = S.undo.pop(); if (!g) return toast('Geri alınacak işlem yok'); for (const e of g) e.inverse ? e.ch.applyDelete(e.idx) : e.ch.restore(e.idx); S.redo.push(g); afterEdit(); }
 function redo() { const g = S.redo.pop(); if (!g) return toast('Yinelenecek işlem yok'); for (const e of g) e.inverse ? e.ch.restore(e.idx) : e.ch.applyDelete(e.idx); S.undo.push(g); afterEdit(); }
+// Geri getirme: maskelenen noktaların maskesi kaldırılır; her işlem tek adımda Ctrl+Z ile yeniden silinir (inverse kayıt)
+function restoreGroup(parts, what) {
+  if (S.rawOn) { toast('Ham veri görünümünde düzenleme kapalı — önce “İşlenmiş görünüme dön”'); return 0; }
+  const group = [];
+  for (const {ch, idx} of parts) { const done = ch.restore(idx); if (done.length) { group.push({ch, idx: done, inverse: true}); logOp('restore', {ch: ch.name, n: done.length, what}); } }
+  const n = group.reduce((a, g) => a + g.idx.length, 0);
+  if (group.length) { S.undo.push(group); S.redo = []; }
+  toast(n ? fmtCnt(n) + ' silinmiş nokta geri getirildi (Ctrl+Z ile yeniden silinir)' : 'Geri getirilecek silinmiş nokta yok'); afterEdit(); return n;
+}
+function restoreSelection() {
+  const hits = S.plot.sel && S.plot.sel.delHits || []; if (!hits.length) return toast('Seçimde silinmiş nokta yok — “Silinenleri göster”i açıp silinen noktaları kutu / kement ile seçin');
+  S.plot.clearSelection(); restoreGroup(hits.map(h => ({ch: h.tr.ch, idx: h.idx})), 'seçim');
+}
+// görünen aralıktaki silmeler: aktif iz ya da ("tüm izlere uygula" açıksa) grafikteki tüm zaman izleri
+function restoreVisible() {
+  const all = $('#applyAll') && $('#applyAll').checked, parts = [];
+  const trs = all ? S.plot.axes.flatMap(ax => ax.traces.filter(t => t.visible && t.kind === 'ts').map(t => [t, ax])) : (activeTrace() ? [[activeTrace(), activeAxes()]] : []);
+  if (!trs.length) return toast('Önce bir iz seçin');
+  for (const [tr, ax] of trs) { const ch = tr.ch; if (!ch.del || !ch.delCount) continue; const [a, b] = visRange(tr, ax), [x0, x1] = ax.xlim, idx = []; for (let i = a; i < b; i++) if (ch.del[i]) { const t = ch.t(i); if (t >= x0 && t <= x1) idx.push(i); } if (idx.length) parts.push({ch, idx}); }
+  restoreGroup(parts, 'görünen aralık');
+}
+function toggleShowDel(on) {
+  S.plot.showDel = on == null ? !S.plot.showDel : !!on; S.plot.invalidate();
+  const c = $('#showDel'); if (c) c.checked = S.plot.showDel;
+  if (S.plot.showDel && !allFiles().some(f => f.channels.some(c => c.delCount))) toast('Silinmiş nokta yok');
+}
 function restoreChannel(ch) {
   if (!ch.delCount) return; const idx = []; for (let i = 0; i < ch.n; i++) if (ch.del[i]) idx.push(i);
-  const u = Uint32Array.from(idx); ch.restore(u); S.undo.push([{ch, idx: u, inverse: true}]); afterEdit();
+  restoreGroup([{ch, idx: Uint32Array.from(idx)}], 'tüm kanal');
 }
 function afterEdit() { S.plot.invalidate(); updateStats(); refreshCleanInfo(); }
 
@@ -5684,9 +5734,12 @@ function buildClean() {
   r.append(card('Seçim ve silme',
     h('div', {class: 'btns', style: 'margin-top:0'}, btn('Kutu seç', () => setMode('box')), btn('Kement seç', () => setMode('lasso'))),
     h('div', {class: 'note'}, 'Grafikte nokta seçin (kırmızı görünür), sonra "Seçilenleri sil" (Delete). Silme orijinal dosyayı değiştirmez, geri alınabilir.'),
+    chkIn('showDel', 'Silinenleri göster (soluk gri)', false),
     chkIn('applyAll', 'Seçimi grafikteki tüm izlere uygula', false),
     h('div', {id: 'selInfo', class: 'note'}, 'Seçim yok'),
-    h('div', {class: 'btns'}, btn('Seçilenleri sil', deleteSelection, 'danger', 'btnDel'), btn('Seçimi kaldır', () => S.plot.clearSelection()), btn('Geri al', undo), btn('Yinele', redo))));
+    h('div', {class: 'btns'}, btn('Seçilenleri sil', deleteSelection, 'danger', 'btnDel'), btn('Seçimi kaldır', () => S.plot.clearSelection()), btn('Geri al', undo), btn('Yinele', redo)),
+    h('div', {class: 'btns'}, btn('Seçilenleri geri getir', restoreSelection, '', 'btnRst'), btn('Görünen aralıktakileri geri getir', restoreVisible)),
+    h('div', {class: 'note'}, 'Geri getirme: "Silinenleri göster"i açın, silinen noktaları kutu / kement ile seçin (yeşil çerçeveli görünür) ve "Seçilenleri geri getir" (Shift+Delete). Görünen aralıktakiler: aktif iz ya da "tüm izlere uygula" açıksa grafikteki tüm izler. Ctrl+Z ile yeniden silinir.')));
   r.append(card('Eşik ile bul',
     fr('Koşul', selIn('thMode', [['abs', '|y| > a'], ['gt', 'y > a'], ['lt', 'y < a'], ['out', 'y, [a, b] dışında']], 'abs')),
     fr('a / b', numIn('thA', 1), numIn('thB', 1)),
@@ -5710,7 +5763,9 @@ function refreshCleanInfo() {
 }
 function onSelect(sel) {
   const n = selCount(), el = $('#selInfo');
-  if (el) el.textContent = sel ? `Seçili: ${fmtCnt(n)} nokta (${selectionHits().length} iz)` : 'Seçim yok';
+  const nd = sel && sel.delHits ? sel.delHits.reduce((a, h) => a + h.idx.length, 0) : 0;
+  if (el) el.textContent = sel ? `Seçili: ${fmtCnt(n)} nokta (${selectionHits().length} iz)` + (nd ? ` · ${fmtCnt(nd)} silinmiş nokta (geri getirilebilir)` : '') : 'Seçim yok';
+  const br = $('#btnRst'); if (br) br.disabled = !nd;
   $('#st3').textContent = sel ? `Seçili: ${fmtCnt(n)} nokta` : ''; $('#tb-del').disabled = !n;
 }
 async function findOutliers(kind) {
@@ -5845,6 +5900,7 @@ async function computeSpectrogram() {
 function applyClim() { const v = S.specView; v.cmap = sv('sgMap'); v.slices = ck('sgSl'); v.logF = ck('sgLog'); const lo = num('sgLo'), hi = num('sgHi'); if (isFinite(lo) && isFinite(hi) && hi > lo) v.clim = [lo, hi]; if (v.spec && v.logF && v.ylim[0] < v.fMin()) v.ylim[0] = v.fMin(); v.rebuild(); v.invalidate(); }
 function sgCursorInfo(c) { const e = $('#sgCur'); if (!e) return; e.textContent = c ? `İmleç: t = ${fmtNum(c.t, 6)} s · f = ${fmtNum(c.f, 6)} Hz · ${c.v.toFixed(2)} dB` : 'Spektrogram üzerine tıklayın: imleç (t, f, dB) ve kesitler.'; }
 document.addEventListener('change', e => { if (e.target && ['sgMap', 'sgLog', 'sgSl'].includes(e.target.id) && S.specView) applyClim(); });
+document.addEventListener('change', e => { if (e.target && e.target.id === 'showDel') toggleShowDel(e.target.checked); });
 function addDerived(name, data, src, i0, full) {
   if (!S.derived) S.derived = {id: 'derived', name: 'Türetilmiş kanallar', derived: true, channels: [], mcache: new Map()};
   const c = new Channel({name, rest: name, base: name, comp: '', dev: 'türetilmiş', kind: src ? src.kind : 'calc', n: data.length, file: S.derived, label: name, derived: true, data, varIdx: -1});
@@ -6540,6 +6596,7 @@ function init() {
     const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !(t.type === 'range')) return;
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); undo(); } else if ((e.ctrlKey || e.metaKey) && (k === 'y' || (e.shiftKey && k === 'z'))) { e.preventDefault(); redo(); }
+    else if ((k === 'delete' || k === 'backspace') && e.shiftKey) { if (S.plot.sel && S.plot.sel.delHits && S.plot.sel.delHits.length) { e.preventDefault(); restoreSelection(); } }
     else if (k === 'delete' || k === 'backspace') { if (selCount()) { e.preventDefault(); deleteSelection(); } }
     else if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); viewHist(e.key === 'ArrowLeft' ? -1 : 1); }
     else if (k === 'x' && !e.ctrlKey && !e.metaKey && !e.altKey) toggleCrosshair();
@@ -7133,7 +7190,7 @@ function shortcutsDialog() {
   const rows = [['Delete', 'Seçili noktaları sil'], ['Ctrl+Z / Ctrl+Y', 'Geri al / yinele (nokta silme)'], ['P · Z · C · B · L', 'Gez · Yakınlaştır · İmleç · Kutu · Kement'], ['+ / −', 'Yakınlaş / uzaklaş'], ['Home', 'Tümünü sığdır'],
     ['Esc', 'Seçimi kaldır / menüyü kapat'], ['Çift tık (ağaç)', 'Kanalı yeni alt grafiğe ekle (Ayarlar’dan değişir)'], ['Shift + çift tık', 'Tercihin tersi: aktif grafiğe ekle'], ['Shift + tık (ağaç)', 'Aralık seç'], ['Ctrl + tık (ağaç)', 'Çoklu seç'],
     ['Lejanta tık', 'İzi göster / gizle'], ['Lejanta sağ tık', 'Renk, kalınlık, taşı, kaldır'], ['Lejantı sürükle', 'İzi başka alt grafiğe taşı'], ['Alt grafik ayırıcısı', 'Sürükle: yükseklik · çift tık: eşitle'], ['↑ ↓ Enter (ağaç)', 'Klavyeyle gezin / ekle'], ['* (ağaç)', 'Kanalı sık kullanılanlara ekle / çıkar'],
-    ['Alt+← / Alt+→', 'Önceki / sonraki görünüm (yakınlaştırma geçmişi)'], ['X', 'Senkron dikey izleme (tüm alt grafiklerde değerler)'], ['Shift + tık (İmleç)', 'Yeni imleç ekle (çoklu imleç, ölçüm paneli)'], ['Esc', 'İmleçleri temizle'],
+    ['Shift+Delete', 'Seçimdeki silinmiş noktaları geri getir (Temizle › Silinenleri göster)'], ['Alt+← / Alt+→', 'Önceki / sonraki görünüm (yakınlaştırma geçmişi)'], ['X', 'Senkron dikey izleme (tüm alt grafiklerde değerler)'], ['Shift + tık (İmleç)', 'Yeni imleç ekle (çoklu imleç, ölçüm paneli)'], ['Esc', 'İmleçleri temizle'],
     ['Ctrl+B / Ctrl+Shift+B', 'Sol / sağ paneli gizle-göster'], ['Alt grafik köşesi (sağ alt)', 'Sürükle: o grafiğin yüksekliği / genişliği · çift tık: varsayılan'], ['5+ alt grafik', 'Görünüm dikey kaydırılır: tekerlek kaydırır, Ctrl+tekerlek X yakınlaştırır, Shift+tekerlek Y'], ['Lejant ▾ (araç çubuğu)', 'Göster/gizle, tümünü katla, boyut, konum'], ['Düzen ▾ (araç çubuğu)', 'Sütun (1–4, ızgara), tüm grafiklerin genişlik/yüksekliği, eşzamanlı köşe boyutlandırma'], ['Panel kenarı', 'Sürükle: genişlik · çift tık: varsayılan'], ['F11', 'Tam ekran'], ['?', 'Bu pencere']];
   modal('Klavye kısayolları ve fare', h('table', {class: 'kv'}, rows.map(r => h('tr', null, h('td', null, h('kbd', null, r[0])), h('td', null, r[1])))), [{t: 'Kapat', primary: true}]);
 }
@@ -8320,7 +8377,7 @@ async function qualAuto(files) {
 }
 
 /* ===== Faz 2: Test sekmesi — faz tablosu (B1), şartname uygunluk + şablonlar (B2), hesap kaydı (A2) ===== */
-const APP_VER = '2.62';
+const APP_VER = '2.63';
 function logOp(op, detail) { (S.methodLog = S.methodLog || []).push(Object.assign({t: Date.now(), op}, detail || {})); }
 
 /* ---------- Faz tablosu (düzenlenebilir) ---------- */
@@ -8528,9 +8585,24 @@ function delRuns(ch) { const out = [], d = ch.del; if (!d) return out; let i = 0
 function delHistoryDialog() {
   const body = h('div', {style: 'max-height:60vh;overflow:auto;min-width:520px'}); let any = false;
   for (const f of allFiles()) for (const c of f.channels) { if (!c.delCount) continue; any = true; const rs = delRuns(c);
-    body.append(h('h4', null, `${c.name} — ${c.delCount} nokta, ${rs.length} bölge`), tblEl(['#', 'Başlangıç (s)', 'Bitiş (s)', 'Nokta'], rs.slice(0, 200).map((r, i) => [i + 1, fmtNum(c.t(r[0]), 7), fmtNum(c.t(r[1] - 1), 7), r[1] - r[0]])), rs.length > 200 ? h('div', {class: 'note'}, '… ilk 200 bölge gösterildi') : '',
-      h('div', {class: 'btns'}, btn('Bu kanaldaki tüm silmeleri geri al', () => { const idx = []; for (const r of rs) for (let i = r[0]; i < r[1]; i++) idx.push(i); c.restore(idx); S.undo.push([{ch: c, idx: Uint32Array.from(idx), inverse: true}]); logOp('restore-all', {ch: c.name, n: idx.length}); afterEdit(); toast(c.name + ': silmeler geri alındı'); document.getElementById('modal').classList.add('hidden'); }))); }
+    // bölge başına: Göster (grafikte o aralığa git, silinenleri göster açılır) ve Geri getir
+    const rowBtns = (r, tr) => { const box = h('span', {style: 'white-space:nowrap'});
+      box.append(btn('Göster', () => delShowRegion(c, r)), ' ', btn('Geri getir', e => { const idx = new Uint32Array(r[1] - r[0]); for (let i = 0; i < idx.length; i++) idx[i] = r[0] + i; restoreGroup([{ch: c, idx}], 'bölge'); tr.style.opacity = '.4'; e.target.disabled = true; })); return box; };
+    const rows = rs.slice(0, 200).map((r, i) => { const row = {cells: [i + 1, fmtNum(c.t(r[0]), 7), fmtNum(c.t(r[1] - 1), 7), r[1] - r[0]]}; return row; });
+    const tb = tblEl(['#', 'Başlangıç (s)', 'Bitiş (s)', 'Nokta', ''], rows.map(r => r.cells.concat(['']))); 
+    [...tb.querySelectorAll('tbody tr')].forEach((tr, i) => { tr.lastChild.replaceChildren(rowBtns(rs[i], tr)); });
+    body.append(h('h4', null, `${c.name} — ${c.delCount} nokta, ${rs.length} bölge`), tb, rs.length > 200 ? h('div', {class: 'note'}, '… ilk 200 bölge gösterildi') : '',
+      h('div', {class: 'btns'}, btn('Bu kanaldaki tüm silmeleri geri al', () => { restoreChannel(c); document.getElementById('modal').classList.add('hidden'); }))); }
   if (!any) body.append(h('div', {class: 'note'}, 'Silinmiş nokta yok.')); modal('Silme geçmişi (maskelenen noktalar)', body, [{t: 'Kapat', primary: true}]);
+}
+// silme bölgesini grafikte göster: kanal grafikteyse o alt grafiğin X aralığı bölgeye (kenar paylı) getirilir, silinenler görünür olur
+function delShowRegion(c, r) {
+  const ax = S.plot.axes.find(a => a.traces.some(t => t.ch === c));
+  if (!ax) return toast(c.name + ' grafikte açık değil — önce kanalı grafiğe ekleyin');
+  const t0 = c.t(r[0]), t1 = c.t(Math.max(r[0], r[1] - 1)), pad = Math.max((t1 - t0) * 2, 20 * (c.dtS || 1e-3));
+  S.plot.pushView();
+  for (const a of S.plot.axes) if (S.plot.linkX || a === ax) a.xlim = [t0 - pad, t1 + pad];
+  toggleShowDel(true); document.getElementById('modal').classList.add('hidden'); switchView('time'); S.plot.invalidate();
 }
 function rawView(on) {
   if (on === S.rawOn) return; S.rawOn = on; for (const f of allFiles()) for (const c of f.channels) { if (on) { if (c.del && c.delCount) { c._delStash = c.del; c.del = null; c.pyr = null; } } else if (c._delStash) { c.del = c._delStash; c._delStash = null; c.pyr = null; } }
@@ -8759,6 +8831,11 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.63', d: 'Silinen noktaları seçerek geri getirme', items: [
+    'Temizle › Seçim ve silme: “Silinenleri göster” silinen noktaları grafikte soluk gri gösterir. Kutu / kement seçimi silinmiş noktaları da yakalar (yeşil çerçeveli); “Seçilenleri geri getir” (Shift+Delete) yalnız onları geri getirir. “Görünen aralıktakileri geri getir”: aktif iz ya da “tüm izlere uygula” açıksa grafikteki tüm izler.',
+    'Silme geçmişi (Çıktı › Silme geçmişi…): her silme bölgesi için “Göster” (grafikte o aralığa gider, silinenleri gösterir) ve “Geri getir”.',
+    'Her geri getirme tek adımdır: Ctrl+Z yeniden siler, Ctrl+Y yeniden getirir; işlem günlüğüne yazılır. Ham veri görünümünde düzenleme kapalıdır.'
+  ]},
   {v: '2.62', d: 'Tek .mat ve birim .mat: 2 GB\'ı aşan parametreler artık yazılıyor', items: [
     'Uzun kayıtlarda (ör. 9 GB) çok elemanlı bir parametre MAT v5\'in değişken başına 2 GB sınırını aşınca .mat\'e hiç yazılmıyor, yalnız işlem kaydına uyarı düşüyordu; tek .mat\'te parametreler eksik kalıyordu. Artık bölünerek yazılır: sayısal matrisin her sütunu ayrı değişken (Birim_ad_1, Birim_ad_2 …; birim .mat\'inde ad_1 …), byte dizileri sütun blokları (ad_b1, ad_b2 …). MATView bunları kanal olarak açar, zaman Birim_t\'den alınır. Bölünen alanlar işlem kaydında listelenir.',
     'Tek sütunu bile 2 GB\'ı aşan alan (yaklaşık 268 milyon örnek) hâlâ yazılamaz; bu durumda işlem kaydına HATA düşer.'
