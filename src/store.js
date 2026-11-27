@@ -128,7 +128,7 @@ class Channel {
   timeIdx(t) {
     const M = this.tmap || (this.file && this.file.tmap); if (M) t = M.inv(t);
     t -= this.t0; if (!this.g) return t / this.dtS;
-    const g = this.g, pp = t / this.Tpkt; if (pp <= g[0]) return pp * this.spp;
+    const g = this.g, pp = t / this.Tpkt; if (pp <= g[0]) return (pp - g[0]) * this.spp;   // ilk örnekten önce: tRaw'ın tersi (g[0] ≠ 0 olabilir)
     let lo = 0, hi = g.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (g[m] <= pp) lo = m; else hi = m - 1; }
     let f = pp - g[lo]; if (lo < g.length - 1 && f > 1) f = 1;
     return (lo + f) * this.spp;
@@ -207,6 +207,20 @@ async function importFile(file, onProgress) {
   let baseN = 0;
   for (const v of mat.vars) if (v.numeric && Math.min(...v.dims) === 1) baseN = Math.max(baseN, v.count);
   f.baseN = baseN;
+  const sibCache = new Map();   // yapı (ya da düz değişkenler) → o yapıdaki zaman / sayaç vektörlerinin uzunlukları
+  const isV = w => w && w.numeric && w.count >= 2 && w.dims.length === 2 && Math.min(w.dims[0], w.dims[1]) === 1;
+  const TLEAF = /^(t|time|zaman(_s)?|frame_counter|cnt)$/i, topBy = new Map();
+  for (const w of mat.vars) if (!w.top && isV(w)) topBy.set(w.name, w);
+  const sibLens = (key, top) => {
+    let st = sibCache.get(key); if (st) return st; st = new Set(); sibCache.set(key, st);
+    if (top) { for (const w of mat.vars) if (isV(w) && w.top === top && TLEAF.test(w.name.slice(w.top.length + 1))) st.add(w.count); return st; }
+    // düz değişken: dosya düzeyi t / time / zaman ve (4 GB'ı aşıp "<birim>_<alan>" olarak yazılan birimler için) "<önek>_t", "<önek>_frame_counter" …
+    for (const [nm, w] of topBy) if (TLEAF.test(nm)) st.add(w.count);
+    for (let j = key.lastIndexOf('_'); j > 0; j = key.lastIndexOf('_', j - 1)) {
+      const P = key.slice(0, j); for (const sf of ['_t', '_time', '_zaman_s', '_zaman', '_frame_counter', '_cnt']) { const w = topBy.get(P + sf); if (w && w.name !== key) st.add(w.count); }
+    }
+    return st;
+  };
   for (let vi = 0; vi < mat.vars.length; vi++) {
     const v = mat.vars[vi]; if (!v.numeric || v.count < 2) continue;
     const full = v.name, m = v.top ? null : DEV_RE.exec(full);
@@ -220,8 +234,17 @@ async function importFile(file, onProgress) {
     if (vec) f.channels.push(mk(full, rest, v.count));
     else {
       const R = dims[0], C = dims[1];
-      if (R <= C && R <= 256) for (let r = 0; r < R; r++) f.channels.push(mk(full + '[' + (r + 1) + ']', rest + '[' + (r + 1) + ']', C, {row: r, R, C, rowMode: 'row'}));
-      else if (C < R && C <= 256) for (let c = 0; c < C; c++) f.channels.push(mk(full + '[' + (c + 1) + ']', rest + '[' + (c + 1) + ']', R, {row: c, R, C, rowMode: 'col'}));
+      // Yönü aynı yapının zaman / sayaç vektörü belirler (telemetri tek .mat'i: N satır × eleman sütun): zaman uzunluğu satır sayısına
+      // eşitse sütunlar kanaldır — 256'dan çok elemanlı (spektrum gibi) değişkenler de açılır; sütun sayısına eşitse satırlar kanaldır.
+      // Zaman vektörü yoksa eski sezgi: kısa kenar kanal sayısıdır (en çok 256).
+      const sl = v.top ? sibLens('\u0000' + v.top, v.top) : sibLens(v.name, null);
+      let mode = null;
+      if (sl.has(R)) mode = 'col'; else if (sl.has(C)) mode = 'row';
+      else if (R <= C && R <= 256) mode = 'row'; else if (C < R && C <= 256) mode = 'col';
+      // uint8 matris telemetri byte dizisidir (payload, ham veri): 256'dan çok baytlıysa kanal yapılmaz (oturumda da kanal değil)
+      if (v.clsName === 'uint8' && (mode === 'row' ? R : C) > 256) mode = null;
+      if (mode === 'row') for (let r = 0; r < R; r++) f.channels.push(mk(full + '[' + (r + 1) + ']', rest + '[' + (r + 1) + ']', C, {row: r, R, C, rowMode: 'row'}));
+      else if (mode === 'col') for (let c = 0; c < C; c++) f.channels.push(mk(full + '[' + (c + 1) + ']', rest + '[' + (c + 1) + ']', R, {row: c, R, C, rowMode: 'col'}));
     }
   }
   // sayaçları yükle ve zamanlamayı hesapla

@@ -3331,59 +3331,20 @@ async function writeMat(u, sink, fname, tick, log, Tper) {
   await w.write(hdr);
   // değişkenler tek .mat'teki birim yapısıyla aynı: t (s, kayıp çerçeveler dahil), frame_counter, parametreler,
   // kendi zamanı olan (koşullu / akış) parametreler için <ad>_t — MATView ve MATLAB'da zaman çözümdekiyle aynı olur
-  var used = new Set(), vars = unitFields(u, Tper || 0.01).map(function (f) { return { name: f.name, cols: f.cols, bytes: !!f.bytes, scale: f.scale }; });
-  var pfo = []; vars.forEach(function (v) { if (!v.bytes) Array.prototype.push.apply(pfo, v.cols); });
+  var used = new Set(), fields = unitFields(u, Tper || 0.01);
+  var pfo = []; fields.forEach(function (f) { if (!f.bytes) Array.prototype.push.apply(pfo, f.cols); });
   var pf = new Prefetch(pfo);
-  for (var vi = 0; vi < vars.length; vi++) {
-    var v = vars[vi], c0 = v.cols[0], kind = c0.kind, cls = MAT_CLS[kind];
-    var rows = c0.n, ncol = v.bytes ? c0.width : v.cols.length;
-    var dataBytes = rows * ncol * cls[2];
-    var name = matName(v.name, used);
-    if (dataBytes > 0x7FFFFFF0) { log('UYARI', u.name + '.mat: ' + name + ' değişkeni 2 GB MAT v5 sınırını aştığı için yazılmadı (CSV dosyasında mevcut)'); continue; }
-    var nb = utf8enc.encode(name), nl = nb.length;
-    var nameEl = nl <= 4 ? 8 : 8 + pad8(nl);
-    var total = 16 + 16 + nameEl + 8 + pad8(dataBytes);
-    var head = new Uint8Array(8 + 32 + nameEl + 8), dv = new DataView(head.buffer);
-    dv.setUint32(0, 14, true); dv.setUint32(4, total, true);
-    dv.setUint32(8, 6, true); dv.setUint32(12, 8, true); dv.setUint32(16, cls[0], true); dv.setUint32(20, 0, true);
-    dv.setUint32(24, 5, true); dv.setUint32(28, 8, true); dv.setInt32(32, rows, true); dv.setInt32(36, ncol, true);
-    var p = 40;
-    if (nl <= 4) { dv.setUint32(p, (nl << 16) | 1, true); head.set(nb, p + 4); p += 8; }
-    else { dv.setUint32(p, 1, true); dv.setUint32(p + 4, nl, true); head.set(nb, p + 8); p += 8 + pad8(nl); }
-    dv.setUint32(p, cls[1], true); dv.setUint32(p + 4, dataBytes, true); p += 8;
-    await w.write(head.subarray(0, p));
-    if (!v.bytes) {
-      for (var ci = 0; ci < v.cols.length; ci++) {
-        var col = v.cols[ci];
-        await pf.ensure(col);
-        if (v.scale) for (var k = 0; k < col.chunks.length; k++) { var vv = await col.chunk(k), o = new Float64Array(vv.length); for (var a = 0; a < vv.length; a++) o[a] = vv[a] * v.scale; await w.write(new Uint8Array(o.buffer)); }
-        else for (k = 0; k < col.chunks.length; k++) await w.write(await col.rawChunk(k));
-        col.pre = null; col.release();
-        tick(col.n);
-      }
-    } else {
-      // MATLAB sütun öncelikli: N x genişlik
-      var cw = c0.width, all = null;
-      if (rows * cw <= 64 * 1048576) {
-        all = new Uint8Array(rows * cw); var q = 0;
-        for (k = 0; k < c0.chunks.length; k++) { var ch = await c0.rawChunk(k); all.set(ch, q); q += ch.length; }
-      }
-      var outb = new Uint8Array(Math.min(rows, 1 << 20)), oi = 0;
-      for (var j = 0; j < cw; j++) {
-        if (all) {
-          for (var r = 0; r < rows; r++) { outb[oi++] = all[r * cw + j]; if (oi === outb.length) { await w.write(outb); oi = 0; } }
-        } else {
-          for (k = 0; k < c0.chunks.length; k++) {
-            var ch2 = await c0.rawChunk(k), nr = ch2.length / cw;
-            for (r = 0; r < nr; r++) { outb[oi++] = ch2[r * cw + j]; if (oi === outb.length) { await w.write(outb); oi = 0; } }
-          }
-        }
-      }
-      if (oi) await w.write(outb.subarray(0, oi));
-      tick(rows);
+  for (var vi = 0; vi < fields.length; vi++) {
+    var f = fields[vi], parts = [f];
+    if (f.dataBytes > TP.MAT_VAR_MAX) {   // 2 GB'ı aşan alan atlanmaz, bölünür (splitField)
+      parts = splitField(f, TP.MAT_VAR_MAX);
+      if (!parts.length) { log('HATA', u.name + '.mat: ' + f.name + ' tek sütunu bile 2 GB MAT v5 sınırını aşıyor; yazılamadı (CSV dosyasında mevcut)'); continue; }
+      log('UYARI', u.name + '.mat: ' + f.name + ' 2 GB MAT v5 sınırını aştığı için ' + parts.length + ' değişkene bölündü (' + parts[0].name + ' …)');
     }
-    var padn = pad8(dataBytes) - dataBytes;
-    if (padn) await w.write(new Uint8Array(padn));
+    for (var pi = 0; pi < parts.length; pi++) {
+      var g = parts[pi], mh = matHead(matName(g.name, used), g.cls[0], g.rows, g.ncol, g.dataBytes, g.cls[1]);
+      await w.write(mh.head); await writeFieldData(w, g, tick, pf);
+    }
   }
   await w.close();
 }
@@ -3471,9 +3432,9 @@ async function writeFieldData(w, f, tick, pf, cx) {
   if (cx) { if (Date.now() - (writeFieldData.ty || 0) > 100) { writeFieldData.ty = Date.now(); await new Promise(function (r) { setTimeout(r, 0); }); } if (cx()) throw new Error('İşlem iptal edildi'); }
   if (f.bytes) {
     // MATLAB sütun öncelikli (N × genişlik): sütunlar en çok 32 MB'lık gruplar halinde çevrilir, tüm dizi belleğe alınmaz
-    var rows = f.rows, cw = c0.width, G = Math.max(1, Math.min(cw, Math.floor((32 << 20) / Math.max(rows, 1))));
-    for (var j0 = 0; j0 < cw; j0 += G) {
-      var j1 = Math.min(cw, j0 + G), gw = j1 - j0, out = new Uint8Array(rows * gw), r0 = 0;
+    var rows = f.rows, cw = c0.width, jA = f.j0 || 0, jB = f.j1 != null ? f.j1 : cw, G = Math.max(1, Math.min(jB - jA, Math.floor((32 << 20) / Math.max(rows, 1))));
+    for (var j0 = jA; j0 < jB; j0 += G) {
+      var j1 = Math.min(jB, j0 + G), gw = j1 - j0, out = new Uint8Array(rows * gw), r0 = 0;
       for (var k = 0; k < c0.chunks.length; k++) {
         var ch = await c0.rawChunk(k), nr = ch.length / cw;
         for (var j = 0; j < gw; j++) { var ob = j * rows + r0, src = j0 + j; for (var r = 0; r < nr; r++) out[ob + r] = ch[r * cw + src]; }
@@ -3497,6 +3458,23 @@ async function writeFieldData(w, f, tick, pf, cx) {
   var padn = pad8(f.dataBytes) - f.dataBytes;
   if (padn) await w.write(new Uint8Array(padn));
 }
+// MAT v5 sınırları: değişken başına ~2 GB (MATLAB), yapı başına 4 GB (etiket uzunluğu 32 bit). Testler küçültebilir.
+TP.MAT_VAR_MAX = 0x7FFFFFF0; TP.MAT_STRUCT_MAX = 0xFFFFFFF0;
+// 2 GB'ı aşan alan atlanmaz, sütun gruplarına bölünür: sayısal matris → her sütun ayrı değişken (ad_1, ad_2 …, N×1);
+// byte dizisi → sütun blokları (ad_b1, ad_b2 …). Tek sütunu bile sınırı aşan alan (çok uzun kayıt) yazılamaz.
+function splitField(f, max) {
+  var out = [], rowB = f.rows * f.cls[2];
+  if (rowB > max) return out;
+  if (f.bytes) {
+    var per = Math.max(1, Math.floor(max / rowB)), k = 1;
+    for (var j0 = 0; j0 < f.ncol; j0 += per, k++) {
+      var j1 = Math.min(f.ncol, j0 + per);
+      out.push(Object.assign({}, f, { name: f.name + '_b' + k, j0: j0, j1: j1, ncol: j1 - j0, dataBytes: f.rows * (j1 - j0) * f.cls[2] }));
+    }
+  } else f.cols.forEach(function (c, i) { out.push(Object.assign({}, f, { name: f.name + '_' + (i + 1), cols: [c], ncol: 1, dataBytes: rowB })); });
+  return out;
+}
+TP.splitField = splitField;
 async function writeMatAll(units, sink, fname, opt) {
   opt = opt || {};
   var w = await sink.open(fname), tick = opt.tick, log = opt.log || function () {};
@@ -3511,16 +3489,23 @@ async function writeMatAll(units, sink, fname, opt) {
     var u = units[ui], fields = allF[ui], sname = matName(u.name, usedTop);
     var FN = 64, nf = fields.length, fnBytes = nf * FN, nb = utf8enc.encode(sname), nl = nb.length, nameEl = nl <= 4 ? 8 : 8 + pad8(nl);
     var body = 16 + 16 + nameEl + 8 + 8 + pad8(fnBytes), big = false;
-    fields.forEach(function (f) { body += f.elSize; if (f.dataBytes > 0x7FFFFFF0) big = true; });
+    fields.forEach(function (f) { body += f.elSize; if (f.dataBytes > TP.MAT_VAR_MAX) big = true; });
     if (!nf) continue;
-    if (big || body > 0xFFFFFFF0) {
+    if (big || body > TP.MAT_STRUCT_MAX) {
       // MAT v5 sınırı: yapı yerine düz değişkenler
       log('UYARI', fname + ': ' + u.name + ' yapısı MAT v5 sınırını aşıyor; alanlar ' + sname + '_ad biçiminde ayrı değişken yazıldı');
       for (var fi = 0; fi < nf; fi++) {
         var f = fields[fi];
-        if (f.dataBytes > 0x7FFFFFF0) { log('UYARI', fname + ': ' + u.name + '.' + f.name + ' 2 GB sınırını aştığı için yazılmadı'); continue; }
-        var mh = matHead(matName(sname + '_' + f.name, usedTop), f.cls[0], f.rows, f.ncol, f.dataBytes, f.cls[1]);
-        await w.write(mh.head); await writeFieldData(w, f, tick, pf, opt.cancelled);
+        var parts = [f];
+        if (f.dataBytes > TP.MAT_VAR_MAX) {
+          parts = splitField(f, TP.MAT_VAR_MAX);
+          if (!parts.length) { log('HATA', fname + ': ' + u.name + '.' + f.name + ' tek sütunu bile 2 GB sınırını aşıyor; yazılamadı (kaydı parçalara bölün)'); continue; }
+          log('UYARI', fname + ': ' + u.name + '.' + f.name + ' 2 GB sınırını aştığı için ' + parts.length + ' değişkene bölündü (' + sname + '_' + parts[0].name + ' …)');
+        }
+        for (var pi = 0; pi < parts.length; pi++) {
+          var pf1 = parts[pi], mh = matHead(matName(sname + '_' + pf1.name, usedTop), pf1.cls[0], pf1.rows, pf1.ncol, pf1.dataBytes, pf1.cls[1]);
+          await w.write(mh.head); await writeFieldData(w, pf1, tick, pf, opt.cancelled);
+        }
       }
       continue;
     }

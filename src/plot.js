@@ -697,17 +697,24 @@ function drawTrace(ctx, tr, ax, P, T) {
         for (let i = i0; i <= i1; i++) { const v = data[i]; if ((del && del[i]) || !isFinite(v)) continue; const x = r.x + (ch.t(i) - x0) * xs, y = Y(v); ctx.fillRect(x - 2, y - 2, 4, 4); }
       }
     } else {
+      // sütun başına min/max. Örneği olmayan sütunlar (seyrek / düzensiz örnekleme, kayıp paket) çizgiyi kesmez:
+      // inceltmesiz çizimdeki gibi komşu örnekler birleştirilir; yalnız tümü NaN / silinmiş sütun çizgiyi keser.
+      // Görünümün hemen dışındaki komşu örneğe de bağlanılır (kenarlarda çizgi kopmasın).
       const cols = Math.floor(W), dt = (x1 - x0) / cols;
-      ctx.beginPath(); let lastY = null, prevC = -2;
+      const ok = i => i >= 0 && i < ch.n && !(del && del[i]) && isFinite(data[i]) && !(ax.ylog && data[i] <= 0);
+      ctx.beginPath(); let lastY = null, lastB = -1;
+      const a0 = Math.ceil(ch.timeIdx(x0));
+      if (a0 > 0 && ok(a0 - 1)) { const px = r.x + (ch.t(a0 - 1) - x0) * xs; lastY = Y(data[a0 - 1]); ctx.moveTo(px, lastY); }
       for (let c = 0; c < cols; c++) {
         const a = Math.ceil(ch.timeIdx(x0 + c * dt)), b = Math.ceil(ch.timeIdx(x0 + (c + 1) * dt));
-        const aa = Math.max(0, a), bb = Math.min(ch.n, b); if (bb <= aa) { continue; }
-        if (!ch.minmax(aa, bb)) { prevC = -2; continue; }
-        const px = r.x + c + 0.5, ya = Y(ch._mn), yb = Y(ch._mx);
-        if (c - prevC > 1 || lastY === null) { ctx.moveTo(px, ya); lastY = ya; }
+        const aa = Math.max(0, a), bb = Math.min(ch.n, b); if (bb <= aa) continue;
+        lastB = bb;
+        if (!ch.minmax(aa, bb) || (ax.ylog && ch._mx <= 0)) { lastY = null; continue; }
+        const px = r.x + c + 0.5, ya = Y(ax.ylog && ch._mn <= 0 ? ch._mx : ch._mn), yb = Y(ch._mx);
+        if (lastY === null) { ctx.moveTo(px, ya); lastY = ya; }
         if (Math.abs(lastY - ya) <= Math.abs(lastY - yb)) { ctx.lineTo(px, ya); ctx.lineTo(px, yb); lastY = yb; } else { ctx.lineTo(px, yb); ctx.lineTo(px, ya); lastY = ya; }
-        prevC = c;
       }
+      if (lastY !== null && lastB >= 0 && ok(lastB)) ctx.lineTo(r.x + (ch.t(lastB) - x0) * xs, Y(data[lastB]));
       ctx.stroke();
     }
   } else if (tr.bars) { // histogram çubukları
@@ -742,10 +749,22 @@ function drawTrace(ctx, tr, ax, P, T) {
       let pen = false;
       for (let i = i0; i <= i1; i++) { const v = y[i]; if (!isFinite(v) || (ax.ylog && v <= 0) || (ax.xlog && x[i] <= 0)) { pen = false; continue; } const px = P.xPx(ax, x[i]), py = P.yPx(ax, v); if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py); }
     } else {
-      const cols = Math.floor(W), mn = new Float64Array(cols).fill(Infinity), mx = new Float64Array(cols).fill(-Infinity);
-      for (let i = i0; i <= i1; i++) { const v = y[i]; if (!isFinite(v) || (ax.ylog && v <= 0) || (ax.xlog && x[i] <= 0)) continue; let c = Math.floor(P.xPx(ax, x[i]) - r.x); if (c < 0 || c >= cols) continue; if (v < mn[c]) mn[c] = v; if (v > mx[c]) mx[c] = v; }
+      // sütun başına min/max; örneği olmayan sütunlar çizgiyi kesmez (inceltmesiz çizimle aynı), NaN keser (brk).
+      // Görünüm dışındaki komşu örneklere de bağlanılır.
+      const cols = Math.floor(W), mn = new Float64Array(cols).fill(Infinity), mx = new Float64Array(cols).fill(-Infinity), brk = new Uint8Array(cols);
+      let gap = false, left = -1, right = -1, rightGap = false;
+      for (let i = i0; i <= i1; i++) {
+        const v = y[i]; if (!isFinite(v) || !isFinite(x[i]) || (ax.ylog && v <= 0) || (ax.xlog && x[i] <= 0)) { gap = true; left = -1; continue; }
+        const c = Math.floor(P.xPx(ax, x[i]) - r.x);
+        if (c < 0) { left = i; gap = false; continue; }
+        if (c >= cols) { if (right < 0) { right = i; rightGap = gap; } continue; }
+        if (gap) { brk[c] = 1; gap = false; }
+        if (v < mn[c]) mn[c] = v; if (v > mx[c]) mx[c] = v;
+      }
       let lastY = null;
-      for (let c = 0; c < cols; c++) { if (mn[c] === Infinity) { lastY = null; continue; } const px = r.x + c + .5, ya = P.yPx(ax, mn[c]), yb = P.yPx(ax, mx[c]); if (lastY === null) { ctx.moveTo(px, ya); lastY = ya; } if (Math.abs(lastY - ya) <= Math.abs(lastY - yb)) { ctx.lineTo(px, ya); ctx.lineTo(px, yb); lastY = yb; } else { ctx.lineTo(px, yb); ctx.lineTo(px, ya); lastY = ya; } }
+      if (left >= 0) { lastY = P.yPx(ax, y[left]); ctx.moveTo(P.xPx(ax, x[left]), lastY); }
+      for (let c = 0; c < cols; c++) { if (mn[c] === Infinity) continue; const px = r.x + c + .5, ya = P.yPx(ax, mn[c]), yb = P.yPx(ax, mx[c]); if (lastY === null || brk[c]) { ctx.moveTo(px, ya); lastY = ya; } if (Math.abs(lastY - ya) <= Math.abs(lastY - yb)) { ctx.lineTo(px, ya); ctx.lineTo(px, yb); lastY = yb; } else { ctx.lineTo(px, yb); ctx.lineTo(px, ya); lastY = ya; } }
+      if (lastY !== null && right >= 0 && !rightGap) ctx.lineTo(P.xPx(ax, x[right]), P.yPx(ax, y[right]));
     }
     if (tr.dash) ctx.setLineDash(tr.dash);
     ctx.stroke(); ctx.setLineDash([]);

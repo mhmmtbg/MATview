@@ -52,6 +52,23 @@ window.addEventListener('error', e => logErr('hata', e.message, e.error && e.err
 window.addEventListener('unhandledrejection', e => logErr('söz', e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
 
 const CHANGELOG = [
+  {v: '2.62', d: 'Tek .mat ve birim .mat: 2 GB\'ı aşan parametreler artık yazılıyor', items: [
+    'Uzun kayıtlarda (ör. 9 GB) çok elemanlı bir parametre MAT v5\'in değişken başına 2 GB sınırını aşınca .mat\'e hiç yazılmıyor, yalnız işlem kaydına uyarı düşüyordu; tek .mat\'te parametreler eksik kalıyordu. Artık bölünerek yazılır: sayısal matrisin her sütunu ayrı değişken (Birim_ad_1, Birim_ad_2 …; birim .mat\'inde ad_1 …), byte dizileri sütun blokları (ad_b1, ad_b2 …). MATView bunları kanal olarak açar, zaman Birim_t\'den alınır. Bölünen alanlar işlem kaydında listelenir.',
+    'Tek sütunu bile 2 GB\'ı aşan alan (yaklaşık 268 milyon örnek) hâlâ yazılamaz; bu durumda işlem kaydına HATA düşer.'
+  ]},
+  {v: '2.61', d: 'Tek .mat: büyük birimlerde de tüm parametreler', items: [
+    'MAT v5 yapı sınırını (4 GB) aşan birimler tek .mat\'e “Birim_ad” düz değişkenleri olarak yazılır; bu değişkenlerde 256\'dan çok elemanlı parametreler 2.60\'ta da açılmıyordu. Yön artık “Birim_t” / “Birim_frame_counter” uzunluğuna göre bulunur.',
+    'Zaman tanılama raporu (dosyaya sağ tık): yeni “Kanala açılmayan sayısal değişkenler” bölümü; açılmayan her değişken boyutu, tipi ve nedeniyle (adlar gizli) listelenir.'
+  ]},
+  {v: '2.60', d: 'Tek .mat: çok elemanlı parametrelerin hepsi açılıyor', items: [
+    'Telemetri “Tüm kaydı tek .mat olarak kaydet” dosyası MATView\'de açılınca 256\'dan çok elemanlı parametreler (ör. 300 elemanlı dizi; .mat içinde N satır × 300 sütun matris) kanal listesine gelmiyordu; kayıt eksik yazılmış gibi görünüyordu. Veri dosyada eksiksizdi, eksik olan açmaydı. Matrisin yönü artık aynı yapıdaki t / frame_counter vektörüne göre belirlenir: satır sayısı zaman uzunluğuna eşitse her sütun bir kanal olur, sınır yoktur. Zaman vektörü olmayan matrislerde eski kural (kısa kenar, en çok 256) sürer.',
+    'Byte dizileri (uint8, 256 bayttan geniş; ör. payload) yine kanal yapılmaz; oturumda da kanal değildir.'
+  ]},
+  {v: '2.59', d: 'Seyrek örnekli kanallar uzak görünümde de çiziliyor', items: [
+    'Grafik: yoğun bir kesimden sonra seyrek ya da düzensiz örneklenen kanallarda (ör. kısa bir patlamadan sonra birkaç saniyede bir gelen değerler) uzak görünümde seyrek kısım çizilmiyor, yalnız yakınlaştırınca görünüyordu. Büyük veride kullanılan min/max inceltme, örneği olmayan piksel sütunlarında çizgiyi koparıyordu; artık yakın görünümdeki gibi komşu örnekler birleştirilir. NaN ve uzun silinmiş aralıklar çizgiyi kesmeye devam eder.',
+    'Uzak görünümde grafiğin sol ve sağ kenarında, görünüm dışındaki komşu örneğe giden çizgi de çizilir (kenarda çizgi kopmaz). Aynı düzeltme Figür / xy grafiklerinde de geçerli.',
+    'Zaman ekseni mutlak çerçeve numarasıyla verilen kanallarda (telemetri, kendi zamanı olan parametreler) görünüm ilk örnekten önce başladığında iz hiç çizilmeyebiliyordu; düzeltildi.'
+  ]},
   {v: '2.58', d: 'Sayaç zamanı: bozuk kesimlere dayanıklı', items: [
     'Telemetri ve “Bu kanalı dosyanın zaman ekseni yap”: çerçeve sayacındaki bozulmalar yeniden ele alındı. Gerçek kayıtlarda bit hataları tek tek değil art arda gelebiliyor, bir bit uzun süre yarı yarıya düşük okunabiliyor ya da sayaç kısa süre anlamsız artıp eski diziye dönebiliyor; önceki sürümler bunları kayıp ya da sıfırlanma sayıp zamanı yüzlerce saniye (bazen 10⁸ s) kaydırıyor, kanallar parçalı görünüyordu.',
     'Yeni yöntem: her çerçeve komşularının ortancasıyla karşılaştırılır (sayacın asıl hattı), tek bit hatasına benzeyen sapmalar ve sonradan eski diziye dönülen kesimler bozuk sayılıp komşu çerçeveler arasına yerleştirilir. Hattaki çerçevelerin zamanı sayacın kendisidir: kayıplar boşluk olarak kalır, iki olay arası süre frame_counter farkı × periyot ile aynıdır (MATLAB’de plot(frame_counter*0.01, x)). Aynı kod ana uygulamada da kullanılır.'

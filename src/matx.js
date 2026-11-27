@@ -103,6 +103,28 @@ async function timeDiagReport(f, opt) {
     }
     if (a.length > lim) L.push('  … ' + (a.length - lim) + ' kanal daha');
   }
+  // kanala açılmayan sayısal değişkenler ve nedeni (zaman / sayaç vektörleri ayrıca sayılır)
+  const withCh = new Set(f.channels.map(c => c.varIdx)), tset = new Set(tcand), miss = new Map();
+  vars.forEach((v, i) => {
+    if (!v.numeric || withCh.has(i)) return;
+    let why;
+    if (tset.has(i) || CNT.test(leaf(v))) why = 'zaman / sayaç vektörü (kanal olarak listelenmez)';
+    else if (v.count < 2) why = 'tek değer (' + dims(v) + ')';
+    else if (v.dims.length > 2) why = (v.dims.length) + ' boyutlu dizi';
+    else if (v.clsName === 'uint8' && Math.min(v.dims[0], v.dims[1]) > 1) why = 'byte dizisi (uint8 matris)';
+    else if (Math.min(v.dims[0], v.dims[1]) > 256) why = 'geniş matris, yönü bulunamadı (aynı yapıda eşit uzunlukta t / frame_counter yok)';
+    else why = 'bilinmiyor';
+    if (!miss.has(why)) miss.set(why, []); miss.get(why).push(v);
+  });
+  const nMiss = [...miss.values()].reduce((a, b) => a + b.length, 0);
+  L.push('', '== Kanala açılmayan sayısal değişkenler (' + nMiss + ') ==');
+  if (!nMiss) L.push('(yok)');
+  for (const [why, a] of miss) {
+    L.push('-- ' + why + ': ' + a.length);
+    for (const v of a.slice(0, 40)) L.push('   ' + an(v.name) + ' · ' + dims(v) + ' ' + v.clsName);
+    if (a.length > 40) L.push('   … ' + (a.length - 40) + ' değişken daha');
+  }
+  L.push('Sayısal değişken ' + vars.filter(v => v.numeric).length + ' · kanal veren ' + withCh.size + ' · kanal ' + f.channels.length);
   if (opt.cursors) await diagCursors(f, an, L, tcand);
   return L.join('\n');
 }
